@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Printers — Platen Label Studio</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; color: #ccd6f6; background-color: #0d1117;
+background-image:
+ radial-gradient(1.2px 1.2px at 11% 14%, rgba(204,214,246,.55), transparent 60%),
+ radial-gradient(1px 1px at 63% 9%, rgba(204,214,246,.40), transparent 60%),
+ radial-gradient(1.3px 1.3px at 84% 57%, rgba(100,255,218,.35), transparent 60%),
+ radial-gradient(1px 1px at 29% 71%, rgba(204,214,246,.35), transparent 60%),
+ radial-gradient(1px 1px at 47% 38%, rgba(204,214,246,.28), transparent 60%),
+ radial-gradient(1.1px 1.1px at 92% 22%, rgba(204,214,246,.30), transparent 60%),
+ radial-gradient(1px 1px at 8% 88%, rgba(204,214,246,.25), transparent 60%),
+ radial-gradient(1px 1px at 72% 84%, rgba(204,214,246,.22), transparent 60%),
+ radial-gradient(900px 520px at 82% -12%, rgba(41,171,226,.10), transparent 70%); }
+a { color: #29abe2; } a:hover { color: #7fd0f0; }
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; background: transparent; overflow: hidden;">
+
+  <aside style="width: 240px; flex-shrink: 0; box-sizing: border-box; background: #0d1117; display: flex; flex-direction: column; padding: 22px 14px;">
+    <div style="padding: 0 10px 24px 10px; display: flex; flex-direction: column; gap: 3px;">
+      <span style="font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 700; font-size: 19px; letter-spacing: 0.15em; color: #ccd6f6;">PLATEN</span>
+      <span style="font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: #8892b0;">Label Studio</span>
+    </div>
+    <nav style="display: flex; flex-direction: column; gap: 2px;">
+      <a href="Main.dc.html" style="display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: 7px; text-decoration: none; font-size: 13.5px; color: #8892b0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2" width="5" height="5" rx="1"></rect><rect x="9" y="2" width="5" height="5" rx="1"></rect><rect x="2" y="9" width="5" height="5" rx="1"></rect><rect x="9" y="9" width="5" height="5" rx="1"></rect></svg><span>Dashboard</span></a>
+      <a href="Templates.dc.html" style="display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: 7px; text-decoration: none; font-size: 13.5px; color: #8892b0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M8 2 14 5.4 8 8.8 2 5.4z"></path><path d="M2 10.2 8 13.6l6-3.4"></path></svg><span>Templates</span></a>
+      <a href="DataSources.dc.html" style="display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: 7px; text-decoration: none; font-size: 13.5px; color: #8892b0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><ellipse cx="8" cy="4" rx="5.3" ry="2.1"></ellipse><path d="M2.7 4v8c0 1.2 2.4 2.1 5.3 2.1s5.3-.9 5.3-2.1V4"></path><path d="M2.7 8c0 1.2 2.4 2.1 5.3 2.1s5.3-.9 5.3-2.1"></path></svg><span>Data sources</span></a>
+      <a href="Printers.dc.html" style="display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: 7px; text-decoration: none; font-size: 13.5px; background: rgba(41,171,226,0.14); color: #ccd6f6;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4.5 6.2V2.6h7v3.6"></path><rect x="2" y="6.2" width="12" height="5" rx="1.2"></rect><path d="M4.5 9.6h7v3.8h-7z"></path></svg><span>Printers</span></a>
+      <a href="PrintRun.dc.html" style="display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: 7px; text-decoration: none; font-size: 13.5px; color: #8892b0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M5.2 3.2 12.8 8l-7.6 4.8z"></path></svg><span>Print run</span></a>
+      <a href="Main.dc.html" style="display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: 7px; text-decoration: none; font-size: 13.5px; color: #8892b0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M6 4h7.5M6 8h7.5M6 12h7.5M2.8 4h.01M2.8 8h.01M2.8 12h.01"></path></svg><span>Job history</span></a>
+      <a href="Printers.dc.html" style="display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: 7px; text-decoration: none; font-size: 13.5px; color: #8892b0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2.5 5.2h11M2.5 10.8h11"></path><circle cx="6" cy="5.2" r="1.7"></circle><circle cx="10" cy="10.8" r="1.7"></circle></svg><span>Settings</span></a>
+    </nav>
+    <div style="flex-grow: 1;"></div>
+    <div style="display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 8px; background: rgba(41,171,226,0.08);">
+      <span style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; background: #29abe2; color: #ffffff; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center;">LL</span>
+      <span style="display: flex; flex-direction: column;"><span style="font-size: 12.5px; color: #ccd6f6;">L. Lauton</span><span style="font-size: 11px; color: #8892b0;">Administrator</span></span>
+    </div>
+  </aside>
+
+  <main style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+
+    <header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 28px; display: flex; align-items: center; gap: 16px; background: rgba(13,17,23,0.62); border-bottom: 1px solid rgba(41,171,226,0.20);">
+      <h1 style="margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 19px; font-weight: 500; letter-spacing: -0.01em;">Printers</h1>
+      <span style="font-size: 12.5px; color: #8892b0;">7 configured · 6 reachable</span>
+      <div style="flex-grow: 1;"></div>
+      <button type="button" style="height: 34px; padding: 0 13px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 8px; font-size: 13px; color: #8892b0; cursor: pointer;">Scan network</button>
+      <button type="button" style="display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border: 0; border-radius: 8px; background: #29abe2; color: #ffffff; font-size: 13px; font-weight: 500; cursor: pointer;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 3v10M3 8h10"></path></svg>Add printer</button>
+    </header>
+
+    <div style="flex-grow: 1; box-sizing: border-box; padding: 24px 28px; display: flex; gap: 20px; min-height: 0;">
+
+      <div style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.20); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden;">
+        <div style="height: 46px; flex-shrink: 0; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(41,171,226,0.12);">
+          <h2 style="margin: 0; font-size: 13.5px; font-weight: 600;">Configured printers</h2>
+          <div style="flex-grow: 1;"></div>
+          <span style="font-size: 12px; color: #8892b0;">Status polled every 30 s</span>
+        </div>
+        <div style="height: 34px; flex-shrink: 0; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; gap: 14px; background: rgba(41,171,226,0.05); border-bottom: 1px solid rgba(41,171,226,0.12); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #8892b0;">
+          <span style="width: 16px; flex-shrink: 0;"></span>
+          <span style="flex-grow: 1;">Name</span>
+          <span style="width: 88px; flex-shrink: 0;">Model</span>
+          <span style="width: 196px; flex-shrink: 0;">Connection</span>
+          <span style="width: 62px; flex-shrink: 0;">dpi</span>
+          <span style="width: 140px; flex-shrink: 0;">Media</span>
+          <span style="width: 108px; flex-shrink: 0;">Status</span>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 14px; padding: 0 18px; height: 58px; border-bottom: 1px solid rgba(41,171,226,0.10); background: rgba(41,171,226,0.12); font-size: 13px;">
+          <span style="width: 16px; flex-shrink: 0; display: flex;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #4ade80;"></span></span>
+          <span style="flex-grow: 1; font-weight: 600;">ZT411 · Despatch</span>
+          <span style="width: 88px; flex-shrink: 0; color: #8892b0;">ZT411</span>
+          <span style="width: 196px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #8892b0;">tcp 10.20.4.31:9100</span>
+          <span style="width: 62px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;">203</span>
+          <span style="width: 140px; flex-shrink: 0; color: #8892b0;">100 × 150 TT</span>
+          <span style="width: 108px; flex-shrink: 0;"><span style="font-size: 11.5px; font-weight: 500; padding: 4px 9px; border-radius: 20px; background: rgba(13,17,23,0.62); color: #29abe2;">Printing</span></span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px; padding: 0 18px; height: 58px; border-bottom: 1px solid rgba(41,171,226,0.10); font-size: 13px;">
+          <span style="width: 16px; flex-shrink: 0; display: flex;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #4ade80;"></span></span>
+          <span style="flex-grow: 1; font-weight: 500;">ZD621 · Packing 2</span>
+          <span style="width: 88px; flex-shrink: 0; color: #8892b0;">ZD621</span>
+          <span style="width: 196px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #8892b0;">tcp 10.20.4.42:9100</span>
+          <span style="width: 62px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;">203</span>
+          <span style="width: 140px; flex-shrink: 0; color: #8892b0;">50 × 25 DT</span>
+          <span style="width: 108px; flex-shrink: 0;"><span style="font-size: 11.5px; font-weight: 500; padding: 4px 9px; border-radius: 20px; background: rgba(74,222,128,0.14); color: #4ade80;">Ready</span></span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px; padding: 0 18px; height: 58px; border-bottom: 1px solid rgba(41,171,226,0.10); font-size: 13px; background: rgba(239,111,97,0.07);">
+          <span style="width: 16px; flex-shrink: 0; display: flex;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #ef6f61;"></span></span>
+          <span style="flex-grow: 1; font-weight: 500;">ZD421 · Boning room</span>
+          <span style="width: 88px; flex-shrink: 0; color: #8892b0;">ZD421</span>
+          <span style="width: 196px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #8892b0;">tcp 10.20.6.18:9100</span>
+          <span style="width: 62px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;">300</span>
+          <span style="width: 140px; flex-shrink: 0; color: #8892b0;">75 × 50 TT</span>
+          <span style="width: 108px; flex-shrink: 0;"><span style="font-size: 11.5px; font-weight: 500; padding: 4px 9px; border-radius: 20px; background: rgba(239,111,97,0.14); color: #ef6f61;">Media out</span></span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px; padding: 0 18px; height: 58px; border-bottom: 1px solid rgba(41,171,226,0.10); font-size: 13px;">
+          <span style="width: 16px; flex-shrink: 0; display: flex;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #4ade80;"></span></span>
+          <span style="flex-grow: 1; font-weight: 500;">ZT411 · Line 3</span>
+          <span style="width: 88px; flex-shrink: 0; color: #8892b0;">ZT411</span>
+          <span style="width: 196px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #8892b0;">tcp 10.20.6.22:9100</span>
+          <span style="width: 62px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;">300</span>
+          <span style="width: 140px; flex-shrink: 0; color: #8892b0;">75 × 50 TT</span>
+          <span style="width: 108px; flex-shrink: 0;"><span style="font-size: 11.5px; font-weight: 500; padding: 4px 9px; border-radius: 20px; background: rgba(74,222,128,0.14); color: #4ade80;">Ready</span></span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px; padding: 0 18px; height: 58px; border-bottom: 1px solid rgba(41,171,226,0.10); font-size: 13px;">
+          <span style="width: 16px; flex-shrink: 0; display: flex;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #4ade80;"></span></span>
+          <span style="flex-grow: 1; font-weight: 500;">ZD621 · Office</span>
+          <span style="width: 88px; flex-shrink: 0; color: #8892b0;">ZD621</span>
+          <span style="width: 196px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #8892b0;">agent WKS-OFFICE-02</span>
+          <span style="width: 62px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;">203</span>
+          <span style="width: 140px; flex-shrink: 0; color: #8892b0;">100 × 50 DT</span>
+          <span style="width: 108px; flex-shrink: 0;"><span style="font-size: 11.5px; font-weight: 500; padding: 4px 9px; border-radius: 20px; background: rgba(74,222,128,0.14); color: #4ade80;">Ready</span></span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px; padding: 0 18px; height: 58px; border-bottom: 1px solid rgba(41,171,226,0.10); font-size: 13px;">
+          <span style="width: 16px; flex-shrink: 0; display: flex;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #4ade80;"></span></span>
+          <span style="flex-grow: 1; font-weight: 500;">ZD621 · Workshop</span>
+          <span style="width: 88px; flex-shrink: 0; color: #8892b0;">ZD621</span>
+          <span style="width: 196px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #8892b0;">cups zd621-workshop</span>
+          <span style="width: 62px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;">203</span>
+          <span style="width: 140px; flex-shrink: 0; color: #8892b0;">50 × 20 DT</span>
+          <span style="width: 108px; flex-shrink: 0;"><span style="font-size: 11.5px; font-weight: 500; padding: 4px 9px; border-radius: 20px; background: rgba(74,222,128,0.14); color: #4ade80;">Ready</span></span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px; padding: 0 18px; height: 58px; border-bottom: 1px solid rgba(41,171,226,0.10); font-size: 13px;">
+          <span style="width: 16px; flex-shrink: 0; display: flex;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #6b7893;"></span></span>
+          <span style="flex-grow: 1; font-weight: 500; color: #8892b0;">ZD411 · Workshop spare</span>
+          <span style="width: 88px; flex-shrink: 0; color: #8892b0;">ZD411</span>
+          <span style="width: 196px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #8892b0;">tcp 10.20.9.7:9100</span>
+          <span style="width: 62px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #8892b0;">203</span>
+          <span style="width: 140px; flex-shrink: 0; color: #8892b0;">50 × 20 DT</span>
+          <span style="width: 108px; flex-shrink: 0;"><span style="font-size: 11.5px; font-weight: 500; padding: 4px 9px; border-radius: 20px; background: rgba(41,171,226,0.12); color: #8892b0;">Offline</span></span>
+        </div>
+
+        <div style="flex-grow: 1;"></div>
+
+        <div style="flex-shrink: 0; box-sizing: border-box; padding: 16px 18px; border-top: 1px solid rgba(41,171,226,0.12); background: rgba(41,171,226,0.04); display: flex; align-items: center; gap: 12px;">
+          <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="#29abe2" stroke-width="1.5"><circle cx="7" cy="7" r="4.4"></circle><path d="M10.3 10.3 14 14"></path></svg>
+          <span style="flex-grow: 1; display: flex; flex-direction: column; gap: 2px;">
+            <span style="font-size: 13px; font-weight: 500;">Two unconfigured printers answered on port 9100</span>
+            <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: #8892b0;">10.20.4.55 (ZD621) · 10.20.7.12 (ZT230)</span>
+          </span>
+          <button type="button" style="height: 30px; padding: 0 12px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 7px; font-size: 12.5px; color: #8892b0; cursor: pointer;">Review</button>
+        </div>
+      </div>
+
+      <div style="width: 382px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; min-height: 0;">
+
+        <div style="flex-shrink: 0; box-sizing: border-box; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.20); border-radius: 10px; padding: 17px 18px; display: flex; flex-direction: column; gap: 13px;">
+          <div style="display: flex; align-items: flex-start; gap: 11px;">
+            <span style="width: 34px; height: 34px; flex-shrink: 0; border-radius: 8px; background: rgba(41,171,226,0.12); color: #29abe2; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4.5 6.2V2.6h7v3.6"></path><rect x="2" y="6.2" width="12" height="5" rx="1.2"></rect><path d="M4.5 9.6h7v3.8h-7z"></path></svg></span>
+            <span style="flex-grow: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0;">
+              <span style="font-family: ui-sans-serif, system-ui, sans-serif; font-size: 16px; font-weight: 500;">ZT411 · Despatch</span>
+              <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: #8892b0;">ZTC ZT411-203dpi · fw V93.21.05Z</span>
+            </span>
+            <span style="font-size: 11.5px; font-weight: 500; padding: 4px 9px; border-radius: 20px; background: rgba(41,171,226,0.14); color: #29abe2;">Printing</span>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <div style="flex-grow: 1; flex-basis: 0; box-sizing: border-box; padding: 9px 11px; border: 1px solid rgba(41,171,226,0.12); border-radius: 8px; display: flex; flex-direction: column; gap: 3px;"><span style="font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; color: #8892b0;">Head</span><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;">28 °C</span></div>
+            <div style="flex-grow: 1; flex-basis: 0; box-sizing: border-box; padding: 9px 11px; border: 1px solid rgba(41,171,226,0.12); border-radius: 8px; display: flex; flex-direction: column; gap: 3px;"><span style="font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; color: #8892b0;">Since clean</span><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;">8,240</span></div>
+            <div style="flex-grow: 1; flex-basis: 0; box-sizing: border-box; padding: 9px 11px; border: 1px solid rgba(41,171,226,0.12); border-radius: 8px; display: flex; flex-direction: column; gap: 3px;"><span style="font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; color: #8892b0;">Queue</span><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;">26</span></div>
+          </div>
+        </div>
+
+        <div style="flex-grow: 1; box-sizing: border-box; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.20); border-radius: 10px; padding: 17px 18px; display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow: hidden;">
+          <h2 style="margin: 0; font-size: 13.5px; font-weight: 600;">Connection</h2>
+
+          <div style="display: flex; flex-direction: column; gap: 7px;">
+            <span style="font-size: 11.5px; font-weight: 500; color: #8892b0;">How Platen reaches it</span>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px;">
+              <button type="button" style="box-sizing: border-box; height: 52px; border: 1px solid #29abe2; background: rgba(41,171,226,0.12); border-radius: 8px; padding: 0 11px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; cursor: pointer;"><span style="font-size: 12.5px; font-weight: 600; color: #29abe2;">Raw TCP 9100</span><span style="font-size: 11px; color: #29abe2;">ZPL straight to socket</span></button>
+              <button type="button" style="box-sizing: border-box; height: 52px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 8px; padding: 0 11px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; cursor: pointer;"><span style="font-size: 12.5px; font-weight: 500; color: #8892b0;">Local agent</span><span style="font-size: 11px; color: #8892b0;">USB on a workstation</span></button>
+              <button type="button" style="box-sizing: border-box; height: 52px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 8px; padding: 0 11px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; cursor: pointer;"><span style="font-size: 12.5px; font-weight: 500; color: #8892b0;">CUPS queue</span><span style="font-size: 11px; color: #8892b0;">via the print server</span></button>
+              <button type="button" style="box-sizing: border-box; height: 52px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 8px; padding: 0 11px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; cursor: pointer;"><span style="font-size: 12.5px; font-weight: 500; color: #8892b0;">Cloud connect</span><span style="font-size: 11px; color: #8892b0;">printer dials out</span></button>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 10px;">
+            <div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 6px;">
+              <label for="pr-host" style="font-size: 11.5px; font-weight: 500; color: #8892b0;">Host</label>
+              <input id="pr-host" type="text" value="10.20.4.31" style="height: 34px; box-sizing: border-box; border: 1px solid rgba(41,171,226,0.20); border-radius: 7px; background: rgba(13,17,23,0.62); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; padding: 0 9px; width: 100%;">
+            </div>
+            <div style="width: 84px; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px;">
+              <label for="pr-port" style="font-size: 11.5px; font-weight: 500; color: #8892b0;">Port</label>
+              <input id="pr-port" type="text" value="9100" style="height: 34px; box-sizing: border-box; border: 1px solid rgba(41,171,226,0.20); border-radius: 7px; background: rgba(13,17,23,0.62); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; padding: 0 9px; width: 100%;">
+            </div>
+          </div>
+
+          <div style="height: 1px; background: rgba(41,171,226,0.12);"></div>
+
+          <h2 style="margin: 0; font-size: 13.5px; font-weight: 600;">Print defaults</h2>
+
+          <div style="display: flex; gap: 10px;">
+            <div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 6px;">
+              <label for="pr-dark" style="font-size: 11.5px; font-weight: 500; color: #8892b0;">Darkness</label>
+              <input id="pr-dark" type="text" value="22" style="height: 34px; box-sizing: border-box; border: 1px solid rgba(41,171,226,0.20); border-radius: 7px; background: rgba(13,17,23,0.62); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; padding: 0 9px; width: 100%;">
+            </div>
+            <div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 6px;">
+              <label for="pr-speed" style="font-size: 11.5px; font-weight: 500; color: #8892b0;">Speed</label>
+              <input id="pr-speed" type="text" value="5 ips" style="height: 34px; box-sizing: border-box; border: 1px solid rgba(41,171,226,0.20); border-radius: 7px; background: rgba(13,17,23,0.62); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; padding: 0 9px; width: 100%;">
+            </div>
+            <div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 6px;">
+              <label for="pr-tear" style="font-size: 11.5px; font-weight: 500; color: #8892b0;">Tear-off</label>
+              <input id="pr-tear" type="text" value="+12" style="height: 34px; box-sizing: border-box; border: 1px solid rgba(41,171,226,0.20); border-radius: 7px; background: rgba(13,17,23,0.62); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; padding: 0 9px; width: 100%;">
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label for="pr-media" style="font-size: 11.5px; font-weight: 500; color: #8892b0;">Media</label>
+            <select id="pr-media" style="height: 34px; box-sizing: border-box; border: 1px solid rgba(41,171,226,0.20); border-radius: 7px; background: rgba(13,17,23,0.62); font: inherit; font-size: 12.5px; padding: 0 9px;">
+              <option>Thermal transfer · 100 × 150 mm · gap sensing</option>
+            </select>
+          </div>
+
+          <div style="flex-grow: 1;"></div>
+
+          <div style="display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 8px; background: rgba(41,171,226,0.05); border: 1px solid rgba(41,171,226,0.12);">
+            <span style="flex-grow: 1; display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 12.5px; font-weight: 500;">Alert me when this printer errors</span><span style="font-size: 11.5px; color: #8892b0;">Email and dashboard banner</span></span>
+            <span style="width: 36px; height: 20px; flex-shrink: 0; border-radius: 20px; background: #29abe2; display: flex; align-items: center; justify-content: flex-end; padding: 0 2px; box-sizing: border-box;"><span style="width: 16px; height: 16px; border-radius: 50%; background: rgba(13,17,23,0.62);"></span></span>
+          </div>
+
+          <div style="display: flex; gap: 9px;">
+            <button type="button" style="flex-grow: 1; height: 38px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 8px; font-size: 13px; color: #8892b0; cursor: pointer;">Send test label</button>
+            <button type="button" style="flex-grow: 1; height: 38px; border: 0; background: #29abe2; border-radius: 8px; font-size: 13px; font-weight: 500; color: #ffffff; cursor: pointer;">Save changes</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

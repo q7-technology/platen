@@ -1,0 +1,36 @@
+{
+  "v": 3,
+  "attachments": {},
+  "createdOnFiles": { "at": "2026-09-18T23:20:00Z", "v": 1 },
+  "title": "Platen Label Studio",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "designSystems": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1440, "h": 900, "title": "Dashboard", "is_interactive": true },
+    "Templates.dc.html": { "x": 1520, "y": 0, "w": 1440, "h": 900, "title": "Template library", "is_interactive": true },
+    "Editor.dc.html": { "x": 0, "y": 1300, "w": 1440, "h": 980, "title": "Template editor", "is_interactive": true },
+    "PrintRun.dc.html": { "x": 1520, "y": 1300, "w": 1440, "h": 900, "title": "Print run", "is_interactive": true },
+    "DataSources.dc.html": { "x": 0, "y": 2680, "w": 1440, "h": 900, "title": "Data sources", "is_interactive": true },
+    "Printers.dc.html": { "x": 1520, "y": 2680, "w": 1440, "h": 900, "title": "Printers", "is_interactive": true },
+    "Architecture.dc.html": { "x": 0, "y": 3980, "w": 2960, "h": 1040, "title": "Backend architecture" },
+    "Demo.dc.html": { "x": 0, "y": 5420, "w": 2960, "h": 1100, "title": "Walk the flow", "is_interactive": true }
+  },
+  "order": [
+    "Main.dc.html",
+    "Templates.dc.html",
+    "Editor.dc.html",
+    "PrintRun.dc.html",
+    "DataSources.dc.html",
+    "Printers.dc.html",
+    "Architecture.dc.html",
+    "Demo.dc.html"
+  ],
+  "notes": {
+    "t1": { "kind": "title1", "maxW": 2960, "text": "Day to day", "w": 240, "x": 0, "y": -300 },
+    "t2": { "kind": "title1", "maxW": 2960, "text": "Making a label, then running it", "w": 240, "x": 0, "y": 1000 },
+    "t3": { "kind": "title1", "maxW": 2960, "text": "Wiring up data and hardware", "w": 240, "x": 0, "y": 2380 },
+    "t4": { "kind": "title1", "maxW": 2960, "text": "What happens underneath", "w": 240, "x": 0, "y": 3680 },
+    "t5": { "kind": "title1", "maxW": 2960, "text": "Try it — seven clicks, start to finish", "w": 240, "x": 0, "y": 5120 }
+  }
+}

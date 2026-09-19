@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Template editor — Platen Label Studio</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; color: #ccd6f6; background-color: #0d1117;
+background-image:
+ radial-gradient(1.2px 1.2px at 11% 14%, rgba(204,214,246,.55), transparent 60%),
+ radial-gradient(1px 1px at 63% 9%, rgba(204,214,246,.40), transparent 60%),
+ radial-gradient(1.3px 1.3px at 84% 57%, rgba(100,255,218,.35), transparent 60%),
+ radial-gradient(1px 1px at 29% 71%, rgba(204,214,246,.35), transparent 60%),
+ radial-gradient(1px 1px at 47% 38%, rgba(204,214,246,.28), transparent 60%),
+ radial-gradient(1.1px 1.1px at 92% 22%, rgba(204,214,246,.30), transparent 60%),
+ radial-gradient(1px 1px at 8% 88%, rgba(204,214,246,.25), transparent 60%),
+ radial-gradient(1px 1px at 72% 84%, rgba(204,214,246,.22), transparent 60%),
+ radial-gradient(900px 520px at 82% -12%, rgba(41,171,226,.10), transparent 70%); }
+a { color: #29abe2; } a:hover { color: #7fd0f0; }
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; display: flex; background: transparent; overflow: hidden;">
+
+  <nav style="width: 64px; flex-shrink: 0; box-sizing: border-box; background: #0d1117; display: flex; flex-direction: column; align-items: center; padding: 18px 0; gap: 6px;">
+    <span style="font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 700; font-size: 17px; color: #ccd6f6; margin-bottom: 14px;">P</span>
+    <a href="Main.dc.html" aria-label="Dashboard" style="width: 40px; height: 40px; border-radius: 9px; display: flex; align-items: center; justify-content: center; color: #8892b0;"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2" width="5" height="5" rx="1"></rect><rect x="9" y="2" width="5" height="5" rx="1"></rect><rect x="2" y="9" width="5" height="5" rx="1"></rect><rect x="9" y="9" width="5" height="5" rx="1"></rect></svg></a>
+    <a href="Templates.dc.html" aria-label="Templates" style="width: 40px; height: 40px; border-radius: 9px; display: flex; align-items: center; justify-content: center; background: rgba(41,171,226,0.14); color: #ccd6f6;"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M8 2 14 5.4 8 8.8 2 5.4z"></path><path d="M2 10.2 8 13.6l6-3.4"></path></svg></a>
+    <a href="DataSources.dc.html" aria-label="Data sources" style="width: 40px; height: 40px; border-radius: 9px; display: flex; align-items: center; justify-content: center; color: #8892b0;"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><ellipse cx="8" cy="4" rx="5.3" ry="2.1"></ellipse><path d="M2.7 4v8c0 1.2 2.4 2.1 5.3 2.1s5.3-.9 5.3-2.1V4"></path><path d="M2.7 8c0 1.2 2.4 2.1 5.3 2.1s5.3-.9 5.3-2.1"></path></svg></a>
+    <a href="Printers.dc.html" aria-label="Printers" style="width: 40px; height: 40px; border-radius: 9px; display: flex; align-items: center; justify-content: center; color: #8892b0;"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4.5 6.2V2.6h7v3.6"></path><rect x="2" y="6.2" width="12" height="5" rx="1.2"></rect><path d="M4.5 9.6h7v3.8h-7z"></path></svg></a>
+    <a href="PrintRun.dc.html" aria-label="Print run" style="width: 40px; height: 40px; border-radius: 9px; display: flex; align-items: center; justify-content: center; color: #8892b0;"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M5.2 3.2 12.8 8l-7.6 4.8z"></path></svg></a>
+  </nav>
+
+  <main style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+
+    <header style="height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 14px; background: rgba(13,17,23,0.62); border-bottom: 1px solid rgba(41,171,226,0.20);">
+      <a href="Templates.dc.html" aria-label="Back to library" style="width: 30px; height: 30px; border: 1px solid rgba(41,171,226,0.20); border-radius: 8px; background: rgba(13,17,23,0.62); display: flex; align-items: center; justify-content: center; color: #8892b0;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3.5 5 8l4.5 4.5"></path></svg></a>
+      <div style="display: flex; flex-direction: column; gap: 1px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <h1 style="margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 17px; font-weight: 500;">Carton despatch</h1>
+          <span style="font-size: 11px; font-weight: 500; padding: 3px 7px; border-radius: 5px; background: rgba(41,171,226,0.12); color: #8892b0;">v12 draft</span>
+        </div>
+        <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #8892b0;">100 × 150 mm · 203 dpi · 812 × 1218 dots</span>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #8892b0;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #4ade80;"></span>Saved 12 s ago</div>
+      <div style="width: 1px; height: 24px; background: rgba(41,171,226,0.20);"></div>
+      <div style="display: flex; align-items: center; border: 1px solid rgba(41,171,226,0.20); border-radius: 8px; overflow: hidden; background: rgba(13,17,23,0.62); height: 32px;">
+        <button type="button" aria-label="Zoom out" style="width: 30px; height: 30px; border: 0; background: transparent; color: #8892b0; cursor: pointer;">–</button>
+        <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 0 6px; color: #8892b0;">72%</span>
+        <button type="button" aria-label="Zoom in" style="width: 30px; height: 30px; border: 0; background: transparent; color: #8892b0; cursor: pointer;">+</button>
+      </div>
+      <button type="button" style="height: 32px; padding: 0 13px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 8px; font-size: 13px; color: #8892b0; cursor: pointer;">Preview data</button>
+      <button type="button" style="height: 32px; padding: 0 13px; border: 1px solid #f7941d; background: rgba(13,17,23,0.62); border-radius: 8px; font-size: 13px; color: #f7941d; cursor: pointer;">Test print</button>
+      <button type="button" style="height: 32px; padding: 0 15px; border: 0; background: #29abe2; border-radius: 8px; font-size: 13px; font-weight: 500; color: #ffffff; cursor: pointer;">Publish v13</button>
+    </header>
+
+    <div style="flex-grow: 1; display: flex; min-height: 0;">
+
+      <section style="width: 250px; flex-shrink: 0; box-sizing: border-box; background: rgba(13,17,23,0.62); border-right: 1px solid rgba(41,171,226,0.20); display: flex; flex-direction: column;">
+        <div style="box-sizing: border-box; padding: 16px 16px 14px 16px; border-bottom: 1px solid rgba(41,171,226,0.12);">
+          <h2 style="margin: 0 0 11px 0; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #8892b0;">Add element</h2>
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px;">
+            <button type="button" style="box-sizing: border-box; height: 62px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-size: 10.5px; color: #8892b0; cursor: pointer;"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M3 4V3h10v1M8 3v10M6 13h4"></path></svg>Text</button>
+            <button type="button" style="box-sizing: border-box; height: 62px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-size: 10.5px; color: #8892b0; cursor: pointer;"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M4.5 3.5 2 8l2.5 4.5M11.5 3.5 14 8l-2.5 4.5M9.5 3.2 6.5 12.8"></path></svg>Field</button>
+            <button type="button" style="box-sizing: border-box; height: 62px; border: 1px solid #29abe2; background: rgba(41,171,226,0.12); border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-size: 10.5px; color: #29abe2; cursor: pointer;"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M2.5 3v10M4.5 3v10M6.5 3v6M8.5 3v10M11 3v10M13.5 3v10"></path></svg>Barcode</button>
+            <button type="button" style="box-sizing: border-box; height: 62px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-size: 10.5px; color: #8892b0; cursor: pointer;"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2" y="2" width="4.5" height="4.5"></rect><rect x="9.5" y="2" width="4.5" height="4.5"></rect><rect x="2" y="9.5" width="4.5" height="4.5"></rect><path d="M9.5 9.5h2v2h-2zM12.5 12.5h1.5V14h-1.5z"></path></svg>QR / 2D</button>
+            <button type="button" style="box-sizing: border-box; height: 62px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-size: 10.5px; color: #8892b0; cursor: pointer;"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.4"></rect><path d="m2.8 11 3.4-3.4 2.6 2.6 2-2 2.4 2.4"></path><circle cx="10.4" cy="6" r="1.1"></circle></svg>Image</button>
+            <button type="button" style="box-sizing: border-box; height: 62px; border: 1px solid #f7941d; background: rgba(247,148,29,0.12); border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 10.5px; color: #f7941d; cursor: pointer;"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.4"></rect><path d="M5 9.6 7 7.6l1.7 1.7L10.6 7.4 13 9.8"></path></svg>Base64</button>
+            <button type="button" style="box-sizing: border-box; height: 62px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-size: 10.5px; color: #8892b0; cursor: pointer;"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 8h11"></path></svg>Line</button>
+            <button type="button" style="box-sizing: border-box; height: 62px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-size: 10.5px; color: #8892b0; cursor: pointer;"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.5" y="3.5" width="11" height="9" rx="1.2"></rect></svg>Box</button>
+            <button type="button" style="box-sizing: border-box; height: 62px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-size: 10.5px; color: #8892b0; cursor: pointer;"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2.5" y="3.5" width="11" height="9"></rect><path d="M2.5 6.6h11M6.6 6.6v5.9"></path></svg>Table</button>
+          </div>
+        </div>
+
+        <div style="flex-grow: 1; box-sizing: border-box; padding: 14px 10px 14px 16px; display: flex; flex-direction: column; min-height: 0;">
+          <h2 style="margin: 0 0 9px 0; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #8892b0;">Layers</h2>
+          <div style="display: flex; flex-direction: column; gap: 1px;">
+            <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 6px; font-size: 12.5px; color: #8892b0;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.4"></rect><circle cx="10.4" cy="6" r="1.1"></circle></svg><span style="flex-grow: 1;">logo_image</span></div>
+            <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 6px; font-size: 12.5px; color: #8892b0;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M3 4V3h10v1M8 3v10M6 13h4"></path></svg><span style="flex-grow: 1;">title_text</span></div>
+            <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 6px; font-size: 12.5px; color: #8892b0;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M4.5 3.5 2 8l2.5 4.5M11.5 3.5 14 8l-2.5 4.5M9.5 3.2 6.5 12.8"></path></svg><span style="flex-grow: 1;">ship_to_block</span></div>
+            <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 6px; font-size: 12.5px; color: #8892b0;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M4.5 3.5 2 8l2.5 4.5M11.5 3.5 14 8l-2.5 4.5M9.5 3.2 6.5 12.8"></path></svg><span style="flex-grow: 1;">sku_line</span></div>
+            <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 6px; font-size: 12.5px; background: rgba(41,171,226,0.12); color: #29abe2; font-weight: 500;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M2.5 3v10M4.5 3v10M6.5 3v6M8.5 3v10M11 3v10M13.5 3v10"></path></svg><span style="flex-grow: 1;">consignment_barcode</span><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.5 8S3.9 4 8 4s6.5 4 6.5 4-2.4 4-6.5 4S1.5 8 1.5 8z"></path><circle cx="8" cy="8" r="1.6"></circle></svg></div>
+            <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 6px; font-size: 12.5px; color: #8892b0;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2" y="2" width="4.5" height="4.5"></rect><rect x="9.5" y="2" width="4.5" height="4.5"></rect><rect x="2" y="9.5" width="4.5" height="4.5"></rect></svg><span style="flex-grow: 1;">track_qr</span></div>
+            <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 6px; font-size: 12.5px; color: #f7941d;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.4"></rect><path d="M5 9.6 7 7.6l1.7 1.7L10.6 7.4 13 9.8"></path></svg><span style="flex-grow: 1;">compliance_mark</span></div>
+            <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 6px; font-size: 12.5px; color: #8892b0;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2.5" y="3.5" width="11" height="9"></rect><path d="M2.5 6.6h11M6.6 6.6v5.9"></path></svg><span style="flex-grow: 1;">batch_table</span></div>
+            <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 6px; font-size: 12.5px; color: #6b7893;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 8h11"></path></svg><span style="flex-grow: 1;">rule_footer</span><span style="font-size: 10.5px;">hidden</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section style="flex-grow: 1; min-width: 0; background: #080b10; display: flex; flex-direction: column;">
+        <div style="height: 22px; flex-shrink: 0; display: flex;">
+          <div style="width: 22px; flex-shrink: 0; background: rgba(41,171,226,0.08); border-right: 1px solid #c9ced9; border-bottom: 1px solid #c9ced9;"></div>
+          <div style="flex-grow: 1; background: rgba(41,171,226,0.08); border-bottom: 1px solid #c9ced9; background-image: repeating-linear-gradient(90deg, #6b7893 0 1px, transparent 1px 20px);"></div>
+        </div>
+        <div style="flex-grow: 1; display: flex; min-height: 0;">
+          <div style="width: 22px; flex-shrink: 0; background: rgba(41,171,226,0.08); border-right: 1px solid #c9ced9; background-image: repeating-linear-gradient(0deg, #6b7893 0 1px, transparent 1px 20px);"></div>
+          <div style="flex-grow: 1; display: flex; align-items: center; justify-content: center; padding: 28px;">
+
+            <div style="position: relative; width: 413px; height: 620px; box-sizing: border-box; background: #ffffff; color: #0d1117; border: 1px solid #c3c8d3; padding: 16px; display: flex; flex-direction: column; gap: 10px;">
+
+              <div style="display: flex; align-items: flex-start; gap: 12px;">
+                <div style="width: 96px; height: 48px; flex-shrink: 0; background: #f2f4f8; border: 1px dashed #a7aebb; display: flex; align-items: center; justify-content: center; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; color: #8892b0; text-align: center; line-height: 1.3;">logo_image<br>{{ company.logo }}</div>
+                <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 3px; align-items: flex-end;">
+                  <span style="font-family: ui-sans-serif, system-ui, sans-serif; font-size: 20px; font-weight: 700; letter-spacing: 0.04em;">CARTON</span>
+                  <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; color: #8892b0;">{{ shipment.despatch_date }}</span>
+                  <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; color: #8892b0;">CTN {{ shipment.carton_no }} OF {{ shipment.carton_total }}</span>
+                </div>
+              </div>
+
+              <div style="height: 2px; background: #ccd6f6;"></div>
+
+              <div style="display: flex; flex-direction: column; gap: 4px;">
+                <span style="font-size: 9.5px; letter-spacing: 0.14em; color: #5a6475;">SHIP TO</span>
+                <span style="font-size: 17px; font-weight: 600; line-height: 1.2;">{{ shipment.consignee_name }}</span>
+                <span style="font-size: 12.5px; line-height: 1.35; color: #0d1117;">{{ shipment.address_1 }}<br>{{ shipment.suburb }} {{ shipment.state }} {{ shipment.postcode }}</span>
+              </div>
+
+              <div style="height: 1px; background: #c3c8d3;"></div>
+
+              <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 15px; font-weight: 500;">{{ shipment.sku }}</span>
+                <span style="font-size: 12px; color: #8892b0;">{{ shipment.qty }} units</span>
+              </div>
+
+              <div style="position: relative; margin-top: 4px;">
+                <div style="position: absolute; top: -21px; left: -3px; height: 18px; padding: 0 7px; display: flex; align-items: center; background: #29abe2; color: #ffffff; font-size: 10px; font-weight: 500; border-radius: 4px 4px 0 0;">Barcode · Code 128</div>
+                <div style="box-sizing: border-box; outline: 1.5px solid #29abe2; padding: 4px; display: flex; flex-direction: column; gap: 4px; align-items: center;">
+                  <div style="width: 100%; height: 74px; background-color: #ffffff; background-image: repeating-linear-gradient(90deg, #0d1117 0 2px, #ffffff 2px 5px, #0d1117 5px 6px, #ffffff 6px 9px, #0d1117 9px 12px, #ffffff 12px 13px, #0d1117 13px 14px, #ffffff 14px 18px);"></div>
+                  <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; letter-spacing: 0.1em;">7MB9042198</span>
+                </div>
+                <span style="position: absolute; left: -4px; top: -4px; width: 7px; height: 7px; background: rgba(13,17,23,0.62); border: 1.5px solid #29abe2;"></span>
+                <span style="position: absolute; right: -4px; top: -4px; width: 7px; height: 7px; background: rgba(13,17,23,0.62); border: 1.5px solid #29abe2;"></span>
+                <span style="position: absolute; left: -4px; bottom: -4px; width: 7px; height: 7px; background: rgba(13,17,23,0.62); border: 1.5px solid #29abe2;"></span>
+                <span style="position: absolute; right: -4px; bottom: -4px; width: 7px; height: 7px; background: rgba(13,17,23,0.62); border: 1.5px solid #29abe2;"></span>
+              </div>
+
+              <div style="display: flex; gap: 12px; align-items: flex-start; margin-top: 6px;">
+                <div style="width: 84px; height: 84px; flex-shrink: 0; background: conic-gradient(#0d1117 25%, #ffffff 0 50%, #0d1117 0 75%, #ffffff 0) 0 0 / 8px 8px; position: relative;">
+                  <span style="position: absolute; left: 0; top: 0; width: 22px; height: 22px; box-sizing: border-box; background: #ffffff; border: 4px solid #0d1117;"></span>
+                  <span style="position: absolute; right: 0; top: 0; width: 22px; height: 22px; box-sizing: border-box; background: #ffffff; border: 4px solid #0d1117;"></span>
+                  <span style="position: absolute; left: 0; bottom: 0; width: 22px; height: 22px; box-sizing: border-box; background: #ffffff; border: 4px solid #0d1117;"></span>
+                </div>
+                <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 5px;">
+                  <div style="height: 62px; box-sizing: border-box; background: rgba(247,148,29,0.12); border: 1px dashed #f7941d; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 8px;">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f7941d" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 16c3.5 0 4-9 7-9s2 12 5.5 12c2 0 2.5-3 3-5"></path><path d="M18 6.5h3.5"></path></svg>
+                    <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9.5px; color: #f7941d; line-height: 1.35;">compliance_mark<br>base64 → PNG</span>
+                  </div>
+                  <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; color: #8892b0;">{{ shipment.mark_png_b64 }}</span>
+                </div>
+              </div>
+
+              <div style="flex-grow: 1;"></div>
+
+              <div style="display: flex; border-top: 1px solid #c3c8d3; padding-top: 7px; gap: 10px;">
+                <div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 8.5px; letter-spacing: 0.12em; color: #5a6475;">BATCH</span><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;">{{ batch.code }}</span></div>
+                <div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 8.5px; letter-spacing: 0.12em; color: #5a6475;">USE BY</span><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;">{{ batch.use_by }}</span></div>
+                <div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 8.5px; letter-spacing: 0.12em; color: #5a6475;">NET WT</span><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;">{{ shipment.net_kg }} kg</span></div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section style="width: 330px; flex-shrink: 0; box-sizing: border-box; background: rgba(13,17,23,0.62); border-left: 1px solid rgba(41,171,226,0.20); display: flex; flex-direction: column;">
+        <div style="box-sizing: border-box; padding: 14px 16px 0 16px; border-bottom: 1px solid rgba(41,171,226,0.12);">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="width: 26px; height: 26px; flex-shrink: 0; border-radius: 6px; background: rgba(41,171,226,0.12); color: #29abe2; display: flex; align-items: center; justify-content: center;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M2.5 3v10M4.5 3v10M6.5 3v6M8.5 3v10M11 3v10M13.5 3v10"></path></svg></span>
+            <span style="display: flex; flex-direction: column; min-width: 0;"><span style="font-size: 13.5px; font-weight: 600;">consignment_barcode</span><span style="font-size: 11.5px; color: #8892b0;">Barcode element</span></span>
+          </div>
+          <div style="display: flex; gap: 20px; margin-top: 13px;">
+            <span style="padding-bottom: 9px; font-size: 13px; font-weight: 600; color: #29abe2; box-shadow: inset 0 -2px 0 0 #29abe2;">Data</span>
+            <span style="padding-bottom: 9px; font-size: 13px; color: #8892b0;">Style</span>
+            <span style="padding-bottom: 9px; font-size: 13px; color: #8892b0;">Position</span>
+          </div>
+        </div>
+
+        <div style="flex-grow: 1; box-sizing: border-box; padding: 16px; display: flex; flex-direction: column; gap: 14px; min-height: 0;">
+
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label for="ed-source" style="font-size: 11.5px; font-weight: 500; color: #8892b0;">Data source</label>
+            <select id="ed-source" style="height: 34px; box-sizing: border-box; border: 1px solid rgba(41,171,226,0.20); border-radius: 7px; background: rgba(13,17,23,0.62); font: inherit; font-size: 12.5px; padding: 0 9px; color: #ccd6f6;">
+              <option>wms_prod · orders_ready_to_ship</option>
+            </select>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label for="ed-binding" style="font-size: 11.5px; font-weight: 500; color: #8892b0;">Bound expression</label>
+            <input id="ed-binding" type="text" value="{{ shipment.consignment_no }}" style="height: 34px; box-sizing: border-box; border: 1px solid #29abe2; border-radius: 7px; background: rgba(13,17,23,0.62); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 0 9px; color: #ccd6f6;">
+            <span style="font-size: 11.5px; color: #8892b0;">Resolves to <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #ccd6f6;">7MB9042198</span> for record 1</span>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 7px;">
+            <span style="font-size: 11.5px; font-weight: 500; color: #8892b0;">Fields in this query</span>
+            <div style="box-sizing: border-box; border: 1px solid rgba(41,171,226,0.20); border-radius: 8px; background: rgba(13,17,23,0.62); overflow: hidden;">
+              <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; background: rgba(41,171,226,0.12); font-size: 12px;"><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; flex-grow: 1; color: #29abe2;">consignment_no</span><span style="font-size: 10.5px; color: #29abe2;">text</span></div>
+              <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; font-size: 12px; border-top: 1px solid rgba(41,171,226,0.10);"><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; flex-grow: 1; color: #8892b0;">consignee_name</span><span style="font-size: 10.5px; color: #8892b0;">text</span></div>
+              <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; font-size: 12px; border-top: 1px solid rgba(41,171,226,0.10);"><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; flex-grow: 1; color: #8892b0;">carton_no</span><span style="font-size: 10.5px; color: #8892b0;">int</span></div>
+              <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; font-size: 12px; border-top: 1px solid rgba(41,171,226,0.10);"><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; flex-grow: 1; color: #8892b0;">net_kg</span><span style="font-size: 10.5px; color: #8892b0;">numeric</span></div>
+              <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; font-size: 12px; border-top: 1px solid rgba(41,171,226,0.10);"><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; flex-grow: 1; color: #8892b0;">mark_png_b64</span><span style="font-size: 10.5px; padding: 2px 6px; border-radius: 4px; background: rgba(247,148,29,0.14); color: #f7941d;">base64</span></div>
+            </div>
+          </div>
+
+          <div style="height: 1px; background: rgba(41,171,226,0.12);"></div>
+
+          <div style="display: flex; gap: 10px;">
+            <div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 6px;">
+              <label for="ed-symb" style="font-size: 11.5px; font-weight: 500; color: #8892b0;">Symbology</label>
+              <select id="ed-symb" style="height: 34px; box-sizing: border-box; border: 1px solid rgba(41,171,226,0.20); border-radius: 7px; background: rgba(13,17,23,0.62); font: inherit; font-size: 12.5px; padding: 0 9px;">
+                <option>Code 128 (auto subset)</option>
+              </select>
+            </div>
+            <div style="width: 104px; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px;">
+              <label for="ed-height" style="font-size: 11.5px; font-weight: 500; color: #8892b0;">Height</label>
+              <input id="ed-height" type="text" value="18 mm" style="height: 34px; box-sizing: border-box; border: 1px solid rgba(41,171,226,0.20); border-radius: 7px; background: rgba(13,17,23,0.62); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 0 9px;">
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 10px;">
+            <div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 6px;">
+              <label for="ed-module" style="font-size: 11.5px; font-weight: 500; color: #8892b0;">Module width</label>
+              <input id="ed-module" type="text" value="2 dots" style="height: 34px; box-sizing: border-box; border: 1px solid rgba(41,171,226,0.20); border-radius: 7px; background: rgba(13,17,23,0.62); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 0 9px;">
+            </div>
+            <div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 6px;">
+              <label for="ed-rot" style="font-size: 11.5px; font-weight: 500; color: #8892b0;">Rotation</label>
+              <input id="ed-rot" type="text" value="0°" style="height: 34px; box-sizing: border-box; border: 1px solid rgba(41,171,226,0.20); border-radius: 7px; background: rgba(13,17,23,0.62); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 0 9px;">
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 11.5px; font-weight: 500; color: #8892b0;">Human readable text</span>
+            <div style="display: flex; border: 1px solid rgba(41,171,226,0.20); border-radius: 7px; overflow: hidden; background: rgba(13,17,23,0.62); height: 34px;">
+              <button type="button" style="flex-grow: 1; border: 0; background: rgba(13,17,23,0.62); font-size: 12.5px; color: #8892b0; cursor: pointer;">None</button>
+              <button type="button" style="flex-grow: 1; border: 0; border-left: 1px solid rgba(41,171,226,0.12); background: rgba(13,17,23,0.62); font-size: 12.5px; color: #8892b0; cursor: pointer;">Above</button>
+              <button type="button" style="flex-grow: 1; border: 0; border-left: 1px solid rgba(41,171,226,0.12); background: #29abe2; font-size: 12.5px; color: #ffffff; font-weight: 500; cursor: pointer;">Below</button>
+            </div>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid rgba(41,171,226,0.20); border-radius: 8px; background: rgba(13,17,23,0.62);">
+            <span style="flex-grow: 1; display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 12.5px; font-weight: 500;">Blank record guard</span><span style="font-size: 11.5px; color: #8892b0;">Skip the label if this value is null</span></span>
+            <span style="width: 36px; height: 20px; flex-shrink: 0; border-radius: 20px; background: #29abe2; display: flex; align-items: center; justify-content: flex-end; padding: 0 2px; box-sizing: border-box;"><span style="width: 16px; height: 16px; border-radius: 50%; background: rgba(13,17,23,0.62);"></span></span>
+          </div>
+
+        </div>
+      </section>
+    </div>
+
+    <section style="height: 150px; flex-shrink: 0; box-sizing: border-box; background: rgba(13,17,23,0.62); border-top: 1px solid rgba(41,171,226,0.20); display: flex; flex-direction: column;">
+      <div style="height: 34px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 20px; border-bottom: 1px solid rgba(41,171,226,0.12);">
+        <span style="font-size: 12.5px; font-weight: 600; color: #29abe2;">Sample data</span>
+        <span style="font-size: 12.5px; color: #8892b0;">ZPL output</span>
+        <span style="font-size: 12.5px; color: #8892b0;">Validation</span>
+        <span style="font-size: 11.5px; padding: 3px 8px; border-radius: 20px; background: rgba(74,222,128,0.14); color: #4ade80;">All bindings resolve</span>
+        <div style="flex-grow: 1;"></div>
+        <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: #8892b0;">12 rows · refreshed 09:12</span>
+        <button type="button" style="height: 24px; padding: 0 10px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 6px; font-size: 12px; color: #8892b0; cursor: pointer;">Re-run query</button>
+      </div>
+      <div style="flex-grow: 1; display: flex; min-height: 0;">
+        <div style="flex-grow: 1; box-sizing: border-box; padding: 0 0 0 20px; min-width: 0; overflow: hidden;">
+          <div style="display: flex; align-items: center; height: 28px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #8892b0; border-bottom: 1px solid rgba(41,171,226,0.12);">
+            <span style="width: 34px; flex-shrink: 0;">#</span>
+            <span style="width: 124px; flex-shrink: 0;">consignment_no</span>
+            <span style="flex-grow: 1;">consignee_name</span>
+            <span style="width: 78px; flex-shrink: 0;">carton_no</span>
+            <span style="width: 74px; flex-shrink: 0;">net_kg</span>
+            <span style="width: 120px; flex-shrink: 0;">mark_png_b64</span>
+          </div>
+          <div style="display: flex; align-items: center; height: 29px; font-size: 12px; border-bottom: 1px solid rgba(41,171,226,0.10); background: rgba(41,171,226,0.12);">
+            <span style="width: 34px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #29abe2;">1</span>
+            <span style="width: 124px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">7MB9042198</span>
+            <span style="flex-grow: 1;">Coles DC Truganina</span>
+            <span style="width: 78px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">1</span>
+            <span style="width: 74px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">18.4</span>
+            <span style="width: 120px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #f7941d;">iVBORw0KGgo…</span>
+          </div>
+          <div style="display: flex; align-items: center; height: 29px; font-size: 12px; border-bottom: 1px solid rgba(41,171,226,0.10);">
+            <span style="width: 34px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #8892b0;">2</span>
+            <span style="width: 124px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">7MB9042199</span>
+            <span style="flex-grow: 1;">Coles DC Truganina</span>
+            <span style="width: 78px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">2</span>
+            <span style="width: 74px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">17.9</span>
+            <span style="width: 120px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #f7941d;">iVBORw0KGgo…</span>
+          </div>
+          <div style="display: flex; align-items: center; height: 29px; font-size: 12px;">
+            <span style="width: 34px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #8892b0;">3</span>
+            <span style="width: 124px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">7MB9042204</span>
+            <span style="flex-grow: 1;">Ritchies IGA Ballarat</span>
+            <span style="width: 78px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">1</span>
+            <span style="width: 74px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">9.2</span>
+            <span style="width: 120px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #f7941d;">iVBORw0KGgo…</span>
+          </div>
+        </div>
+        <div style="width: 392px; flex-shrink: 0; box-sizing: border-box; border-left: 1px solid rgba(41,171,226,0.12); background: #0d1117; padding: 10px 14px; overflow: hidden;">
+          <pre style="margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.55; color: #c9ced9;">^XA
+^PW812^LL1218^MD10
+^FO32,64^GFA,1350,1350,18,{{ mark_png_b64 }}^FS
+^FO32,420^BY2,3,144^BCN,144,Y,N,N
+^FD{{ shipment.consignment_no }}^FS
+^FO32,620^BQN,2,5^FDQA,{{ track_url }}^FS
+^XZ</pre>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var tag = function (path) { return '{' + '{ ' + path + ' }' + '}'; };
+    return {
+      company: { logo: tag('company.logo') },
+      shipment: {
+        despatch_date: tag('shipment.despatch_date'),
+        carton_no: tag('shipment.carton_no'),
+        carton_total: tag('shipment.carton_total'),
+        consignee_name: tag('shipment.consignee_name'),
+        address_1: tag('shipment.address_1'),
+        suburb: tag('shipment.suburb'),
+        state: tag('shipment.state'),
+        postcode: tag('shipment.postcode'),
+        sku: tag('shipment.sku'),
+        qty: tag('shipment.qty'),
+        net_kg: tag('shipment.net_kg'),
+        consignment_no: tag('shipment.consignment_no'),
+        mark_png_b64: tag('shipment.mark_png_b64')
+      },
+      batch: { code: tag('batch.code'), use_by: tag('batch.use_by') },
+      mark_png_b64: tag('mark_png_b64'),
+      track_url: tag('track_url')
+    };
+  }
+}
+</script>
+</body>
+</html>

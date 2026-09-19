@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Walk the flow — Platen Label Studio</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; color: #ccd6f6; background-color: #0d1117;
+background-image:
+ radial-gradient(1.2px 1.2px at 11% 14%, rgba(204,214,246,.55), transparent 60%),
+ radial-gradient(1px 1px at 63% 9%, rgba(204,214,246,.40), transparent 60%),
+ radial-gradient(1.3px 1.3px at 84% 57%, rgba(100,255,218,.35), transparent 60%),
+ radial-gradient(1px 1px at 29% 71%, rgba(204,214,246,.35), transparent 60%),
+ radial-gradient(1px 1px at 47% 38%, rgba(204,214,246,.28), transparent 60%),
+ radial-gradient(1.1px 1.1px at 92% 22%, rgba(204,214,246,.30), transparent 60%),
+ radial-gradient(1px 1px at 8% 88%, rgba(204,214,246,.25), transparent 60%),
+ radial-gradient(1px 1px at 72% 84%, rgba(204,214,246,.22), transparent 60%),
+ radial-gradient(900px 520px at 82% -12%, rgba(41,171,226,.10), transparent 70%); }
+a { color: #29abe2; } a:hover { color: #7fd0f0; }
+</style>
+</helmet>
+
+<div style="width: 2960px; height: 1100px; box-sizing: border-box; background: rgba(13,17,23,0.62); padding: 40px 56px; display: flex; flex-direction: column; gap: 22px;">
+
+  <div style="display: flex; align-items: center; gap: 18px; flex-shrink: 0;">
+    <h1 style="margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 26px; font-weight: 700; letter-spacing: -0.01em;">Walk the flow</h1>
+    <span style="font-size: 15px; color: #8892b0;">One carton label, from the button press to the print head. Click through it.</span>
+    <div style="flex-grow: 1;"></div>
+    <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; color: #8892b0;">{{ stepOf }}</span>
+    <button type="button" onClick="{{ back }}" disabled="{{ atStart }}" style="{{ backStyle }}">Back</button>
+    <button type="button" onClick="{{ next }}" disabled="{{ atEnd }}" style="{{ nextStyle }}">Next step</button>
+    <button type="button" onClick="{{ reset }}" style="height: 40px; padding: 0 16px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 9px; font-size: 14px; color: #8892b0; cursor: pointer;">Start over</button>
+  </div>
+
+  <div style="display: flex; align-items: stretch; flex-shrink: 0; margin-left: -40px;">
+    <sc-for list="{{ items }}" as="item" hint-placeholder-count="7">
+      <div style="flex-grow: 1; flex-basis: 0; display: flex; align-items: center;">
+        <span style="width: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+          <sc-if value="{{ item.showArrow }}" hint-placeholder-val="{{ true }}">
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="rgba(41,171,226,0.35)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"></path></svg>
+          </sc-if>
+        </span>
+        <div style="{{ item.chipStyle }}">
+          <span style="{{ item.badgeStyle }}">{{ item.n }}</span>
+          <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+            <span style="{{ item.titleStyle }}">{{ item.title }}</span>
+            <span style="{{ item.detailStyle }}">{{ item.detail }}</span>
+          </span>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; gap: 28px; min-height: 0;">
+
+    <div style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.20); border-radius: 12px; padding: 26px 30px; display: flex; flex-direction: column; gap: 18px;">
+
+      <div style="display: flex; align-items: baseline; gap: 12px;">
+        <h2 style="margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 21px; font-weight: 500;">{{ panelTitle }}</h2>
+        <span style="font-size: 14px; color: #8892b0;">{{ panelSub }}</span>
+      </div>
+
+      <sc-if value="{{ s1 }}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; gap: 22px;">
+          <div style="width: 520px; flex-shrink: 0; box-sizing: border-box; border: 1px solid rgba(41,171,226,0.20); border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px;">
+            <span style="font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #8892b0;">What the operator fills in</span>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;"><span style="font-size: 14px; color: #8892b0;">Template</span><span style="font-size: 14px; font-weight: 600;">Carton despatch · v12</span></div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;"><span style="font-size: 14px; color: #8892b0;">Despatch date</span><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px;">2026-09-18</span></div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;"><span style="font-size: 14px; color: #8892b0;">Consignee</span><span style="font-size: 14px;">All consignees</span></div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;"><span style="font-size: 14px; color: #8892b0;">Printer</span><span style="font-size: 14px;">ZT411 · Despatch</span></div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;"><span style="font-size: 14px; color: #8892b0;">Copies each</span><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px;">1</span></div>
+          </div>
+          <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 14px;">
+            <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #8892b0;">Nothing clever has happened yet. The label on the right is the template exactly as it was authored — every grey line is a <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13.5px;">binding</span>, a hole waiting for a value.</p>
+            <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #8892b0;">The two questions above the printer choice are the query's own parameters. They live on the saved query, not on the template, which is why the same label works for one consignee or all of them.</p>
+            <div style="display: flex; align-items: center; gap: 11px; padding: 13px 15px; border-radius: 9px; background: rgba(41,171,226,0.05); border: 1px solid rgba(41,171,226,0.12);">
+              <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="#29abe2" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6"></circle><path d="M8 5.1v.01M8 7.4v3.5"></path></svg>
+              <span style="font-size: 14px; color: #8892b0;">This screen is the <strong style="font-weight: 600;">Print run</strong> artboard, two rows up the canvas.</span>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ s2 }}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <pre style="margin: 0; box-sizing: border-box; background: #0d1117; color: #c9ced9; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.6; padding: 14px 18px; border-radius: 9px;">select s.consignment_no, s.consignee_name, s.sku, s.qty, s.net_kg,
+       b.code as batch_code, b.use_by,
+       encode(m.mark_png, 'base64') as mark_png_b64
+  from shipments s ...
+ where s.despatch_date = :despatch_date</pre>
+          <div style="box-sizing: border-box; border: 1px solid rgba(41,171,226,0.20); border-radius: 9px; overflow: hidden;">
+            <div style="display: flex; align-items: center; height: 36px; padding: 0 16px; background: rgba(41,171,226,0.05); border-bottom: 1px solid rgba(41,171,226,0.12); font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: #8892b0;">
+              <span style="width: 44px; flex-shrink: 0;">#</span><span style="width: 150px; flex-shrink: 0;">consignment_no</span><span style="flex-grow: 1;">consignee_name</span><span style="width: 110px; flex-shrink: 0;">sku</span><span style="width: 90px; flex-shrink: 0;">net_kg</span><span style="width: 150px; flex-shrink: 0;">mark_png_b64</span>
+            </div>
+            <div style="display: flex; align-items: center; height: 42px; padding: 0 16px; font-size: 13.5px; background: rgba(41,171,226,0.12); border-bottom: 1px solid rgba(41,171,226,0.10);">
+              <span style="width: 44px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #29abe2;">1</span><span style="width: 150px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">7MB9042198</span><span style="flex-grow: 1;">Coles DC Truganina</span><span style="width: 110px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">BF-2201</span><span style="width: 90px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">18.4</span><span style="width: 150px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #f7941d;">iVBORw0KGgo…</span>
+            </div>
+            <div style="display: flex; align-items: center; height: 42px; padding: 0 16px; font-size: 13.5px; border-bottom: 1px solid rgba(41,171,226,0.10);">
+              <span style="width: 44px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #8892b0;">2</span><span style="width: 150px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">7MB9042199</span><span style="flex-grow: 1;">Coles DC Truganina</span><span style="width: 110px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">BF-2201</span><span style="width: 90px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">17.9</span><span style="width: 150px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #f7941d;">iVBORw0KGgo…</span>
+            </div>
+            <div style="display: flex; align-items: center; height: 42px; padding: 0 16px; font-size: 13.5px;">
+              <span style="width: 44px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #8892b0;">3</span><span style="width: 150px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">7MB9042204</span><span style="flex-grow: 1;">Ritchies IGA Ballarat</span><span style="width: 110px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">LM-0918</span><span style="width: 90px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">9.2</span><span style="width: 150px; flex-shrink: 0; font-size: 12.5px; color: #ef6f61;">null</span>
+            </div>
+          </div>
+          <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #8892b0;">Twelve rows in 68 ms, as a prepared statement — the dates and names never touch the SQL string. Note row 3: its compliance mark is missing. That becomes a warning later, not a crash.</p>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ s3 }}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; gap: 26px;">
+          <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 9px;">
+            <div style="display: flex; align-items: center; gap: 14px; height: 36px; padding: 0 14px; border-radius: 8px; background: rgba(41,171,226,0.05);"><span style="width: 330px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13.5px; color: #6b7893;">&#123;&#123; shipment.consignee_name &#125;&#125;</span><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#29abe2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8h11M9.5 4.5 13 8l-3.5 3.5"></path></svg><span style="font-size: 14px; font-weight: 500;">Coles DC Truganina</span></div>
+            <div style="display: flex; align-items: center; gap: 14px; height: 36px; padding: 0 14px; border-radius: 8px;"><span style="width: 330px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13.5px; color: #6b7893;">&#123;&#123; shipment.consignment_no &#125;&#125;</span><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#29abe2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8h11M9.5 4.5 13 8l-3.5 3.5"></path></svg><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px;">7MB9042198</span></div>
+            <div style="display: flex; align-items: center; gap: 14px; height: 36px; padding: 0 14px; border-radius: 8px; background: rgba(41,171,226,0.05);"><span style="width: 330px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13.5px; color: #6b7893;">&#123;&#123; shipment.sku &#125;&#125;</span><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#29abe2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8h11M9.5 4.5 13 8l-3.5 3.5"></path></svg><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px;">BF-2201</span></div>
+            <div style="display: flex; align-items: center; gap: 14px; height: 36px; padding: 0 14px; border-radius: 8px;"><span style="width: 330px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13.5px; color: #6b7893;">&#123;&#123; batch.use_by | date &#125;&#125;</span><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#29abe2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8h11M9.5 4.5 13 8l-3.5 3.5"></path></svg><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px;">02/10/26</span></div>
+            <div style="display: flex; align-items: center; gap: 14px; height: 36px; padding: 0 14px; border-radius: 8px; background: rgba(41,171,226,0.05);"><span style="width: 330px; flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13.5px; color: #6b7893;">&#123;&#123; shipment.net_kg &#125;&#125;</span><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#29abe2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8h11M9.5 4.5 13 8l-3.5 3.5"></path></svg><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px;">18.4</span></div>
+          </div>
+          <div style="width: 440px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px;">
+            <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #8892b0;">A binding is a dotted lookup and nothing more — no expressions, no function calls, no <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13.5px;">eval</span>. Templates come from a browser, so they must never be able to run code.</p>
+            <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #8892b0;">Formatting rides along as named filters after a pipe: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13.5px;">| date</span>, <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13.5px;">| round:1</span>, <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13.5px;">| pad:8</span>.</p>
+            <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #8892b0;">Watch the label on the right: it just stopped being a template and became a shipping label.</p>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ s4 }}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; flex-direction: column; gap: 18px;">
+          <div style="display: flex; align-items: center; gap: 18px;">
+            <div style="width: 400px; flex-shrink: 0; box-sizing: border-box; border: 1px solid rgba(247,148,29,0.35); background: rgba(247,148,29,0.10); border-radius: 9px; padding: 13px 15px; display: flex; flex-direction: column; gap: 6px;">
+              <span style="font-size: 12px; letter-spacing: 0.07em; text-transform: uppercase; color: #f7941d;">what the row holds</span>
+              <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.5; color: #8892b0; word-break: break-all;">iVBORw0KGgoAAAANSUhEUgAAAHgAAAA8CAIAAAD0G0<br>xkAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAFHklEQVR…</span>
+              <span style="font-size: 12.5px; color: #f7941d;">4.2 KB of text, not a picture</span>
+            </div>
+            <svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="#f7941d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8h11M9.5 4.5 13 8l-3.5 3.5"></path></svg>
+            <div style="width: 250px; flex-shrink: 0; box-sizing: border-box; border: 1px solid rgba(247,148,29,0.35); border-radius: 9px; padding: 13px 15px; display: flex; flex-direction: column; gap: 8px; align-items: center; background: rgba(13,17,23,0.62);">
+              <svg width="150" height="62" viewBox="0 0 120 50" fill="none" stroke="#0d1117" stroke-width="3" stroke-linecap="round" shape-rendering="crispEdges"><path d="M6 36c14 0 16-26 26-26s10 34 22 34c9 0 12-12 15-20s6-10 10-4 8 14 15 14 14-6 20-14"></path></svg>
+              <span style="font-size: 12.5px; color: #f7941d;">243 × 122 dots, pure black</span>
+            </div>
+            <svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="#f7941d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8h11M9.5 4.5 13 8l-3.5 3.5"></path></svg>
+            <div style="flex-grow: 1; box-sizing: border-box; background: #0d1117; border-radius: 9px; padding: 13px 16px; display: flex; flex-direction: column; gap: 6px; min-width: 0;">
+              <span style="font-size: 12px; letter-spacing: 0.07em; text-transform: uppercase; color: #8892b0;">what the printer gets</span>
+              <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.5; color: #f7941d; word-break: break-all;">^GFA,3782,3782,31,00000000000FF800000000<br>0001FFE00000000003C0F0000000000780780000…</span>
+            </div>
+          </div>
+          <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #8892b0;">A Zebra printer has never heard of a PNG. It knows dots. So the backend decodes the base64, hands it to Pillow, shrinks it to the exact dot size of the box on the label, dithers it down to pure black and white, then packs those dots eight to a byte and writes them out as hex.</p>
+          <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #8892b0;">Row 3's mark was null. Its label still renders — the element is simply left out and a warning is attached to the run.</p>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ s5 }}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; gap: 26px;">
+          <pre style="margin: 0; flex-grow: 1; box-sizing: border-box; background: #0d1117; color: #c9ced9; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13.5px; line-height: 1.65; padding: 18px 22px; border-radius: 9px; min-width: 0; overflow: hidden;">^XA^PW799^LL1199^LH0,0^LT0
+^FO48,40^GFA,1120,1120,20,000FF80…^FS
+^FO48,160^A0N,39,0^FB703,1,0,L^FH_^FDColes DC Truganina^FS
+^FO48,205^A0N,26,0^FH_^FD12 Foundation Road^FS
+^FO48,236^A0N,26,0^FH_^FDTruganina VIC 3029^FS
+^FO48,330^A0N,32,0^FH_^FDBF-2201^FS
+^FO48,496^BY2,3,160^BCN,160,Y,N,N^FD7MB9042198^FS
+^FO48,700^BQN,2,5^FDQA,https://q7.io/t/7MB9042198^FS
+^FO230,700^GFA,3782,3782,31,00000000000FF80…^FS
+^FO48,1090^A0N,22,0^FH_^FDB26-2551   02/10/26   18.4 kg^FS
+^XZ</pre>
+          <div style="width: 440px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px;">
+            <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #8892b0;">That is the whole label. <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13.5px;">^FO</span> is "put the cursor here", <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13.5px;">^FD</span> is "here's the data", <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13.5px;">^FS</span> ends a field. Millimetres became dots on the way in: 6 mm at 203 dpi is 48.</p>
+            <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #8892b0;">All twelve labels are rendered <em>now</em>, before anything is queued. If a binding is broken, the operator gets a sentence about it instead of half a roll of ruined stock.</p>
+            <div style="display: flex; align-items: center; gap: 11px; padding: 13px 15px; border-radius: 9px; background: rgba(41,171,226,0.08); border: 1px solid rgba(41,171,226,0.25);">
+              <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="#29abe2" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.4 6.4 11.6 12.8 4.8"></path></svg>
+              <span style="font-size: 14px; color: #29abe2;">12 labels rendered · 1 warning</span>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ s6 }}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; gap: 26px;">
+          <div style="width: 520px; flex-shrink: 0; box-sizing: border-box; border: 1px solid rgba(41,171,226,0.20); border-radius: 10px; overflow: hidden;">
+            <div style="height: 46px; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; gap: 10px; background: rgba(41,171,226,0.05); border-bottom: 1px solid rgba(41,171,226,0.12);">
+              <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; font-weight: 500;">JOB-40220</span>
+              <span style="font-size: 12px; font-weight: 500; padding: 3px 9px; border-radius: 20px; background: rgba(41,171,226,0.12); color: #8892b0;">queued</span>
+            </div>
+            <div style="padding: 16px 18px; display: flex; flex-direction: column; gap: 11px;">
+              <div style="display: flex; justify-content: space-between;"><span style="font-size: 14px; color: #8892b0;">Labels</span><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px;">12</span></div>
+              <div style="display: flex; justify-content: space-between;"><span style="font-size: 14px; color: #8892b0;">Printer</span><span style="font-size: 14px;">ZT411 · Despatch</span></div>
+              <div style="display: flex; justify-content: space-between;"><span style="font-size: 14px; color: #8892b0;">Payload</span><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px;">86 KB of ZPL</span></div>
+              <div style="display: flex; justify-content: space-between;"><span style="font-size: 14px; color: #8892b0;">Worker</span><span style="font-size: 14px;">picked up in 40 ms</span></div>
+            </div>
+          </div>
+          <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 14px;">
+            <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #8892b0;">The API's work is finished. It drops one job on a Redis queue and answers the browser straight away, so the operator isn't staring at a spinner while twelve labels crawl out.</p>
+            <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #8892b0;">The worker that picks it up does only one thing: open a socket and write. Nothing left in the job can fail for an interesting reason — no database, no images, no templates. Just bytes.</p>
+            <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #8892b0;">That's also what makes Cancel honest: the worker checks a flag between labels, so cancelling stops it at the next label rather than after the batch.</p>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ s7 }}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; gap: 26px;">
+          <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 16px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span style="font-family: ui-sans-serif, system-ui, sans-serif; font-size: 34px; font-weight: 700; letter-spacing: -0.02em; color: #29abe2;">12</span>
+              <span style="font-size: 15px; color: #8892b0;">of 12 printed · 23.4 s · 1 warning</span>
+            </div>
+            <div style="height: 12px; border-radius: 20px; background: rgba(41,171,226,0.12); overflow: hidden;"><div style="width: 100%; height: 100%; background: #29abe2;"></div></div>
+            <div style="display: flex; gap: 7px; flex-wrap: wrap;">
+              <span style="width: 34px; height: 50px; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.35); border-radius: 3px;"></span><span style="width: 34px; height: 50px; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.35); border-radius: 3px;"></span><span style="width: 34px; height: 50px; background: rgba(13,17,23,0.62); border: 1px solid rgba(247,148,29,0.35); border-radius: 3px;"></span><span style="width: 34px; height: 50px; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.35); border-radius: 3px;"></span><span style="width: 34px; height: 50px; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.35); border-radius: 3px;"></span><span style="width: 34px; height: 50px; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.35); border-radius: 3px;"></span><span style="width: 34px; height: 50px; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.35); border-radius: 3px;"></span><span style="width: 34px; height: 50px; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.35); border-radius: 3px;"></span><span style="width: 34px; height: 50px; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.35); border-radius: 3px;"></span><span style="width: 34px; height: 50px; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.35); border-radius: 3px;"></span><span style="width: 34px; height: 50px; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.35); border-radius: 3px;"></span><span style="width: 34px; height: 50px; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.35); border-radius: 3px;"></span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 11px; padding: 13px 15px; border-radius: 9px; background: rgba(247,148,29,0.12); border: 1px solid rgba(247,148,29,0.35);">
+              <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="#f7941d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.6 14.6 13.4H1.4z"></path><path d="M8 6.6v3M8 11.4h.01"></path></svg>
+              <span style="font-size: 14px; color: #f7941d;">Label 3 printed without its compliance mark — the row had no image.</span>
+            </div>
+          </div>
+          <div style="width: 440px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px;">
+            <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #8892b0;">One socket write per label rather than one for the batch. A printer that runs out of media halfway through then costs you one label, not twelve, and the job resumes from where it stopped.</p>
+            <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #8892b0;">The run lands in job history with its warnings attached, so "why did that one come out blank" has an answer a week later.</p>
+          </div>
+        </div>
+      </sc-if>
+
+      <div style="flex-grow: 1;"></div>
+    </div>
+
+    <div style="width: 520px; flex-shrink: 0; box-sizing: border-box; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.20); border-radius: 12px; padding: 22px; display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; align-items: center; gap: 9px;">
+        <h2 style="margin: 0; font-size: 15px; font-weight: 600;">The label</h2>
+        <div style="flex-grow: 1;"></div>
+        <span style="{{ captionStyle }}">{{ previewCaption }}</span>
+      </div>
+
+      <div style="flex-grow: 1; background: #080b10; border-radius: 9px; display: flex; align-items: center; justify-content: center; padding: 16px; min-height: 0;">
+        <div style="width: 392px; height: 588px; box-sizing: border-box; background: #ffffff; color: #0d1117; border: 1px solid #c3c8d3; padding: 15px; display: flex; flex-direction: column; gap: 9px;">
+
+          <div style="display: flex; align-items: flex-start; gap: 11px;">
+            <div style="width: 92px; height: 46px; flex-shrink: 0; background: #0d1117; color: #ffffff; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 0.1em; display: flex; align-items: center; justify-content: center;">MEATCO</div>
+            <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 2px; align-items: flex-end; min-width: 0;">
+              <span style="font-family: ui-sans-serif, system-ui, sans-serif; font-size: 19px; font-weight: 700; letter-spacing: 0.04em;">CARTON</span>
+              <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: {{ tinySize }}; color: {{ ink }};">{{ vDate }}</span>
+              <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: {{ tinySize }}; color: {{ ink }};">{{ vCtn }}</span>
+            </div>
+          </div>
+
+          <div style="height: 2px; background: #0d1117;"></div>
+
+          <div style="display: flex; flex-direction: column; gap: 3px;">
+            <span style="font-size: 9px; letter-spacing: 0.14em; color: #5a6475;">SHIP TO</span>
+            <span style="font-size: {{ nameSize }}; font-weight: 600; line-height: 1.2; color: {{ ink }};">{{ vName }}</span>
+            <span style="font-size: {{ addrSize }}; line-height: 1.35; color: {{ ink }};">{{ vAddr1 }}</span>
+            <span style="font-size: {{ addrSize }}; line-height: 1.35; color: {{ ink }};">{{ vAddr2 }}</span>
+          </div>
+
+          <div style="height: 1px; background: #c3c8d3;"></div>
+
+          <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: {{ skuSize }}; font-weight: 500; color: {{ ink }};">{{ vSku }}</span>
+            <span style="font-size: {{ addrSize }}; color: {{ ink }};">{{ vQty }}</span>
+          </div>
+
+          <sc-if value="{{ bound }}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; flex-direction: column; gap: 3px; align-items: center; margin-top: 3px;">
+              <div style="width: 100%; height: 70px; background-color: #ffffff; background-image: repeating-linear-gradient(90deg, #0d1117 0 2px, #ffffff 2px 5px, #0d1117 5px 6px, #ffffff 6px 9px, #0d1117 9px 12px, #ffffff 12px 13px, #0d1117 13px 14px, #ffffff 14px 18px);"></div>
+              <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; letter-spacing: 0.1em;">7MB9042198</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ unbound }}" hint-placeholder-val="{{ true }}">
+            <div style="height: 88px; margin-top: 3px; border: 1px dashed #a7aebb; background: #ccd6f6; display: flex; align-items: center; justify-content: center;">
+              <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; color: #6b7893;">barcode · code 128</span>
+            </div>
+          </sc-if>
+
+          <div style="display: flex; gap: 11px; align-items: flex-start; margin-top: 5px;">
+            <sc-if value="{{ bound }}" hint-placeholder-val="{{ true }}">
+              <div style="width: 80px; height: 80px; flex-shrink: 0; background: conic-gradient(#0d1117 25%, #ffffff 0 50%, #0d1117 0 75%, #ffffff 0) 0 0 / 8px 8px; position: relative;">
+                <span style="position: absolute; left: 0; top: 0; width: 21px; height: 21px; box-sizing: border-box; background: #ffffff; border: 4px solid #0d1117;"></span>
+                <span style="position: absolute; right: 0; top: 0; width: 21px; height: 21px; box-sizing: border-box; background: #ffffff; border: 4px solid #0d1117;"></span>
+                <span style="position: absolute; left: 0; bottom: 0; width: 21px; height: 21px; box-sizing: border-box; background: #ffffff; border: 4px solid #0d1117;"></span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ unbound }}" hint-placeholder-val="{{ true }}">
+              <div style="width: 80px; height: 80px; flex-shrink: 0; border: 1px dashed #a7aebb; background: #ccd6f6; display: flex; align-items: center; justify-content: center;"><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9.5px; color: #6b7893;">QR</span></div>
+            </sc-if>
+
+            <sc-if value="{{ hasImage }}" hint-placeholder-val="{{ true }}">
+              <div style="flex-grow: 1; height: 80px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(41,171,226,0.10);">
+                <svg width="150" height="60" viewBox="0 0 120 50" fill="none" stroke="#0d1117" stroke-width="2.8" stroke-linecap="round" shape-rendering="crispEdges"><path d="M6 36c14 0 16-26 26-26s10 34 22 34c9 0 12-12 15-20s6-10 10-4 8 14 15 14 14-6 20-14"></path></svg>
+              </div>
+            </sc-if>
+            <sc-if value="{{ noImage }}" hint-placeholder-val="{{ true }}">
+              <div style="flex-grow: 1; height: 80px; border: 1px dashed #f7941d; background: rgba(247,148,29,0.10); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;">
+                <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9.5px; color: #f7941d;">compliance_mark</span>
+                <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; color: #f7941d;">{{ imageNote }}</span>
+              </div>
+            </sc-if>
+          </div>
+
+          <div style="flex-grow: 1;"></div>
+
+          <div style="display: flex; border-top: 1px solid #c3c8d3; padding-top: 6px; gap: 9px;">
+            <div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 8px; letter-spacing: 0.12em; color: #5a6475;">BATCH</span><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: {{ footSize }}; color: {{ ink }};">{{ vBatch }}</span></div>
+            <div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 8px; letter-spacing: 0.12em; color: #5a6475;">USE BY</span><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: {{ footSize }}; color: {{ ink }};">{{ vUseBy }}</span></div>
+            <div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 8px; letter-spacing: 0.12em; color: #5a6475;">NET WT</span><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: {{ footSize }}; color: {{ ink }};">{{ vNet }}</span></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2960,"height":1100}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { step: 0 };
+  }
+
+  set(n) {
+    var self = this;
+    return function () { self.setState({ step: Math.max(0, Math.min(6, n)) }); };
+  }
+
+  renderVals() {
+    var step = this.state.step;
+    var tag = function (p) { return '{' + '{ ' + p + ' }' + '}'; };
+
+    var steps = [
+      { n: '1', title: 'Set up the run', detail: 'template, date, printer' },
+      { n: '2', title: 'Run the query', detail: '12 rows from wms_prod' },
+      { n: '3', title: 'Bind a row', detail: 'holes become values' },
+      { n: '4', title: 'Convert the image', detail: 'base64 into dots' },
+      { n: '5', title: 'Build the ZPL', detail: 'one page of commands' },
+      { n: '6', title: 'Queue the job', detail: 'API hands off, answers' },
+      { n: '7', title: 'Print', detail: 'one write per label' }
+    ];
+
+    var chipBase = 'flex-grow: 1; flex-basis: 0; box-sizing: border-box; height: 86px; border-radius: 10px; padding: 0 16px; display: flex; align-items: center; gap: 12px; min-width: 0; ';
+    var badgeBase = 'width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13.5px; font-weight: 600; ';
+    var skin = {
+      done: { chip: 'background: rgba(41,171,226,0.12); border: 1px solid rgba(41,171,226,0.35);', badge: 'background: #29abe2; color: #ffffff;', title: 'color: #29abe2;', detail: 'color: #7fd0f0;' },
+      now:  { chip: 'background: #29abe2; border: 1px solid #29abe2;', badge: 'background: rgba(13,17,23,0.62); color: #29abe2;', title: 'color: #ffffff;', detail: 'color: #9fdcf5;' },
+      next: { chip: 'background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.20);', badge: 'background: rgba(41,171,226,0.10); color: #8892b0;', title: 'color: #8892b0;', detail: 'color: #6b7893;' }
+    };
+
+    var items = steps.map(function (s, i) {
+      var k = i < step ? 'done' : (i === step ? 'now' : 'next');
+      return {
+        n: s.n,
+        title: s.title,
+        detail: s.detail,
+        showArrow: i > 0,
+        chipStyle: chipBase + skin[k].chip,
+        badgeStyle: badgeBase + skin[k].badge,
+        titleStyle: 'font-size: 14.5px; font-weight: 600; ' + skin[k].title,
+        detailStyle: 'font-size: 12.5px; ' + skin[k].detail
+      };
+    });
+
+    var bound = step >= 2;
+    var hasImage = step >= 3;
+    var printed = step === 6;
+
+    var titles = [
+      ['Someone presses Print', 'the operator screen, before anything runs'],
+      ['The query runs', 'read-only, as a prepared statement'],
+      ['A row meets the template', 'every binding gets its value'],
+      ['The picture becomes dots', 'the part that surprises people'],
+      ['The label becomes ZPL', 'one page of commands per label'],
+      ['The job is handed off', 'the API is done thinking'],
+      ['It comes out of the printer', 'twelve labels, one warning']
+    ];
+
+    var captions = [
+      'template · bindings unresolved',
+      'template · bindings unresolved',
+      'row 1 bound',
+      'image converted',
+      'ready to send',
+      'queued',
+      'printed'
+    ];
+    var captionSkin = printed
+      ? 'font-size: 12px; font-weight: 500; padding: 4px 10px; border-radius: 20px; background: rgba(74,222,128,0.14); color: #4ade80;'
+      : (bound
+        ? 'font-size: 12px; font-weight: 500; padding: 4px 10px; border-radius: 20px; background: rgba(41,171,226,0.14); color: #29abe2;'
+        : 'font-size: 12px; font-weight: 500; padding: 4px 10px; border-radius: 20px; background: rgba(41,171,226,0.12); color: #8892b0;');
+
+    var btn = 'height: 40px; padding: 0 18px; border-radius: 9px; font-size: 14px; font-weight: 500; cursor: pointer; ';
+
+    return {
+      items: items,
+      stepOf: 'Step ' + (step + 1) + ' of 7',
+      panelTitle: titles[step][0],
+      panelSub: titles[step][1],
+
+      next: this.set(step + 1),
+      back: this.set(step - 1),
+      reset: this.set(0),
+      atStart: step === 0,
+      atEnd: step === 6,
+      backStyle: btn + (step === 0
+        ? 'border: 1px solid rgba(41,171,226,0.12); background: rgba(13,17,23,0.62); color: #6b7893;'
+        : 'border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); color: #8892b0;'),
+      nextStyle: btn + (step === 6
+        ? 'border: 0; background: rgba(41,171,226,0.35); color: #0d1117;'
+        : 'border: 0; background: #29abe2; color: #ffffff;'),
+
+      s1: step === 0, s2: step === 1, s3: step === 2,
+      s4: step === 3, s5: step === 4, s6: step === 5, s7: step === 6,
+
+      bound: bound,
+      unbound: !bound,
+      hasImage: hasImage,
+      noImage: !hasImage,
+      imageNote: bound ? 'converting…' : 'base64 → image',
+
+      previewCaption: captions[step],
+      captionStyle: captionSkin,
+
+      ink: bound ? '#ccd6f6' : '#6b7485',
+      nameSize: bound ? '16px' : '10px',
+      addrSize: bound ? '11.5px' : '9px',
+      skuSize: bound ? '14px' : '9.5px',
+      tinySize: bound ? '9.5px' : '7px',
+      footSize: bound ? '10px' : '7px',
+
+      vDate: bound ? '18 SEP 2026' : tag('shipment.despatch_date'),
+      vCtn: bound ? 'CTN 1 OF 4' : tag('shipment.carton_no'),
+      vName: bound ? 'Coles DC Truganina' : tag('shipment.consignee_name'),
+      vAddr1: bound ? '12 Foundation Road' : tag('shipment.address_1'),
+      vAddr2: bound ? 'Truganina VIC 3029' : tag('shipment.suburb'),
+      vSku: bound ? 'BF-2201' : tag('shipment.sku'),
+      vQty: bound ? '24 units' : tag('shipment.qty'),
+      vBatch: bound ? 'B26-2551' : tag('batch.code'),
+      vUseBy: bound ? '02/10/26' : tag('batch.use_by'),
+      vNet: bound ? '18.4 kg' : tag('shipment.net_kg')
+    };
+  }
+}
+</script>
+</body>
+</html>

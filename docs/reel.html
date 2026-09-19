@@ -1,0 +1,619 @@
+<title>Platen Reel</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: rgba(13,17,23,0.62);
+    --line: rgba(41,171,226,0.20);
+    --ink: #ccd6f6;
+    --mut: #8892b0;
+    --accent: #29abe2;
+    --accent-ink: #0d1117;
+    --track: rgba(41,171,226,0.25);
+
+    /* the stage is a lit screen */
+    --s-bg: #0a0d12;
+    --s-panel: rgba(41,171,226,0.06);
+    --s-sunk: rgba(5,7,10,0.85);
+    --s-line: rgba(41,171,226,0.22);
+    --s-ink: #ccd6f6;
+    --s-mut: #8892b0;
+    --s-teal: #29abe2;
+    --s-amber: #f7941d;
+    --s-red: #ef6f61;
+    --s-paper: #ffffff;
+    --s-paper-ink: #0d1117;
+    --s-paper-mut: #5a6475;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; color: var(--ink); background-color: var(--bg);
+    background-image:
+      radial-gradient(1.2px 1.2px at 9% 12%, rgba(204,214,246,.5), transparent 60%),
+      radial-gradient(1px 1px at 61% 7%, rgba(204,214,246,.38), transparent 60%),
+      radial-gradient(1.3px 1.3px at 86% 41%, rgba(100,255,218,.32), transparent 60%),
+      radial-gradient(1px 1px at 26% 63%, rgba(204,214,246,.32), transparent 60%),
+      radial-gradient(1px 1px at 48% 88%, rgba(204,214,246,.26), transparent 60%),
+      radial-gradient(1px 1px at 93% 77%, rgba(204,214,246,.24), transparent 60%),
+      radial-gradient(900px 520px at 84% -14%, rgba(41,171,226,.10), transparent 70%);
+    background-attachment: fixed;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    padding-inline: 20px; padding-block: 28px 44px;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+
+  .masthead { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .mark { font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 900; font-size: 15px; letter-spacing: 0.22em; color: var(--accent); }
+  .masthead h1 { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 700; font-size: clamp(20px, 3.4vw, 27px); letter-spacing: -0.015em; text-wrap: balance; }
+  .masthead p { margin: 0; color: var(--mut); font-size: 15px; flex: 1 1 260px; }
+
+  /* ---------- the screen ---------- */
+  .screen {
+    position: relative; width: 100%; aspect-ratio: 16 / 9; max-width: 100%;
+    background: var(--s-bg); border-radius: 14px; overflow: hidden; border: 1px solid var(--s-line);
+    box-shadow: 0 1px 2px rgba(20,19,16,.16), 0 18px 42px -26px rgba(20,19,16,.7);
+  }
+  .frame { position: absolute; top: 0; left: 0; width: 1280px; height: 720px; transform-origin: 0 0; color: var(--s-ink); }
+  .scene { position: absolute; inset: 0; padding: 56px 64px; opacity: 0; transition: opacity .3s ease; display: flex; flex-direction: column; gap: 22px; }
+  .scene.on { opacity: 1; }
+
+  .eyebrow { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 15px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--s-teal); }
+  .shead { display: flex; align-items: baseline; gap: 16px; }
+  .shead h2 { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 700; font-size: 38px; letter-spacing: -0.02em; }
+  .shead span { font-size: 20px; color: var(--s-mut); }
+  .note { margin: 0; font-size: 20px; line-height: 1.5; color: var(--s-mut); max-width: 64ch; }
+  .note b { color: var(--s-ink); font-weight: 700; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .panel { background: var(--s-panel); border: 1px solid var(--s-line); border-radius: 12px; }
+  .cols { display: flex; gap: 32px; flex: 1; min-height: 0; }
+
+  /* someone's actual screen */
+  .app { border: 1px solid var(--s-line); border-radius: 12px; overflow: hidden; background: var(--s-panel); }
+  .titlebar { display: flex; align-items: center; gap: 9px; padding: 12px 16px; border-bottom: 1px solid var(--s-line); background: rgba(41,171,226,0.06); font-size: 15px; color: var(--s-mut); }
+  .tdot { width: 11px; height: 11px; border-radius: 50%; }
+  .appbody { padding: 20px 22px; display: flex; flex-direction: column; gap: 15px; }
+  .field { display: flex; flex-direction: column; gap: 7px; }
+  .field > label { font-size: 15px; color: var(--s-mut); }
+  .fld { height: 48px; border: 1px solid var(--s-line); border-radius: 9px; background: var(--s-sunk); display: flex; align-items: center; padding: 0 14px; gap: 9px; font-size: 19px; transition: border-color .12s, box-shadow .12s; }
+  .fld .chev { margin-left: auto; color: var(--s-mut); }
+  .fld.ring { border-color: var(--s-teal); box-shadow: 0 0 0 3px rgba(41,171,226,.2); }
+  .fld.flash { border-color: var(--s-teal); background: rgba(41,171,226,0.10); }
+  .caret { width: 2px; height: 23px; background: var(--s-teal); opacity: 0; }
+  .caret.blinkc { animation: cblink .85s steps(1) infinite; }
+  @keyframes cblink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+
+  .bigbtn {
+    align-self: center; padding: 24px 40px; border-radius: 14px; background: var(--s-teal); color: #0d1117;
+    font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 700; font-size: 29px; display: flex; align-items: center; gap: 14px;
+    transition: transform .1s ease, filter .1s ease, box-shadow .1s ease;
+  }
+  .bigbtn.hover { filter: brightness(1.1); transform: translateY(-3px); box-shadow: 0 10px 22px -12px rgba(41,171,226,.9); }
+  .bigbtn.press { transform: translateY(2px) scale(.97); filter: brightness(.94); }
+
+  .toast { display: flex; align-items: center; gap: 11px; padding: 14px 18px; border-radius: 11px; background: rgba(41,171,226,0.10); border: 1px solid rgba(41,171,226,0.30); color: var(--s-teal); font-size: 19px; }
+
+  pre.code { margin: 0; background: #070a0f; border: 1px solid var(--s-line); border-radius: 12px; padding: 18px 22px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 17px; line-height: 1.6; color: #c9ced9; white-space: pre-wrap; word-break: break-word; }
+
+  .row { display: flex; align-items: center; gap: 18px; padding: 13px 20px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 19px; border: 1px solid var(--s-line); border-radius: 10px; background: var(--s-panel); }
+  .row .grow { flex: 1; font-family: ui-sans-serif, system-ui, sans-serif; }
+  .row.hot { border-color: var(--s-amber); background: rgba(247,148,29,0.12); }
+  .tally { font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 900; font-size: 62px; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+
+  .spin { width: 17px; height: 17px; border-radius: 50%; border: 2px solid rgba(41,171,226,.3); border-top-color: var(--s-teal); animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .bindrow { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 18px; padding: 10px 12px; border-radius: 9px; transition: background .2s; }
+  .bindrow.hot { background: rgba(41,171,226,.12); }
+  .bindrow .from { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 18px; color: var(--s-mut); }
+  .bindrow .to { font-size: 21px; font-weight: 700; }
+
+  .label { width: 296px; flex: none; background: var(--s-paper); color: var(--s-paper-ink); padding: 14px; display: flex; flex-direction: column; gap: 8px; align-self: flex-start; }
+  .label .hd { display: flex; align-items: flex-start; gap: 10px; }
+  .label .logo { width: 74px; height: 36px; background: var(--s-paper-ink); color: #FFF; font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 900; font-size: 11px; letter-spacing: .14em; display: flex; align-items: center; justify-content: center; }
+  .label .rule { height: 2px; background: var(--s-paper-ink); }
+  .label .hair { height: 1px; background: #c3c8d3; }
+  .label .cap { font-size: 8px; letter-spacing: .16em; color: var(--s-paper-mut); }
+  .swap { display: grid; }
+  .swap > * { grid-area: 1 / 1; }
+  .swap .ph { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; color: #6b7485; }
+  .pop { animation: pop .5s ease-out; }
+  @keyframes pop { 0% { background: rgba(247,148,29,0.35); } 100% { background: transparent; } }
+  .bars { height: 54px; background-image: repeating-linear-gradient(90deg, #0d1117 0 2px, #FFF 2px 5px, #0d1117 5px 6px, #FFF 6px 9px, #0d1117 9px 12px, #FFF 12px 13px, #0d1117 13px 14px, #FFF 14px 18px); }
+  .ph-box { border: 1px dashed #a7aebb; background: #f2f4f8; display: flex; align-items: center; justify-content: center; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; color: #6b7485; text-align: center; }
+  .qr { width: 62px; height: 62px; flex: none; background: conic-gradient(#0d1117 25%, #FFF 0 50%, #0d1117 0 75%, #FFF 0) 0 0 / 7px 7px; position: relative; }
+  .qr i { position: absolute; width: 17px; height: 17px; background: #FFF; border: 3px solid #0d1117; }
+
+  .dither { position: relative; width: 210px; height: 86px; }
+  .dither > * { position: absolute; inset: 0; display: grid; place-items: center; }
+  .dither .grey { filter: blur(2.2px) grayscale(1) opacity(.42); }
+
+  .node { padding: 16px 18px; border-radius: 12px; border: 1px solid var(--s-line); background: var(--s-panel); text-align: center; flex: 1; }
+  .node b { display: block; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 21px; }
+  .node span { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; color: var(--s-mut); }
+
+  .chipline { display: flex; align-items: center; gap: 11px; padding: 11px 17px; border-radius: 10px; font-size: 19px; }
+  .ok { background: rgba(41,171,226,.14); color: var(--s-teal); }
+  .warn { background: rgba(247,148,29,.14); color: var(--s-amber); }
+
+  .tip { position: absolute; padding: 9px 13px; border-radius: 9px; background: rgba(247,148,29,0.12); border: 1px solid rgba(247,148,29,0.35); color: var(--s-amber); font-size: 16px; }
+
+  .led { animation: led 1.1s ease-in-out infinite; }
+  @keyframes led { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+  /* the hand on the mouse */
+  .cursor { position: absolute; left: 0; top: 0; width: 24px; height: 24px; z-index: 20; opacity: 0; pointer-events: none; filter: drop-shadow(0 2px 4px rgba(0,0,0,.6)); }
+  .ripple { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; border: 2px solid var(--s-teal); z-index: 19; opacity: 0; pointer-events: none; }
+  .rec { position: absolute; right: 22px; top: 18px; z-index: 18; display: flex; align-items: center; gap: 9px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; letter-spacing: .14em; color: #8892b0; }
+  .rec i { width: 9px; height: 9px; border-radius: 50%; background: #ef6f61; animation: led 1.4s ease-in-out infinite; }
+
+  /* ---------- transport ---------- */
+  .transport { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  button { font: inherit; cursor: pointer; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 0 14px; height: 42px; }
+  button:focus-visible, .chap:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .play { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); width: 52px; padding: 0; display: grid; place-items: center; font-weight: 700; }
+  .time { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; color: var(--mut); font-variant-numeric: tabular-nums; }
+  .scrub { position: relative; flex: 1 1 260px; height: 42px; display: flex; align-items: center; }
+  .scrub input { width: 100%; margin: 0; accent-color: var(--accent); }
+  .ticks { position: absolute; inset-inline: 0; bottom: 5px; height: 6px; pointer-events: none; }
+  .ticks i { position: absolute; width: 2px; height: 6px; background: var(--track); border-radius: 1px; }
+
+  .chapters { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+  .chap { display: flex; flex-direction: column; gap: 4px; text-align: left; align-items: flex-start; padding: 12px 14px; height: auto; background: var(--surface); border: 1px solid var(--line); }
+  .chap .n { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; letter-spacing: .14em; color: var(--mut); }
+  .chap .t { font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 700; font-size: 15px; }
+  .chap .b { font-size: 13px; line-height: 1.45; color: var(--mut); }
+  .chap[aria-current="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .chap[aria-current="true"] .n { color: var(--accent); }
+
+  .foot { color: var(--mut); font-size: 13.5px; line-height: 1.6; margin: 0; max-width: 68ch; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scene, .fld, .bigbtn, .bindrow { transition: none; }
+    .spin, .led, .caret.blinkc, .rec i, .pop { animation: none; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJEAAACACAMAAAA8jHsvAAADAFBMVEVMaXEAZWEJpaoP//7//wD8qg35fAYE//4ArP8If/8/oL//AAAdmcg1vv/weRkAAP9Vsv8lquEnpdryoyr3kyEpquQmsOn2kyH2kyD3kyEopuH3kyElquH0kyT4lSEmquD3lCH3lCElqeH3lCH3lCElq+L3lCElquL3lCQlq+MqqN/4liH4lSEkquElquH4kyIrrOn2lCL4lCH2lCQlq+InrOP2kyD3lCH3kyH6liUlr+j3lCEkqeAmqOD2kyElreUkqd74lCH4lCL3kyEkrOT2kyElquIlq+L3kyD3lCH2kyElqeD3lSMlq+MkquH3kyEmqeAlquKMn4Imq+L5liH3lCL5liEmqeAlq+IlquEkquEkqeH5lSH2lCH1kyElquL2kiElqeElqN4lqeAkquIlquEkqeAkq+IlquD3lCH3lCH3lCElrOP3lSH5lSH2lCL2lCElrOQkquEkqeEkqeAlquEkqeEkq+IlreUlreX4lCH2lCH2kiD3kyEjquElq+IlreQlqeIlquEkqeAlqeAkqeAlreUlquP5lSElreUlreUkqeAlreYkqOD3kyH5liH3lCH4lCElrub2lCImquD6mCIkqeAlreUkqeAkqeD3lCGEc0D4lCEmruf3lCH3kyH3lCH4lSH3lCL6lyH2lCEkquElrOT3kyElreQkquH3lCD//xv6liEkqeAlq+L2kyAlrOQlq+IkquAlquL6mCElq+L6lyH4lSH3lCD3lCH4lCH3kyElreb3kyAlquEkqd8lquEmreYlq+IkquL2kyAkqeElquEmr+clqeD5liH6mSIlreUlreb6lyIlq+L5lSH5liEmruYlrub7mSL6mCH7miL6liH3lSP7miL2kh8lreW2nnolquH4lSH7miH1kiH8miL7mCL+niMlq+Mnt/Inte8lquEntvEoufUntO4mseoouvYnsuwouPQpvfspvPkpvPgnte8mreUpu/cqv/0mrucot/IpvvsqwP8qwf//myIpv/35lSH/oiQqwv8qw/9hv4ylAAAA5nRSTlMAAQMCAQMCAQMCBAEEBAMBA/0HBIEK/oaUigyXbhVhFpGgSmu6T514BjARdWdGqTIFF3oOYxl+XXEI+bPTFFXoKUgipCZ3WIlzyUv+EkKN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" alt="Q7Technology Logo" width="34" height="30" style="height: 30px; width: auto; flex: none;">
+    <span class="mark">PLATEN</span>
+    <h1>One carton label, end to end</h1>
+    <p>A minute over someone's shoulder, from the Print button to the print head. MIT licensed.</p>
+  </header>
+
+  <div class="screen" id="screen">
+    <div class="frame" id="frame">
+
+      <div class="rec"><i></i><span id="tc">0:00</span></div>
+
+      <!-- 0 · title -->
+      <section class="scene" data-scene="title" style="justify-content: center; gap: 20px;">
+        <span class="eyebrow">Platen Label Studio</span>
+        <h2 data-in="0.15" style="margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 900; font-size: 84px; line-height: 1.02; letter-spacing: -0.035em; max-width: 17ch;">One carton label, end to end.</h2>
+        <p class="note" data-in="0.7" style="font-size: 23px;">Twelve cartons are going out to Truganina this afternoon. Watch somebody label them.</p>
+      </section>
+
+      <!-- 1 · print run -->
+      <section class="scene" data-scene="run">
+        <span class="eyebrow">01 — the operator</span>
+        <div class="shead"><h2>Somebody presses Print</h2></div>
+        <div class="cols" style="align-items: flex-start;">
+          <div class="app" data-in="0.1" style="width: 640px; flex: none;">
+            <div class="titlebar">
+              <span class="tdot" style="background: #ef6f61;"></span><span class="tdot" style="background: #f7941d;"></span><span class="tdot" style="background: #4ade80;"></span>
+              <span style="margin-left: 10px;">Platen · Print run</span>
+            </div>
+            <div class="appbody">
+              <div class="field" data-in="0.3"><label>Template</label><div class="fld"><span>Carton despatch · v12</span><span class="chev">▾</span></div></div>
+              <div class="field" data-in="0.45"><label>Despatch date</label><div class="fld" data-win="ring:1.0:2.9"><span class="mono" data-in="1.15" data-type data-dur="1.15">2026-09-18</span><span class="caret" data-win="blinkc:1.0:2.9"></span></div></div>
+              <div class="field" data-in="0.6"><label>Consignee</label><div class="fld" data-win="flash:3.1:3.6"><span>All consignees</span><span class="chev">▾</span></div></div>
+              <div class="field" data-in="0.75"><label>Printer</label><div class="fld" data-win="flash:3.8:4.3"><span>ZT411 · Despatch</span><span class="chev">▾</span></div></div>
+            </div>
+          </div>
+          <div style="flex: 1; align-self: stretch; display: flex; flex-direction: column; gap: 24px; justify-content: center; align-items: center;">
+            <div class="bigbtn" data-in="1.2" data-win="hover:4.5:4.95 press:4.95:5.12">
+              <svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4.5 6.2V2.6h7v3.6"/><rect x="2" y="6.2" width="12" height="5" rx="1.2"/><path d="M4.5 9.6h7v3.8h-7z"/></svg>
+              Print 12 labels
+            </div>
+            <div class="toast" data-in="5.3"><span class="spin"></span>Pulling today's despatches…</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2 · query -->
+      <section class="scene" data-scene="query">
+        <span class="eyebrow">02 — the data</span>
+        <div class="shead"><h2>The query runs</h2><span>read-only, prepared statement</span></div>
+        <pre class="code" data-in="0.15" data-type data-dur="1.9">select s.consignment_no, s.consignee_name, s.sku, s.net_kg,
+       b.code as batch_code, b.use_by,
+       encode(m.mark_png, 'base64') as mark_png_b64
+  from shipments s ...
+ where s.despatch_date = :despatch_date</pre>
+        <div style="display: flex; gap: 32px; align-items: flex-start; flex: 1; position: relative;">
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 10px;">
+            <div class="toast" data-in="2.1" data-out="3.05" style="align-self: flex-start;"><span class="spin"></span>running…</div>
+            <div class="row" data-in="3.2" data-slide data-dx="-46"><span>1</span><span>7MB9042198</span><span class="grow">Coles DC Truganina</span><span style="color: var(--s-amber);">iVBORw0K…</span></div>
+            <div class="row" data-in="3.5" data-slide data-dx="-46"><span>2</span><span>7MB9042199</span><span class="grow">Coles DC Truganina</span><span style="color: var(--s-amber);">iVBORw0K…</span></div>
+            <div class="row" data-in="3.8" data-slide data-dx="-46" data-win="hot:5.4:8"><span>3</span><span>7MB9042204</span><span class="grow">Ritchies IGA Ballarat</span><span style="color: var(--s-red);">null</span></div>
+          </div>
+          <div style="width: 250px; flex: none; display: flex; flex-direction: column; gap: 6px; align-items: flex-end;">
+            <span class="tally" data-in="3.2" data-count="12" data-dur="1.3">12</span>
+            <span style="font-size: 20px; color: var(--s-mut);" data-in="4.4">rows in 68 ms</span>
+          </div>
+          <div class="tip" data-in="5.8" style="left: 486px; top: 252px;">no image on this one — hold that thought</div>
+        </div>
+      </section>
+
+      <!-- 3 · binding -->
+      <section class="scene" data-scene="bind">
+        <span class="eyebrow">03 — the template meets the row</span>
+        <div class="shead"><h2>Holes become values</h2></div>
+        <div class="cols">
+          <div style="flex: 1; display: flex; flex-direction: column; justify-content: center;">
+            <div class="bindrow" data-in="0.5" data-win="hot:0.5:1.15"><span class="from">&#123;&#123; consignee_name &#125;&#125;</span><svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="#29abe2" stroke-width="1.7" aria-hidden="true"><path d="M2.5 8h11M9.5 4.5 13 8l-3.5 3.5"/></svg><span class="to">Coles DC Truganina</span></div>
+            <div class="bindrow" data-in="1.3" data-win="hot:1.3:1.95"><span class="from">&#123;&#123; consignment_no &#125;&#125;</span><svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="#29abe2" stroke-width="1.7" aria-hidden="true"><path d="M2.5 8h11M9.5 4.5 13 8l-3.5 3.5"/></svg><span class="to mono">7MB9042198</span></div>
+            <div class="bindrow" data-in="2.1" data-win="hot:2.1:2.75"><span class="from">&#123;&#123; sku &#125;&#125;</span><svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="#29abe2" stroke-width="1.7" aria-hidden="true"><path d="M2.5 8h11M9.5 4.5 13 8l-3.5 3.5"/></svg><span class="to mono">BF-2201</span></div>
+            <div class="bindrow" data-in="2.9" data-win="hot:2.9:3.55"><span class="from">&#123;&#123; use_by | date &#125;&#125;</span><svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="#29abe2" stroke-width="1.7" aria-hidden="true"><path d="M2.5 8h11M9.5 4.5 13 8l-3.5 3.5"/></svg><span class="to mono">02/10/26</span></div>
+            <p class="note" data-in="4" style="font-size: 19px; margin-top: 16px;">A dotted lookup and nothing else — <b>no expressions, no eval</b>. Templates come from a browser.</p>
+          </div>
+
+          <div class="label">
+            <div class="hd">
+              <div class="logo">MEATCO</div>
+              <div style="flex: 1; display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
+                <span style="font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 900; font-size: 16px; letter-spacing: .04em;">CARTON</span>
+                <span class="swap"><span class="ph" data-out="0.5">&#123;&#123; despatch_date &#125;&#125;</span><span class="mono" style="font-size: 9px;" data-in="0.5">18 SEP 2026</span></span>
+              </div>
+            </div>
+            <div class="rule"></div>
+            <span class="cap">SHIP TO</span>
+            <span class="swap"><span class="ph" data-out="0.5">&#123;&#123; consignee_name &#125;&#125;</span><span style="font-size: 14px; font-weight: 700;" data-in="0.5" data-win="pop:0.5:1.0">Coles DC Truganina</span></span>
+            <span class="swap"><span class="ph" data-out="0.5">&#123;&#123; address_1 &#125;&#125;</span><span style="font-size: 10px;" data-in="0.5">12 Foundation Road, Truganina VIC 3029</span></span>
+            <div class="hair"></div>
+            <span class="swap"><span class="ph" data-out="2.1">&#123;&#123; sku &#125;&#125;</span><span class="mono" style="font-size: 12px; font-weight: 500;" data-in="2.1" data-win="pop:2.1:2.6">BF-2201 · 24 units</span></span>
+            <div class="swap" style="height: 66px;">
+              <div class="ph-box" data-out="1.3">barcode · code 128</div>
+              <div style="display: flex; flex-direction: column; gap: 3px;" data-in="1.3"><div class="bars"></div><span class="mono" style="font-size: 10px; letter-spacing: .1em; text-align: center;">7MB9042198</span></div>
+            </div>
+            <div style="display: flex; gap: 9px; align-items: flex-start;">
+              <div class="swap" style="width: 62px; height: 62px;">
+                <div class="ph-box" data-out="1.3">QR</div>
+                <div class="qr" data-in="1.3"><i style="left:0;top:0;"></i><i style="right:0;top:0;"></i><i style="left:0;bottom:0;"></i></div>
+              </div>
+              <div class="ph-box" style="flex: 1; height: 62px; border-color: rgba(247,148,29,0.55); color: #a15f13; background: #fdf6ec;">compliance_mark<br>still empty</div>
+            </div>
+            <div style="display: flex; gap: 8px; border-top: 1px solid #c3c8d3; padding-top: 5px;">
+              <span class="swap" style="flex: 1;"><span class="ph" data-out="2.9">&#123;&#123; batch &#125;&#125;</span><span class="mono" style="font-size: 9px;" data-in="2.9">B26-2551</span></span>
+              <span class="swap" style="flex: 1;"><span class="ph" data-out="2.9">&#123;&#123; use_by &#125;&#125;</span><span class="mono" style="font-size: 9px;" data-in="2.9">02/10/26</span></span>
+              <span class="swap" style="flex: 1;"><span class="ph" data-out="2.9">&#123;&#123; net_kg &#125;&#125;</span><span class="mono" style="font-size: 9px;" data-in="2.9">18.4 kg</span></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4 · base64 -->
+      <section class="scene" data-scene="image">
+        <span class="eyebrow" style="color: var(--s-amber);">04 — the awkward one</span>
+        <div class="shead"><h2>The picture becomes dots</h2></div>
+        <div style="display: flex; align-items: center; gap: 16px;">
+          <div class="panel" data-in="0.3" style="width: 310px; flex: none; padding: 15px 17px; border-color: rgba(247,148,29,0.35);">
+            <div class="eyebrow" style="font-size: 12px; color: var(--s-amber);">in the row</div>
+            <p class="mono" style="margin: 8px 0 0; font-size: 14px; line-height: 1.5; word-break: break-all; color: #c9ced9;">iVBORw0KGgoAAAANSUhEUgAAAHgAAAA8CAIAAAD0G0xkAAAACXBIWXMAAA7EAAAOxAGVKw4b…</p>
+            <p class="note" style="font-size: 15px; margin: 9px 0 0;">4.2 KB of text</p>
+          </div>
+          <svg width="28" height="28" viewBox="0 0 16 16" fill="none" stroke="#f7941d" stroke-width="1.6" aria-hidden="true" data-in="1.1"><path d="M2.5 8h11M9.5 4.5 13 8l-3.5 3.5"/></svg>
+          <div class="panel" data-in="1.4" style="width: 260px; flex: none; padding: 14px; border-color: rgba(247,148,29,0.35); text-align: center; background: #FFF;">
+            <div class="dither" style="width: 100%;">
+              <div class="grey"><svg width="196" height="80" viewBox="0 0 120 50" fill="none" stroke="#0d1117" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 36c14 0 16-26 26-26s10 34 22 34c9 0 12-12 15-20s6-10 10-4 8 14 15 14 14-6 20-14"/></svg></div>
+              <div class="crisp" data-wipe="1.9" data-dur="1.2"><svg width="196" height="80" viewBox="0 0 120 50" fill="none" stroke="#0d1117" stroke-width="3" stroke-linecap="round" shape-rendering="crispEdges" aria-hidden="true"><path d="M6 36c14 0 16-26 26-26s10 34 22 34c9 0 12-12 15-20s6-10 10-4 8 14 15 14 14-6 20-14"/></svg></div>
+            </div>
+            <p class="note" style="font-size: 14px; margin: 4px 0 0; color: #5a6475;">243 × 122 dots, pure black</p>
+          </div>
+          <svg width="28" height="28" viewBox="0 0 16 16" fill="none" stroke="#f7941d" stroke-width="1.6" aria-hidden="true" data-in="3.1"><path d="M2.5 8h11M9.5 4.5 13 8l-3.5 3.5"/></svg>
+          <div class="panel" data-in="3.4" style="flex: 1; padding: 15px 17px; border-color: rgba(247,148,29,0.35); background: #070a0f;">
+            <div class="eyebrow" style="font-size: 12px; color: var(--s-amber);">to the printer</div>
+            <p class="mono" style="margin: 8px 0 0; font-size: 14px; line-height: 1.5; word-break: break-all; color: var(--s-amber);" data-in="3.6" data-type data-dur="1.1">^GFA,3782,3782,31,00000000000FF800000000001FFE00000000003C0F0…</p>
+          </div>
+        </div>
+        <p class="note" data-in="2.2">A Zebra printer has never heard of a PNG. It knows dots. So: decode the base64, hand it to <b>Pillow</b>, shrink it to the exact dot size of the box on the label, dither to pure black and white, then pack those dots <b>eight to a byte</b>.</p>
+        <div class="chipline warn" data-in="5.4" style="align-self: flex-start;">Row 3 still has nothing — its label renders without the mark, and the run carries a warning.</div>
+      </section>
+
+      <!-- 5 · zpl -->
+      <section class="scene" data-scene="zpl">
+        <span class="eyebrow">05 — the whole label</span>
+        <div class="shead"><h2>It becomes one page of ZPL</h2></div>
+        <pre class="code" data-in="0.2" data-type data-dur="3">^XA^PW799^LL1199^LH0,0^LT0
+^FO48,160^A0N,39,0^FH_^FDColes DC Truganina^FS
+^FO48,330^A0N,32,0^FH_^FDBF-2201^FS
+^FO48,496^BY2,3,160^BCN,160,Y,N,N^FD7MB9042198^FS
+^FO48,700^BQN,2,5^FDQA,https://q7.io/t/7MB9042198^FS
+^FO230,700^GFA,3782,3782,31,00000000000FF80…^FS
+^XZ</pre>
+        <div style="display: flex; gap: 14px; align-items: center; flex-wrap: wrap;">
+          <span class="chipline ok" data-in="3.4">rendering <span data-in="3.4" data-count="12" data-dur="1.4">12</span> / 12</span>
+          <span class="chipline warn" data-in="4.9">1 warning</span>
+          <p class="note" data-in="5.1" style="flex: 1; font-size: 19px; min-width: 360px;"><b>All twelve before anything is queued.</b> A broken binding becomes a sentence, not half a roll of ruined stock.</p>
+        </div>
+      </section>
+
+      <!-- 6 · queue -->
+      <section class="scene" data-scene="queue">
+        <span class="eyebrow">06 — handing off</span>
+        <div class="shead"><h2>One job on a queue</h2></div>
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <div class="node" data-in="0.2"><b>API</b><span>done in 190 ms</span></div>
+          <svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="#8892b0" stroke-width="1.6" aria-hidden="true" data-in="0.6"><path d="M2.5 8h11M9.5 4.5 13 8l-3.5 3.5"/></svg>
+          <div class="node" data-in="0.9" style="border-color: var(--s-teal);"><b>JOB-40220</b><span>12 labels · 86 KB</span></div>
+          <svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="#8892b0" stroke-width="1.6" aria-hidden="true" data-in="1.3"><path d="M2.5 8h11M9.5 4.5 13 8l-3.5 3.5"/></svg>
+          <div class="node" data-in="1.6"><b>Worker</b><span>picked up in 40 ms</span></div>
+          <svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="#8892b0" stroke-width="1.6" aria-hidden="true" data-in="2"><path d="M2.5 8h11M9.5 4.5 13 8l-3.5 3.5"/></svg>
+          <div class="node" data-in="2.3"><b>ZT411</b><span>tcp 10.20.4.31:9100</span></div>
+        </div>
+        <div class="toast" data-in="2.8" data-slide data-dx="-760" style="align-self: flex-start;">86 KB of ZPL on its way</div>
+        <p class="note" data-in="3.4">The browser gets its answer straight away — nobody watches a spinner while twelve labels crawl out. And the worker now does exactly one thing: <b>open a socket and write</b>. Nothing left in the job can fail for an interesting reason.</p>
+        <p class="note" data-in="4.4">It also makes Cancel honest: the flag is checked between labels, so stopping means the next label, not the next batch.</p>
+      </section>
+
+      <!-- 7 · print -->
+      <section class="scene" data-scene="print">
+        <span class="eyebrow">07 — paper</span>
+        <div class="shead"><h2>Out it comes</h2></div>
+        <div style="display: flex; align-items: center; gap: 26px; flex: 1;">
+          <div style="width: 230px; flex: none;">
+            <svg width="230" height="168" viewBox="0 0 240 170" aria-hidden="true">
+              <rect x="18" y="26" width="204" height="96" rx="12" fill="rgba(41,171,226,0.06)" stroke="rgba(41,171,226,0.22)" stroke-width="2"/>
+              <rect x="44" y="52" width="152" height="10" rx="5" fill="rgba(41,171,226,0.22)"/>
+              <circle cx="196" cy="100" r="7" fill="#29abe2" class="led"/>
+              <rect x="52" y="118" width="136" height="8" rx="3" fill="#070a0f"/>
+            </svg>
+          </div>
+          <div style="display: flex; gap: 11px; align-items: flex-end;">
+            <span style="width: 52px; height: 80px; background: #FFF; display: block;" data-in="0.6" data-slide data-dx="-64"></span>
+            <span style="width: 52px; height: 80px; background: #FFF; display: block;" data-in="1.1" data-slide data-dx="-64"></span>
+            <span style="width: 52px; height: 80px; background: #fdf6ec; display: block;" data-in="1.6" data-slide data-dx="-64"></span>
+            <span style="width: 52px; height: 80px; background: #FFF; display: block;" data-in="2.1" data-slide data-dx="-64"></span>
+            <span style="width: 52px; height: 80px; background: #FFF; display: block;" data-in="2.6" data-slide data-dx="-64"></span>
+          </div>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; text-align: right;">
+            <span class="tally" data-in="0.6" data-count="12" data-dur="2.6">12</span>
+            <span style="font-size: 20px; color: var(--s-mut);" data-in="3.2">of 12 printed · 23.4 s</span>
+          </div>
+        </div>
+        <div style="display: flex; gap: 13px; flex-wrap: wrap;">
+          <span class="chipline ok" data-in="3.6">Done — go stick them on</span>
+          <span class="chipline warn" data-in="3.9">Label 3 came out without its compliance mark</span>
+        </div>
+      </section>
+
+      <!-- 8 · end -->
+      <section class="scene" data-scene="end" style="justify-content: center; gap: 24px;">
+        <span class="eyebrow">row to paper</span>
+        <h2 data-in="0.2" style="margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 900; font-size: 62px; line-height: 1.05; letter-spacing: -0.03em;">Query · bind · dots · ZPL · queue · print</h2>
+        <p class="note" data-in="0.8" style="font-size: 22px;">Every label rendered before a byte moves. Every failure a sentence somebody can read.</p>
+        <span class="mark" data-in="1.4" style="font-size: 17px;">PLATEN LABEL STUDIO</span>
+      </section>
+
+      <div class="ripple" id="ripple"></div>
+      <svg class="cursor" id="cursor" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 2 L4 19 L8.6 14.9 L11.4 21.4 L14.4 20.1 L11.7 13.8 L18 13.6 Z" fill="#FFFFFF" stroke="#0d1117" stroke-width="1.4" stroke-linejoin="round"/>
+      </svg>
+
+    </div>
+  </div>
+
+  <div class="transport">
+    <button class="play" id="play" aria-label="Pause">❚❚</button>
+    <button id="restart">Replay</button>
+    <div class="scrub">
+      <label for="seek" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);">Seek</label>
+      <input id="seek" type="range" min="0" max="63" step="0.05" value="0">
+      <div class="ticks" id="ticks"></div>
+    </div>
+    <span class="time"><span id="now">0:00</span> / 1:03</span>
+  </div>
+
+  <div class="chapters" id="chapters"></div>
+
+  <p class="foot">Sample data throughout — a despatch run of twelve cartons. The figures are illustrative, not measurements from a live system.</p>
+</div>
+
+<script>
+(function () {
+  var SCENES = [
+    { id: 'title', start: 0,  dur: 4 },
+    { id: 'run',   start: 4,  dur: 8, n: '01', t: 'Press Print',    b: 'Somebody picks a template, types a date, hits the button.' },
+    { id: 'query', start: 12, dur: 8, n: '02', t: 'Run the query',  b: 'Twelve rows, read-only, as a prepared statement.' },
+    { id: 'bind',  start: 20, dur: 9, n: '03', t: 'Bind a row',     b: 'Every hole in the template takes a value.' },
+    { id: 'image', start: 29, dur: 10, n: '04', t: 'Base64 to dots', b: 'Decode, dither, pack eight dots to a byte.' },
+    { id: 'zpl',   start: 39, dur: 8, n: '05', t: 'Build the ZPL',  b: 'One page of commands, rendered up front.' },
+    { id: 'queue', start: 47, dur: 6, n: '06', t: 'Queue the job',  b: 'The API hands off and answers straight away.' },
+    { id: 'print', start: 53, dur: 7, n: '07', t: 'Print',          b: 'One socket write per label, warnings kept.' },
+    { id: 'end',   start: 60, dur: 3 }
+  ];
+  var TOTAL = 63;
+
+  // where the pointer goes, in frame coordinates
+  var TRACKS = {
+    run: [
+      { t: 0.4, x: 1210, y: 660 },
+      { t: 1.0, x: 300,  y: 360, click: true },
+      { t: 3.0, x: 300,  y: 360 },
+      { t: 3.2, x: 620,  y: 446, click: true },
+      { t: 3.9, x: 620,  y: 533, click: true },
+      { t: 4.6, x: 976,  y: 396 },
+      { t: 5.0, x: 976,  y: 396, click: true },
+      { t: 6.2, x: 1150, y: 560 }
+    ],
+    query: [
+      { t: 4.8, x: 1230, y: 690 },
+      { t: 5.5, x: 872,  y: 556 },
+      { t: 7.6, x: 872,  y: 556 }
+    ]
+  };
+
+  var frame = document.getElementById('frame');
+  var screen = document.getElementById('screen');
+  var playBtn = document.getElementById('play');
+  var seek = document.getElementById('seek');
+  var nowEl = document.getElementById('now');
+  var tcEl = document.getElementById('tc');
+  var cursor = document.getElementById('cursor');
+  var ripple = document.getElementById('ripple');
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var sections = {};
+  SCENES.forEach(function (s) { sections[s.id] = frame.querySelector('[data-scene="' + s.id + '"]'); });
+
+  function fit() { frame.style.transform = 'scale(' + (screen.clientWidth / 1280) + ')'; }
+  if (window.ResizeObserver) new ResizeObserver(fit).observe(screen);
+  window.addEventListener('resize', fit);
+  fit();
+
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  function ease(p) { return 1 - Math.pow(1 - p, 3); }
+  function smooth(p) { return p * p * (3 - 2 * p); }
+
+  function animate(el, lt) {
+    var d = el.dataset;
+
+    if (d.win) {
+      d.win.split(/\s+/).forEach(function (spec) {
+        var a = spec.split(':');
+        el.classList.toggle(a[0], lt >= parseFloat(a[1]) && lt < parseFloat(a[2]));
+      });
+    }
+
+    if (d.wipe !== undefined) {
+      var wp = ease(clamp((lt - parseFloat(d.wipe)) / parseFloat(d.dur || '1'), 0, 1));
+      el.style.clipPath = 'inset(0 ' + ((1 - wp) * 100) + '% 0 0)';
+      return;
+    }
+
+    var hasIn = d.in !== undefined, hasOut = d.out !== undefined;
+    if (!hasIn && !hasOut) return;
+
+    var inAt = parseFloat(d.in || '0');
+    var p = hasIn ? ease(clamp((lt - inAt) / parseFloat(d.dur || '0.45'), 0, 1)) : 1;
+    var q = hasOut ? 1 - clamp((lt - parseFloat(d.out)) / 0.3, 0, 1) : 1;
+
+    if (d.type !== undefined) {
+      if (el._full === undefined) el._full = el.innerHTML;
+      el.innerHTML = el._full.slice(0, Math.round(el._full.length * p));
+      el.style.opacity = String(lt >= inAt ? q : 0);
+      return;
+    }
+    if (d.count !== undefined) {
+      el.textContent = String(Math.round(parseFloat(d.count) * p));
+      el.style.opacity = String(lt >= inAt ? q : 0);
+      return;
+    }
+
+    el.style.opacity = String(p * q);
+    if (reduced) { el.style.transform = 'none'; return; }
+    el.style.transform = d.slide !== undefined
+      ? 'translateX(' + ((1 - p) * parseFloat(d.dx || '-40')) + 'px)'
+      : 'translateY(' + ((1 - p) * 10) + 'px)';
+  }
+
+  function drawCursor(id, lt) {
+    var track = TRACKS[id];
+    if (!track) { cursor.style.opacity = '0'; ripple.style.opacity = '0'; return; }
+    var first = track[0], last = track[track.length - 1];
+    if (lt < first.t - 0.25 || lt > last.t + 1) { cursor.style.opacity = '0'; ripple.style.opacity = '0'; return; }
+
+    var a = first, b = first;
+    for (var i = 0; i < track.length - 1; i++) {
+      if (lt >= track[i].t && lt <= track[i + 1].t) { a = track[i]; b = track[i + 1]; break; }
+      if (lt > track[i + 1].t) { a = b = track[i + 1]; }
+    }
+    var span = b.t - a.t;
+    var k = span > 0 ? smooth(clamp((lt - a.t) / span, 0, 1)) : 1;
+    cursor.style.opacity = '1';
+    cursor.style.transform = 'translate(' + (a.x + (b.x - a.x) * k) + 'px,' + (a.y + (b.y - a.y) * k) + 'px)';
+
+    var hit = null;
+    track.forEach(function (w) { if (w.click && lt >= w.t && lt - w.t < 0.6) hit = w; });
+    if (hit && !reduced) {
+      var rp = (lt - hit.t) / 0.6;
+      ripple.style.opacity = String(1 - rp);
+      ripple.style.transform = 'translate(' + hit.x + 'px,' + hit.y + 'px) scale(' + (1 + rp * 3.4) + ')';
+    } else {
+      ripple.style.opacity = '0';
+    }
+  }
+
+  var current = null;
+  function render(t) {
+    var active = SCENES[0];
+    for (var i = 0; i < SCENES.length; i++) if (t >= SCENES[i].start) active = SCENES[i];
+    if (current !== active.id) {
+      SCENES.forEach(function (s) { sections[s.id].classList.toggle('on', s.id === active.id); });
+      current = active.id;
+      markChapter(active.id);
+    }
+    var lt = t - active.start;
+    var els = sections[active.id].querySelectorAll('[data-in],[data-out],[data-win],[data-wipe]');
+    for (var j = 0; j < els.length; j++) animate(els[j], lt);
+    drawCursor(active.id, lt);
+
+    seek.value = String(t);
+    nowEl.textContent = fmt(t);
+    tcEl.textContent = fmt(t);
+  }
+
+  function fmt(t) {
+    var s = Math.floor(t);
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  }
+
+  var t = 0, playing = false, last = 0;
+  function loop(ts) {
+    if (!playing) return;
+    if (!last) last = ts;
+    t += (ts - last) / 1000;
+    last = ts;
+    if (t >= TOTAL) { t = TOTAL; pause(); render(t); return; }
+    render(t);
+    requestAnimationFrame(loop);
+  }
+  function play() {
+    if (t >= TOTAL) t = 0;
+    playing = true; last = 0;
+    playBtn.textContent = '❚❚'; playBtn.setAttribute('aria-label', 'Pause');
+    requestAnimationFrame(loop);
+  }
+  function pause() {
+    playing = false;
+    playBtn.textContent = '▶'; playBtn.setAttribute('aria-label', 'Play');
+  }
+  playBtn.addEventListener('click', function () { playing ? pause() : play(); });
+  document.getElementById('restart').addEventListener('click', function () { t = 0; render(0); play(); });
+  seek.addEventListener('input', function () { pause(); t = parseFloat(seek.value); render(t); });
+
+  var ticks = document.getElementById('ticks');
+  var chapters = document.getElementById('chapters');
+  var chapEls = {};
+  SCENES.forEach(function (s) {
+    var i = document.createElement('i');
+    i.style.left = (s.start / TOTAL * 100) + '%';
+    ticks.appendChild(i);
+    if (!s.n) return;
+    var b = document.createElement('button');
+    b.className = 'chap';
+    b.innerHTML = '<span class="n">' + s.n + ' · ' + fmt(s.start) + '</span><span class="t"></span><span class="b"></span>';
+    b.querySelector('.t').textContent = s.t;
+    b.querySelector('.b').textContent = s.b;
+    b.addEventListener('click', function () { t = s.start + 0.01; render(t); play(); });
+    chapters.appendChild(b);
+    chapEls[s.id] = b;
+  });
+  function markChapter(id) {
+    Object.keys(chapEls).forEach(function (k) { chapEls[k].setAttribute('aria-current', k === id ? 'true' : 'false'); });
+  }
+
+  if (reduced) { t = 1.4; render(t); pause(); }
+  else { render(0); play(); }
+})();
+</script>

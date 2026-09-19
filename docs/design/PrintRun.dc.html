@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Print run — Platen Label Studio</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; color: #ccd6f6; background-color: #0d1117;
+background-image:
+ radial-gradient(1.2px 1.2px at 11% 14%, rgba(204,214,246,.55), transparent 60%),
+ radial-gradient(1px 1px at 63% 9%, rgba(204,214,246,.40), transparent 60%),
+ radial-gradient(1.3px 1.3px at 84% 57%, rgba(100,255,218,.35), transparent 60%),
+ radial-gradient(1px 1px at 29% 71%, rgba(204,214,246,.35), transparent 60%),
+ radial-gradient(1px 1px at 47% 38%, rgba(204,214,246,.28), transparent 60%),
+ radial-gradient(1.1px 1.1px at 92% 22%, rgba(204,214,246,.30), transparent 60%),
+ radial-gradient(1px 1px at 8% 88%, rgba(204,214,246,.25), transparent 60%),
+ radial-gradient(1px 1px at 72% 84%, rgba(204,214,246,.22), transparent 60%),
+ radial-gradient(900px 520px at 82% -12%, rgba(41,171,226,.10), transparent 70%); }
+a { color: #29abe2; } a:hover { color: #7fd0f0; }
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; background: transparent; overflow: hidden;">
+
+  <aside style="width: 240px; flex-shrink: 0; box-sizing: border-box; background: #0d1117; display: flex; flex-direction: column; padding: 22px 14px;">
+    <div style="padding: 0 10px 24px 10px; display: flex; flex-direction: column; gap: 3px;">
+      <span style="font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 700; font-size: 19px; letter-spacing: 0.15em; color: #ccd6f6;">PLATEN</span>
+      <span style="font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: #8892b0;">Label Studio</span>
+    </div>
+    <nav style="display: flex; flex-direction: column; gap: 2px;">
+      <a href="Main.dc.html" style="display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: 7px; text-decoration: none; font-size: 13.5px; color: #8892b0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2" width="5" height="5" rx="1"></rect><rect x="9" y="2" width="5" height="5" rx="1"></rect><rect x="2" y="9" width="5" height="5" rx="1"></rect><rect x="9" y="9" width="5" height="5" rx="1"></rect></svg><span>Dashboard</span></a>
+      <a href="Templates.dc.html" style="display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: 7px; text-decoration: none; font-size: 13.5px; color: #8892b0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M8 2 14 5.4 8 8.8 2 5.4z"></path><path d="M2 10.2 8 13.6l6-3.4"></path></svg><span>Templates</span></a>
+      <a href="DataSources.dc.html" style="display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: 7px; text-decoration: none; font-size: 13.5px; color: #8892b0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><ellipse cx="8" cy="4" rx="5.3" ry="2.1"></ellipse><path d="M2.7 4v8c0 1.2 2.4 2.1 5.3 2.1s5.3-.9 5.3-2.1V4"></path><path d="M2.7 8c0 1.2 2.4 2.1 5.3 2.1s5.3-.9 5.3-2.1"></path></svg><span>Data sources</span></a>
+      <a href="Printers.dc.html" style="display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: 7px; text-decoration: none; font-size: 13.5px; color: #8892b0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4.5 6.2V2.6h7v3.6"></path><rect x="2" y="6.2" width="12" height="5" rx="1.2"></rect><path d="M4.5 9.6h7v3.8h-7z"></path></svg><span>Printers</span></a>
+      <a href="PrintRun.dc.html" style="display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: 7px; text-decoration: none; font-size: 13.5px; background: rgba(41,171,226,0.14); color: #ccd6f6;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M5.2 3.2 12.8 8l-7.6 4.8z"></path></svg><span>Print run</span></a>
+      <a href="Main.dc.html" style="display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: 7px; text-decoration: none; font-size: 13.5px; color: #8892b0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M6 4h7.5M6 8h7.5M6 12h7.5M2.8 4h.01M2.8 8h.01M2.8 12h.01"></path></svg><span>Job history</span></a>
+      <a href="Printers.dc.html" style="display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: 7px; text-decoration: none; font-size: 13.5px; color: #8892b0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2.5 5.2h11M2.5 10.8h11"></path><circle cx="6" cy="5.2" r="1.7"></circle><circle cx="10" cy="10.8" r="1.7"></circle></svg><span>Settings</span></a>
+    </nav>
+    <div style="flex-grow: 1;"></div>
+    <div style="display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 8px; background: rgba(41,171,226,0.08);">
+      <span style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; background: #29abe2; color: #ffffff; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center;">LL</span>
+      <span style="display: flex; flex-direction: column;"><span style="font-size: 12.5px; color: #ccd6f6;">L. Lauton</span><span style="font-size: 11px; color: #8892b0;">Administrator</span></span>
+    </div>
+  </aside>
+
+  <main style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+
+    <header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 28px; display: flex; align-items: center; gap: 16px; background: rgba(13,17,23,0.62); border-bottom: 1px solid rgba(41,171,226,0.20);">
+      <h1 style="margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 19px; font-weight: 500; letter-spacing: -0.01em;">Print run</h1>
+      <span style="font-size: 12.5px; color: #8892b0;">Pick a template, pull the data, send it to a printer</span>
+      <div style="flex-grow: 1;"></div>
+      <button type="button" style="height: 34px; padding: 0 13px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 8px; font-size: 13px; color: #8892b0; cursor: pointer;">Load a saved run</button>
+    </header>
+
+    <div style="flex-grow: 1; box-sizing: border-box; padding: 24px 28px; display: flex; gap: 20px; min-height: 0;">
+
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+
+        <div style="flex-shrink: 0; box-sizing: border-box; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.20); border-radius: 10px; padding: 15px 18px; display: flex; align-items: center; gap: 14px;">
+          <span style="width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%; background: #29abe2; color: #ffffff; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; justify-content: center;">1</span>
+          <span style="display: flex; flex-direction: column; gap: 2px;">
+            <span style="font-size: 14px; font-weight: 600;">Carton despatch</span>
+            <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: #8892b0;">100 × 150 mm · 203 dpi · v12 published</span>
+          </span>
+          <div style="flex-grow: 1;"></div>
+          <a href="Editor.dc.html" style="font-size: 12.5px; text-decoration: none;">Open in editor</a>
+          <a href="Templates.dc.html" style="height: 32px; padding: 0 13px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 8px; font-size: 13px; color: #8892b0; text-decoration: none; display: flex; align-items: center;">Change template</a>
+        </div>
+
+        <div style="flex-shrink: 0; box-sizing: border-box; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.20); border-radius: 10px; padding: 16px 18px; display: flex; flex-direction: column; gap: 14px;">
+          <div style="display: flex; align-items: center; gap: 14px;">
+            <span style="width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%; background: #29abe2; color: #ffffff; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; justify-content: center;">2</span>
+            <h2 style="margin: 0; font-size: 14px; font-weight: 600;">Data</h2>
+            <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; padding: 3px 8px; border-radius: 5px; background: rgba(41,171,226,0.10); color: #8892b0;">wms_prod · orders_ready_to_ship</span>
+            <div style="flex-grow: 1;"></div>
+            <a href="DataSources.dc.html" style="font-size: 12.5px; text-decoration: none;">Edit query</a>
+          </div>
+          <div style="display: flex; gap: 12px; align-items: flex-end;">
+            <div style="width: 190px; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px;">
+              <label for="run-date" style="font-size: 11.5px; font-weight: 500; color: #8892b0;">Despatch date</label>
+              <input id="run-date" type="text" value="2026-09-18" style="height: 38px; box-sizing: border-box; border: 1px solid rgba(41,171,226,0.20); border-radius: 8px; background: rgba(13,17,23,0.62); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; padding: 0 11px; width: 100%;">
+            </div>
+            <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 6px;">
+              <label for="run-consignee" style="font-size: 11.5px; font-weight: 500; color: #8892b0;">Consignee</label>
+              <select id="run-consignee" style="height: 38px; box-sizing: border-box; border: 1px solid rgba(41,171,226,0.20); border-radius: 8px; background: rgba(13,17,23,0.62); font: inherit; font-size: 13px; padding: 0 11px;">
+                <option>All consignees</option>
+              </select>
+            </div>
+            <button type="button" style="height: 38px; padding: 0 16px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 8px; font-size: 13px; color: #8892b0; cursor: pointer;">Run query</button>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px; padding: 11px 13px; border-radius: 8px; background: rgba(41,171,226,0.08); border: 1px solid rgba(41,171,226,0.25);">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#29abe2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.4 6.4 11.6 12.8 4.8"></path></svg>
+            <span style="flex-grow: 1; font-size: 13px; color: #29abe2;"><span style="font-weight: 600;">12 records</span> returned in 68 ms · 12 labels at 1 copy each</span>
+            <button type="button" style="height: 28px; padding: 0 11px; border: 1px solid rgba(41,171,226,0.25); background: rgba(13,17,23,0.62); border-radius: 7px; font-size: 12.5px; color: #29abe2; cursor: pointer;">Choose records</button>
+          </div>
+        </div>
+
+        <div style="flex-shrink: 0; box-sizing: border-box; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.20); border-radius: 10px; padding: 16px 18px; display: flex; flex-direction: column; gap: 14px;">
+          <div style="display: flex; align-items: center; gap: 14px;">
+            <span style="width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%; background: #29abe2; color: #ffffff; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; justify-content: center;">3</span>
+            <h2 style="margin: 0; font-size: 14px; font-weight: 600;">Printer and options</h2>
+          </div>
+          <div style="display: flex; gap: 12px; align-items: flex-end;">
+            <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 6px;">
+              <label for="run-printer" style="font-size: 11.5px; font-weight: 500; color: #8892b0;">Printer</label>
+              <select id="run-printer" style="height: 38px; box-sizing: border-box; border: 1px solid rgba(41,171,226,0.20); border-radius: 8px; background: rgba(13,17,23,0.62); font: inherit; font-size: 13px; padding: 0 11px;">
+                <option>ZT411 · Despatch — ready, 100 × 150 TT</option>
+              </select>
+            </div>
+            <div style="width: 110px; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px;">
+              <label for="run-copies" style="font-size: 11.5px; font-weight: 500; color: #8892b0;">Copies each</label>
+              <input id="run-copies" type="text" value="1" style="height: 38px; box-sizing: border-box; border: 1px solid rgba(41,171,226,0.20); border-radius: 8px; background: rgba(13,17,23,0.62); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; padding: 0 11px; width: 100%;">
+            </div>
+            <div style="width: 130px; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px;">
+              <label for="run-start" style="font-size: 11.5px; font-weight: 500; color: #8892b0;">Start at record</label>
+              <input id="run-start" type="text" value="1" style="height: 38px; box-sizing: border-box; border: 1px solid rgba(41,171,226,0.20); border-radius: 8px; background: rgba(13,17,23,0.62); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; padding: 0 11px; width: 100%;">
+            </div>
+          </div>
+          <div style="display: flex; gap: 22px;">
+            <span style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #8892b0;"><span style="width: 17px; height: 17px; border-radius: 4px; background: #29abe2; display: flex; align-items: center; justify-content: center;"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="rgba(13,17,23,0.62)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.4 6.4 11.6 12.8 4.8"></path></svg></span>Print a job separator label</span>
+            <span style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #8892b0;"><span style="width: 17px; height: 17px; border-radius: 4px; border: 1.5px solid rgba(41,171,226,0.35); box-sizing: border-box;"></span>Pause between records</span>
+            <span style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #8892b0;"><span style="width: 17px; height: 17px; border-radius: 4px; background: #29abe2; display: flex; align-items: center; justify-content: center;"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="rgba(13,17,23,0.62)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.4 6.4 11.6 12.8 4.8"></path></svg></span>Record this run in job history</span>
+          </div>
+        </div>
+
+        <div style="flex-shrink: 0; box-sizing: border-box; border: 1px solid rgba(247,148,29,0.35); background: rgba(247,148,29,0.12); border-radius: 10px; padding: 13px 16px; display: flex; align-items: center; gap: 11px;">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="#f7941d" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M8 2.6 14.6 13.4H1.4z"></path><path d="M8 6.6v3M8 11.4h.01"></path></svg>
+          <span style="flex-grow: 1; display: flex; flex-direction: column; gap: 2px;">
+            <span style="font-size: 13px; font-weight: 500; color: #f7941d;">Record 3 has no compliance mark</span>
+            <span style="font-size: 12.5px; color: #f7941d;">Its <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">mark_png_b64</span> is null, so that label prints without the image.</span>
+          </span>
+          <button type="button" style="height: 30px; padding: 0 12px; border: 1px solid rgba(247,148,29,0.40); background: rgba(13,17,23,0.62); border-radius: 7px; font-size: 12.5px; color: #f7941d; cursor: pointer;">Skip that record</button>
+        </div>
+
+        <div style="flex-grow: 1;"></div>
+
+      </div>
+
+      <div style="width: 480px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; min-height: 0;">
+
+        <div style="flex-grow: 1; box-sizing: border-box; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.20); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; min-height: 0;">
+          <div style="height: 46px; flex-shrink: 0; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(41,171,226,0.12);">
+            <h2 style="margin: 0; font-size: 13.5px; font-weight: 600;">Preview</h2>
+            <div style="flex-grow: 1;"></div>
+            <button type="button" aria-label="Previous record" style="width: 28px; height: 28px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 7px; color: #8892b0; cursor: pointer; display: flex; align-items: center; justify-content: center;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3.5 5 8l4.5 4.5"></path></svg></button>
+            <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: #8892b0;">Record 1 of 12</span>
+            <button type="button" aria-label="Next record" style="width: 28px; height: 28px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 7px; color: #8892b0; cursor: pointer; display: flex; align-items: center; justify-content: center;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5 11 8l-4.5 4.5"></path></svg></button>
+          </div>
+
+          <div style="flex-grow: 1; background: #080b10; display: flex; align-items: center; justify-content: center; padding: 18px; min-height: 0;">
+            <div style="width: 248px; height: 372px; box-sizing: border-box; background: #ffffff; color: #0d1117; border: 1px solid #c3c8d3; padding: 11px; display: flex; flex-direction: column; gap: 6px;">
+              <div style="display: flex; align-items: flex-start; gap: 8px;">
+                <div style="width: 58px; height: 29px; flex-shrink: 0; background: #0d1117; color: #ffffff; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; display: flex; align-items: center; justify-content: center;">MEATCO</div>
+                <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 1px; align-items: flex-end;">
+                  <span style="font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 0.04em;">CARTON</span>
+                  <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 7.5px;">18 SEP 2026</span>
+                  <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 7.5px;">CTN 1 OF 4</span>
+                </div>
+              </div>
+              <div style="height: 1.5px; background: #0d1117;"></div>
+              <div style="display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 6.5px; letter-spacing: 0.14em; color: #5a6475;">SHIP TO</span>
+                <span style="font-size: 11.5px; font-weight: 600; line-height: 1.15;">Coles DC Truganina</span>
+                <span style="font-size: 8.5px; line-height: 1.3;">12 Foundation Road<br>Truganina VIC 3029</span>
+              </div>
+              <div style="height: 1px; background: #c3c8d3;"></div>
+              <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; font-weight: 500;">BF-2201</span>
+                <span style="font-size: 8.5px; color: #8892b0;">24 units</span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 2px; align-items: center; margin-top: 2px;">
+                <div style="width: 100%; height: 46px; background-color: #ffffff; background-image: repeating-linear-gradient(90deg, #0d1117 0 2px, #ffffff 2px 5px, #0d1117 5px 6px, #ffffff 6px 9px, #0d1117 9px 12px, #ffffff 12px 13px, #0d1117 13px 14px, #ffffff 14px 18px);"></div>
+                <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; letter-spacing: 0.1em;">7MB9042198</span>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: flex-start; margin-top: 3px;">
+                <div style="width: 54px; height: 54px; flex-shrink: 0; background: conic-gradient(#0d1117 25%, #ffffff 0 50%, #0d1117 0 75%, #ffffff 0) 0 0 / 6px 6px; position: relative;">
+                  <span style="position: absolute; left: 0; top: 0; width: 15px; height: 15px; box-sizing: border-box; background: #ffffff; border: 3px solid #0d1117;"></span>
+                  <span style="position: absolute; right: 0; top: 0; width: 15px; height: 15px; box-sizing: border-box; background: #ffffff; border: 3px solid #0d1117;"></span>
+                  <span style="position: absolute; left: 0; bottom: 0; width: 15px; height: 15px; box-sizing: border-box; background: #ffffff; border: 3px solid #0d1117;"></span>
+                </div>
+                <div style="flex-grow: 1; height: 54px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(41,171,226,0.15);">
+                  <svg width="74" height="34" viewBox="0 0 120 50" fill="none" stroke="#0d1117" stroke-width="2.6" stroke-linecap="round"><path d="M6 36c14 0 16-26 26-26s10 34 22 34c9 0 12-12 15-20s6-10 10-4 8 14 15 14 14-6 20-14"></path></svg>
+                </div>
+              </div>
+              <div style="flex-grow: 1;"></div>
+              <div style="display: flex; border-top: 1px solid #c3c8d3; padding-top: 5px; gap: 6px;">
+                <div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 6px; letter-spacing: 0.12em; color: #5a6475;">BATCH</span><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 8px;">B26-2551</span></div>
+                <div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 6px; letter-spacing: 0.12em; color: #5a6475;">USE BY</span><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 8px;">02/10/26</span></div>
+                <div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 6px; letter-spacing: 0.12em; color: #5a6475;">NET WT</span><span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 8px;">18.4 kg</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div style="height: 76px; flex-shrink: 0; box-sizing: border-box; border-top: 1px solid rgba(41,171,226,0.12); padding: 12px 18px; display: flex; align-items: center; gap: 9px;">
+            <div style="width: 34px; height: 50px; flex-shrink: 0; background: rgba(13,17,23,0.62); border: 2px solid #29abe2; display: flex; flex-direction: column; gap: 2px; padding: 3px; box-sizing: border-box;"><div style="height: 5px; background: #0d1117;"></div><div style="height: 2px; background: #c3c8d3;"></div><div style="flex-grow: 1;"></div><div style="height: 12px; background-image: repeating-linear-gradient(90deg, #0d1117 0 1px, #ffffff 1px 3px);"></div></div>
+            <div style="width: 34px; height: 50px; flex-shrink: 0; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.20); display: flex; flex-direction: column; gap: 2px; padding: 3px; box-sizing: border-box;"><div style="height: 5px; background: #0d1117;"></div><div style="height: 2px; background: #c3c8d3;"></div><div style="flex-grow: 1;"></div><div style="height: 12px; background-image: repeating-linear-gradient(90deg, #0d1117 0 1px, #ffffff 1px 3px);"></div></div>
+            <div style="width: 34px; height: 50px; flex-shrink: 0; background: rgba(13,17,23,0.62); border: 1px solid rgba(247,148,29,0.35); display: flex; flex-direction: column; gap: 2px; padding: 3px; box-sizing: border-box;"><div style="height: 5px; background: #0d1117;"></div><div style="height: 2px; background: #c3c8d3;"></div><div style="flex-grow: 1;"></div><div style="height: 12px; background-image: repeating-linear-gradient(90deg, #0d1117 0 1px, #ffffff 1px 3px);"></div></div>
+            <div style="width: 34px; height: 50px; flex-shrink: 0; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.20); display: flex; flex-direction: column; gap: 2px; padding: 3px; box-sizing: border-box;"><div style="height: 5px; background: #0d1117;"></div><div style="height: 2px; background: #c3c8d3;"></div><div style="flex-grow: 1;"></div><div style="height: 12px; background-image: repeating-linear-gradient(90deg, #0d1117 0 1px, #ffffff 1px 3px);"></div></div>
+            <div style="width: 34px; height: 50px; flex-shrink: 0; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.20); display: flex; flex-direction: column; gap: 2px; padding: 3px; box-sizing: border-box;"><div style="height: 5px; background: #0d1117;"></div><div style="height: 2px; background: #c3c8d3;"></div><div style="flex-grow: 1;"></div><div style="height: 12px; background-image: repeating-linear-gradient(90deg, #0d1117 0 1px, #ffffff 1px 3px);"></div></div>
+            <span style="font-size: 12px; color: #8892b0; margin-left: 4px;">+ 7 more</span>
+            <div style="flex-grow: 1;"></div>
+            <button type="button" style="height: 28px; padding: 0 11px; border: 1px solid rgba(41,171,226,0.20); background: rgba(13,17,23,0.62); border-radius: 7px; font-size: 12.5px; color: #8892b0; cursor: pointer;">Download PDF</button>
+          </div>
+        </div>
+
+        <div style="flex-shrink: 0; box-sizing: border-box; background: rgba(13,17,23,0.62); border: 1px solid rgba(41,171,226,0.20); border-radius: 10px; padding: 16px 18px; display: flex; flex-direction: column; gap: 13px;">
+          <div style="display: flex; align-items: baseline; gap: 8px;">
+            <span style="font-family: ui-sans-serif, system-ui, sans-serif; font-size: 26px; font-weight: 700; letter-spacing: -0.02em;">12</span>
+            <span style="font-size: 13px; color: #8892b0;">labels to ZT411 · Despatch</span>
+            <div style="flex-grow: 1;"></div>
+            <span style="font-size: 12.5px; color: #8892b0;">about 24 s</span>
+          </div>
+          <button type="button" style="height: 48px; border: 0; border-radius: 9px; background: #29abe2; color: #ffffff; font-size: 15px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 9px;"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.5 6.2V2.6h7v3.6"></path><rect x="2" y="6.2" width="12" height="5" rx="1.2"></rect><path d="M4.5 9.6h7v3.8h-7z"></path></svg>Print 12 labels</button>
+          <span style="font-size: 11.5px; color: #8892b0; text-align: center;">Queued as JOB-40220 · you can pause or cancel from the dashboard</span>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
