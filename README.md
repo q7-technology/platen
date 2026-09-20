@@ -27,8 +27,10 @@ MIT licensed. Built by [Q7 Technology](https://q7technology.com.au) in Ballarat.
   or a small agent for a printer plugged into somebody's machine. No drivers on
   anyone's laptop. Platen can find the ones already on your network, private
   ranges only.
-- **Jobs you can answer for.** Queued, cancellable between labels, and retried
-  twice by the worker on its own. A retry resumes rather than restarts, so a
+- **Jobs you can answer for.** Choose which records go on the roll, put a
+  separator in front of the job, take the whole run as a PDF before you commit
+  stock to it. Queued, cancellable between labels, and retried twice by the
+  worker on its own. A retry resumes rather than restarts, so a
   label that already came out is never printed twice. Warnings stay attached
   to the run.
 

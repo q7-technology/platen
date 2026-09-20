@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -12,8 +13,9 @@ from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response as RawResponse
 from fastapi.staticfiles import StaticFiles
+from PIL import Image
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
@@ -25,7 +27,7 @@ from db.session import get_session
 from . import auth, binding, datasources, jobs, preview, printers, zplimport
 from .models import Template
 from .settings import settings
-from .zpl import RenderError, render_run
+from .zpl import RenderError, render_run, separator
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -560,6 +562,11 @@ class RunSpec(BaseModel):
     copies: int = 1
     start_at: int = 1
     skip_rows: list[int] = []      # 1-based record numbers, as the operator sees them
+    separator: bool = False        # a divider label in front of the job
+
+
+MAX_RECORDS = 200                  # what the check will describe back
+MAX_PDF_PAGES = 50
 
 
 class NewRun(RunSpec):
@@ -569,9 +576,11 @@ class NewRun(RunSpec):
 class Prepared(BaseModel):
     version_id: int
     version: int
-    records: int
+    records: list[dict[str, Any]]   # every record in range, skipped ones marked
+    printing: int                   # how many of them will actually print
     labels: list[str]
     warnings: list[str]
+    template: Template
 
 
 def _prepare(s: Session, body: RunSpec) -> Prepared:
@@ -584,14 +593,42 @@ def _prepare(s: Session, body: RunSpec) -> Prepared:
 
     rows = datasources.run(s, _query(s, t.query), body.params) if t.query else [{}]
     skip = set(body.skip_rows)
-    rows = [r for i, r in enumerate(rows, start=1) if i >= body.start_at and i not in skip]
+    in_range = [(i, r) for i, r in enumerate(rows, start=1) if i >= body.start_at]
+    printing = [(i, r) for i, r in in_range if i not in skip]
 
     try:
-        labels, warnings = render_run(t, rows, copies=body.copies)
+        labels, warnings = render_run(t, [r for _, r in printing], copies=body.copies)
     except RenderError as exc:
         raise HTTPException(422, str(exc)) from None
-    return Prepared(version_id=version.id, version=version.version, records=len(rows),
-                    labels=labels, warnings=warnings)
+    # every record in range comes back, skipped ones marked: a list that drops
+    # what you untick makes unticking a one-way door
+    return Prepared(
+        version_id=version.id, version=version.version,
+        records=[{"n": n, "summary": _summarise(r), "included": n not in skip}
+                 for n, r in in_range],
+        printing=len(printing), labels=labels, warnings=warnings, template=t,
+    )
+
+
+def _summarise(row: dict[str, Any]) -> str:
+    """Enough of a record for someone to recognise it in a list. Image columns
+    are four kilobytes of nothing anyone can read, so they are left out."""
+    bits = []
+    for name, value in row.items():
+        if value is None or isinstance(value, (bytes, memoryview)):
+            continue
+        text = str(value)
+        if len(text) > 64:                            # a base64 image, or prose
+            continue
+        bits.append(text)
+        if len(bits) == 3:
+            break
+    return " · ".join(bits)[:180]
+
+
+def _with_separator(p: Prepared, run_id: str) -> list[str]:
+    when = auth.now().strftime("%d %b %Y %H:%M")
+    return [separator(p.template, run_id, len(p.labels), when), *p.labels]
 
 
 @app.post("/runs/check", dependencies=[Depends(current_user)])
@@ -599,9 +636,52 @@ def check_run(body: RunSpec, s: Session = Depends(get_session)) -> dict[str, Any
     """Everything a run would do short of writing it down or queueing it."""
     started = time.perf_counter()
     p = _prepare(s, body)
-    return {"records": p.records, "labels": len(p.labels), "warnings": p.warnings,
-            "template_version": p.version,
-            "elapsed_ms": round((time.perf_counter() - started) * 1000)}
+    return {
+        "records": p.printing,
+        "record_list": p.records[:MAX_RECORDS],
+        "records_capped": len(p.records) > MAX_RECORDS,
+        "labels": len(p.labels) + (1 if body.separator else 0),
+        "warnings": p.warnings,
+        "template_version": p.version,
+        "elapsed_ms": round((time.perf_counter() - started) * 1000),
+    }
+
+
+@app.post("/runs/preview.pdf", dependencies=[Depends(current_user)])
+def run_pdf(body: RunSpec, s: Session = Depends(get_session)) -> RawResponse:
+    """The run as a PDF, to look at before committing a roll of stock to it."""
+    p = _prepare(s, body)
+    rows = (datasources.run(s, _query(s, p.template.query), body.params)
+            if p.template.query else [{}])
+    skip = set(body.skip_rows)
+    chosen = [r for i, r in enumerate(rows, start=1)
+              if i >= body.start_at and i not in skip]
+
+    pages: list[Image.Image] = []
+    for row in chosen:
+        if len(pages) >= MAX_PDF_PAGES:
+            break
+        for _ in range(body.copies):
+            if len(pages) >= MAX_PDF_PAGES:
+                break
+            try:
+                pages.append(Image.open(io.BytesIO(preview.render_png(p.template, row))))
+            except preview.RenderError as exc:
+                raise HTTPException(422, str(exc)) from None
+    if not pages:
+        raise HTTPException(422, "there is nothing to draw")
+
+    out = io.BytesIO()
+    pages[0].convert("L").save(out, "PDF", save_all=True,
+                               append_images=[page.convert("L") for page in pages[1:]],
+                               resolution=p.template.dpi)
+    name = f"{body.template_id}-{auth.now():%Y%m%d-%H%M}.pdf"
+    return RawResponse(
+        out.getvalue(), media_type="application/pdf",
+        headers={"content-disposition": f'attachment; filename="{name}"',
+                 "x-platen-pages": str(len(pages)),
+                 "x-platen-labels": str(len(p.labels))},
+    )
 
 
 def _run_json(run: db.PrintRun) -> dict[str, Any]:
@@ -628,15 +708,17 @@ def create_run(body: NewRun, s: Session = Depends(get_session),
     # every label renders here, before a run row exists, let alone a job
     p = _prepare(s, body)
 
+    run_id = f"JOB-{uuid.uuid4().hex[:6].upper()}"
+    labels = _with_separator(p, run_id) if body.separator else p.labels
     run = db.PrintRun(
-        id=f"JOB-{uuid.uuid4().hex[:6].upper()}", template_version_id=p.version_id,
-        printer_id=body.printer_id, params=body.params, copies=body.copies, total=len(p.labels),
-        labels=[db.RunLabel(seq=i, zpl=z) for i, z in enumerate(p.labels, start=1)],
+        id=run_id, template_version_id=p.version_id,
+        printer_id=body.printer_id, params=body.params, copies=body.copies, total=len(labels),
+        labels=[db.RunLabel(seq=i, zpl=z) for i, z in enumerate(labels, start=1)],
         warnings=[_warning(w) for w in p.warnings],
     )
     s.add(run)
     audit(s, "create", "run", run.id, template_id=body.template_id, template_version=p.version,
-          printer_id=body.printer_id, labels=len(p.labels), skip_rows=body.skip_rows, actor=user)
+          printer_id=body.printer_id, labels=len(labels), skip_rows=body.skip_rows, actor=user)
     s.commit()
 
     try:
