@@ -31,7 +31,7 @@ class OneSource:
         self.row = SimpleNamespace(id="wms", name="wms", label="", kind="sql",
                                    url=url, headers={}, pool_size=5)
 
-    def get(self, model, key):  # noqa: ARG002 — a stub, not an interface
+    def get(self, model, key):
         return self.row
 
 
