@@ -19,6 +19,7 @@ printer. MIT licensed, built by Q7 Technology in Ballarat.
 app/            the service
   settings.py     everything read from the environment, in one place
   retention.py    what gets thrown away, and when
+  logs.py         one place that decides what Platen says about itself
   auth.py         users, roles, password hashing, sessions
   models.py       template + element schema (pydantic), mm↔dots
   binding.py      "{{ order.sku }}" → a value from a row
@@ -116,7 +117,10 @@ test suite runs the same models on SQLite, so keep column types portable.
     its `run_label` rows first and the run, its counts and its warnings much
     later, so job history still answers "what happened" long after the ZPL is
     gone. A run that has not settled is never pruned, however old it looks.
-17. **Discovery stays on the site's own network.** `printers.scan` refuses
+17. **The log never carries a secret.** No password, key, token or connection
+    string, so a site can ship it somewhere without thinking about it. Log the
+    identifiers — run, printer, query, user — and the reason.
+18. **Discovery stays on the site's own network.** `printers.scan` refuses
     anything but a private, loopback or link-local range, caps a call at 1024
     addresses, and opens one connection per address on the one port it was
     given. It is how you find your own printers, not a port sweep.

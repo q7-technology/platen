@@ -112,6 +112,20 @@ Migrations run when the API starts, so an upgrade is `docker compose pull &&
 docker compose up -d`. Take the dump first: migrations go forward on their own
 and back only by hand.
 
+**It says what it is doing.** The API and the worker log to stderr, so compose
+and journalctl pick them up without any setup:
+
+```
+platen.jobs  run started: run=JOB-2DFF05 printer=despatch printed=0 total=12 attempt=1
+platen.jobs  run done: run=JOB-2DFF05 printer=despatch printed=12
+platen.auth  sign-in refused: user=dave known=True
+```
+
+Refused sign-ins, lockouts, failed queries and every run that starts, finishes,
+fails, is held or is waiting on somebody. `PLATEN_LOG_LEVEL=debug` for more.
+No password, key or connection string is ever written to it, so the log is one
+you can ship off the box.
+
 **Things are thrown away on a schedule**, because they would otherwise not be.
 A five thousand label run writes about twenty megabytes of ZPL, and nobody
 reads last April's. The defaults:

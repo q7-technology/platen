@@ -26,6 +26,8 @@ from sqlalchemy.orm import Session
 from db import session as dbsession
 from db.models import ApiToken, AppUser, UserSession
 
+from .logs import where
+
 log = logging.getLogger("platen.auth")
 
 COOKIE = "platen_session"
@@ -127,6 +129,7 @@ def set_password(session: Session, user: AppUser, password: str) -> None:
 def login(session: Session, username: str, password: str) -> AppUser:
     user = session.get(AppUser, (username or "").strip().lower())
     if user is not None and user.locked_until and user.locked_until > now():
+        log.warning("sign-in refused, account locked: %s", where(user=username))
         raise LockedOut(
             "too many attempts; this account is locked for "
             f"{round((user.locked_until - now()).total_seconds() / 60)} more minutes"
@@ -138,11 +141,17 @@ def login(session: Session, username: str, password: str) -> AppUser:
             user.failed_logins += 1
             if user.failed_logins >= MAX_FAILURES:
                 user.locked_until = now() + LOCKOUT
+                log.warning("account locked after %d refused sign-ins: %s",
+                            MAX_FAILURES, where(user=username))
             session.commit()
+        log.warning("sign-in refused: %s",
+                    where(user=(username or "").strip().lower() or "(none)",
+                          known=user is not None))
         raise BadLogin("that username or password isn't right")
 
     user.failed_logins, user.locked_until, user.last_login_at = 0, None, now()
     session.commit()
+    log.info("signed in: %s", where(user=user.username, role=user.role))
     return user
 
 

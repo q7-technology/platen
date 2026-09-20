@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import logging
 import re
 import urllib.parse
 from dataclasses import dataclass, field
@@ -22,6 +23,8 @@ from sqlalchemy.orm import Session
 from db import models as db
 
 from . import images
+
+log = logging.getLogger("platen.datasources")
 
 PLACEHOLDER = re.compile(r":([a-zA-Z_]\w*)")
 REST_TIMEOUT = 20.0
@@ -165,9 +168,16 @@ def run(session: Session, query: SavedQuery, params: dict[str, Any],
 
     sql = (query.sql if limit is None
            else limited(query.sql, limit, ds.engine.dialect.name))
-    with ds.engine.connect() as c:
-        result = c.execute(text(sql), bound)
-        return [dict(r) for r in result.mappings()]
+    try:
+        with ds.engine.connect() as c:
+            result = c.execute(text(sql), bound)
+            return [dict(r) for r in result.mappings()]
+    except Exception as exc:
+        # the message can carry the operator's SQL but never their parameters
+        log.warning("query failed: %s",
+                    f"query={query.name} source={query.datasource} "
+                    f"error={type(exc).__name__}")
+        raise
 
 
 def _fetch(ds: DataSource, query: SavedQuery, bound: dict[str, Any],
@@ -191,10 +201,16 @@ def _fetch(ds: DataSource, query: SavedQuery, bound: dict[str, Any],
         response.raise_for_status()
         body = response.json()
     except httpx.HTTPStatusError as exc:
+        log.warning("query failed: %s",
+                    f"query={query.name} source={query.datasource} "
+                    f"status={exc.response.status_code}")
         raise ValueError(
             f"{query.name}: the endpoint answered {exc.response.status_code}"
         ) from None
     except httpx.HTTPError as exc:
+        log.warning("query failed: %s",
+                    f"query={query.name} source={query.datasource} "
+                    f"error={type(exc).__name__}")
         raise ValueError(f"{query.name}: could not reach the endpoint — {exc}") from None
     except ValueError:
         raise ValueError(f"{query.name}: the endpoint did not answer with JSON") from None
@@ -247,9 +263,15 @@ def columns(session: Session, query: SavedQuery) -> list[str]:
         # no endpoint can describe its own shape, so ask for one record
         rows = _fetch(ds, query, bound, limit=1)
         return list(rows[0]) if rows else []
-    with ds.engine.connect() as c:
-        statement = text(limited(query.sql, 0, ds.engine.dialect.name))
-        return list(c.execute(statement, bound).keys())
+    try:
+        with ds.engine.connect() as c:
+            statement = text(limited(query.sql, 0, ds.engine.dialect.name))
+            return list(c.execute(statement, bound).keys())
+    except Exception as exc:
+        log.warning("query failed: %s",
+                    f"query={query.name} source={query.datasource} "
+                    f"error={type(exc).__name__}")
+        raise
 
 
 def describe(rows: list[dict[str, Any]]) -> list[dict[str, str]]:

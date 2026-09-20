@@ -4,6 +4,7 @@ interesting reason. Redis carries only the job id; the run itself is a row."""
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 import redis
@@ -16,6 +17,9 @@ from db import session as dbsession
 from db.models import PrintRun, RunLabel, Setting
 
 from . import printers
+from .logs import where
+
+log = logging.getLogger("platen.jobs")
 
 _redis: redis.Redis | None = None
 
@@ -110,17 +114,23 @@ def print_run(run_id: str) -> None:
             run.error = f"printer {run.printer_id!r} no longer exists"
             run.finished_at = datetime.now(UTC)
             s.commit()
+            log.error("run failed: %s", where(run=run_id, printer=run.printer_id,
+                                              reason="printer no longer exists"))
             return
 
         # nothing new starts while the queue is held; resuming puts it back
         if paused(s):
             run.status = "paused"
             s.commit()
+            log.info("run held before it started: %s", where(run=run_id))
             return
 
         run.status, run.started_at, run.error = "printing", datetime.now(UTC), None
         s.commit()
         printed = run.total - remaining(s, run_id)
+        log.info("run started: %s", where(run=run_id, printer=run.printer_id,
+                                          printed=printed, total=run.total,
+                                          attempt=run.attempts + 1))
         labels = s.scalars(
             select(RunLabel).where(RunLabel.run_id == run_id, RunLabel.printed_at.is_(None))
             .order_by(RunLabel.seq)
@@ -132,6 +142,8 @@ def print_run(run_id: str) -> None:
                     run.status = "cancelled"
                     run.finished_at = datetime.now(UTC)
                     s.commit()
+                    log.info("run cancelled: %s", where(run=run_id, printed=printed,
+                                                        total=run.total))
                     return
                 if paused(s):
                     # between labels, like cancel: holding halfway through one
@@ -139,6 +151,8 @@ def print_run(run_id: str) -> None:
                     run.status = "paused"
                     run.printed = printed
                     s.commit()
+                    log.info("run held: %s", where(run=run_id, printed=printed,
+                                                   total=run.total))
                     return
                 # one label per write: the printer buffers a few, and a mid-run
                 # failure then costs one label instead of the whole batch
@@ -151,8 +165,12 @@ def print_run(run_id: str) -> None:
                 if run.pause_between and printed < run.total:
                     run.status = "waiting"
                     s.commit()
+                    log.info("run waiting on the operator: %s",
+                             where(run=run_id, printed=printed, total=run.total))
                     return
             run.status = "done"
+            log.info("run done: %s", where(run=run_id, printer=run.printer_id,
+                                           printed=printed))
         except Exception as exc:
             run.attempts += 1
             run.printed = printed
@@ -161,6 +179,9 @@ def print_run(run_id: str) -> None:
             run.status = "retrying" if left else "failed"
             run.finished_at = None if left else datetime.now(UTC)
             s.commit()
+            log.error("run %s: %s", run.status,
+                      where(run=run_id, printer=run.printer_id, printed=printed,
+                            total=run.total, tries_left=left, error=run.error))
             raise                                     # rq schedules the next attempt
         run.finished_at = datetime.now(UTC)
         s.commit()
