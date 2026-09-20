@@ -12,12 +12,14 @@ from typing import Any, Mapping
 
 import barcode
 import qrcode
+from ppf.datamatrix import DataMatrix
 from PIL import Image, ImageDraw, ImageFont
 
 from . import images
 from .binding import BindingError, MissingField, raw_value, render_value
 from .models import (
     BarcodeElement,
+    DataMatrixElement,
     Element,
     BoxShape,
     ImageElement,
@@ -110,6 +112,18 @@ def _element(canvas: Image.Image, draw: ImageDraw.ImageDraw, template: Template,
         value = render_value(el.value, row).strip()
         if value:
             _barcode(draw, el, value, x, y, h)
+
+    elif isinstance(el, DataMatrixElement):
+        value = render_value(el.value, row).strip()
+        if value:
+            # the printer encodes ECC200 from the same data, so the preview
+            # encodes it too rather than drawing a plausible-looking square
+            for r, line in enumerate(DataMatrix(value).matrix):
+                for c, on in enumerate(line):
+                    if on:
+                        draw.rectangle([x + c * el.module_dots, y + r * el.module_dots,
+                                        x + (c + 1) * el.module_dots - 1,
+                                        y + (r + 1) * el.module_dots - 1], fill=0)
 
     elif isinstance(el, QrElement):
         value = render_value(el.value, row)

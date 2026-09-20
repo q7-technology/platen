@@ -141,8 +141,9 @@
                   dirty: false, timer: null, mode: 'columns', objectUrl: null };
 
   const KINDS = [
-    ['text', 'Text', 'text'], ['barcode', 'Barcode', 'barcode'], ['qr', 'QR / 2D', 'qr'],
-    ['image', 'Image', 'image'], ['line', 'Line', 'line'], ['box', 'Box', 'square'],
+    ['text', 'Text', 'text'], ['barcode', 'Barcode', 'barcode'], ['qr', 'QR code', 'qr'],
+    ['datamatrix', 'Data Matrix', 'grid'], ['image', 'Image', 'image'],
+    ['line', 'Line', 'line'], ['box', 'Box', 'square'],
   ];
 
   const DEFAULTS = {
@@ -150,11 +151,13 @@
     barcode: { value: '', symbology: 'code128', module_dots: 2, human_readable: 'below',
                check_digit: false, skip_if_blank: true },
     qr: { value: '', model: 2, magnification: 5, error_correction: 'Q' },
+    datamatrix: { value: '', module_dots: 6, quality: 200, skip_if_blank: true },
     image: { value: '', source: 'base64', dither: true, threshold: 128, on_missing: 'blank' },
     line: { thickness_mm: 0.4 },
     box: { thickness_mm: 0.4, fill: false },
   };
-  const SIZES = { text: [40, 8], barcode: [50, 15], qr: [20, 20], image: [25, 20], line: [40, 0.4], box: [30, 20] };
+  const SIZES = { text: [40, 8], barcode: [50, 15], qr: [20, 20], datamatrix: [16, 16],
+                  image: [25, 20], line: [40, 0.4], box: [30, 20] };
 
   /* Which controls each kind shows. [key, type, label, options] */
   const SPEC = {
@@ -172,6 +175,9 @@
     qr: [['value', 'bind', 'Value'], ['magnification', 'num', 'Magnification', { step: 1, min: 1, max: 10 }],
          ['error_correction', 'sel', 'Error correction', ['L', 'M', 'Q', 'H']],
          ['model', 'sel', 'Model', [1, 2]]],
+    datamatrix: [['value', 'bind', 'Value'],
+                 ['module_dots', 'num', 'Module size, dots', { step: 1, min: 2, max: 20 }],
+                 ['skip_if_blank', 'chk', 'Skip the label if this is blank']],
     image: [['value', 'bind', 'Value'], ['source', 'sel', 'Source', ['base64', 'url', 'asset']],
             ['dither', 'chk', 'Dither (Floyd–Steinberg)'],
             ['threshold', 'num', 'Threshold when not dithering', { step: 1, min: 0, max: 255 }],
@@ -326,7 +332,8 @@
         'aria-selected': String(i === state.sel), onclick: () => select(i),
         onkeydown: (ev) => { if (ev.key === 'Enter') select(i); },
       },
-        icon(({ text: 'text', barcode: 'barcode', qr: 'qr', image: 'image', line: 'line', box: 'square' })[e.kind], 13),
+        icon(({ text: 'text', barcode: 'barcode', qr: 'qr', datamatrix: 'grid',
+                image: 'image', line: 'line', box: 'square' })[e.kind], 13),
         el('span', { class: 'nm', text: e.name }),
         el('button', { type: 'button', 'aria-label': `Move ${e.name} up`,
                        onclick: (ev) => { ev.stopPropagation(); reorder(i, -1); } }, icon('up', 13)),

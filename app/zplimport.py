@@ -16,12 +16,14 @@ from typing import Any, Iterator
 
 import barcode
 import qrcode
+from ppf.datamatrix import DataMatrix
 from PIL import Image
 
 from .models import (
     BarcodeElement,
     Box,
     BoxShape,
+    DataMatrixElement,
     Element,
     ImageElement,
     LineShape,
@@ -106,6 +108,7 @@ class _Field:
     unescape: str | None = None    # ^FH's escape character
     barcode: dict[str, Any] | None = None
     qr: dict[str, Any] | None = None
+    datamatrix: dict[str, Any] | None = None
     data: str | None = None
 
 
@@ -194,6 +197,9 @@ class _Reader:
             self.field().rotation = _rotation(_part(params, 0, "N"))
         elif code == "BQ":
             self.field().qr = {"params": params}
+        elif code == "BX":
+            self.field().datamatrix = {"params": params}
+            self.field().rotation = _rotation(_part(params, 0, "N"))
         elif code == "GB":
             self.graphic_box(params)
         elif code == "GF":
@@ -201,7 +207,7 @@ class _Reader:
         elif code == "FD":
             self.field().data = params
         elif code in ("CI", "FW", "PO", "LS", "LT", "LR", "PM", "FR", "JM", "MM", "MN",
-                      "MT", "PR", "SN", "PQ", "XG", "GS", "BX", "B7", "B8", "B9", "BA",
+                      "MT", "PR", "SN", "PQ", "XG", "GS", "B7", "B8", "B9", "BA",
                       "BE", "BK", "BL", "BM", "BO", "BP", "BR", "BS", "BT", "BU", "BZ"):
             self.warn(f"^{code} isn't imported, so the label may not match exactly")
         elif code.startswith("~"):
@@ -222,6 +228,8 @@ class _Reader:
         data = _unescape(f.data, f.unescape)
         if f.barcode:
             self.elements.append(self.barcode(f, data))
+        elif f.datamatrix:
+            self.elements.append(self.datamatrix(f, data))
         elif f.qr:
             self.elements.append(self.qr(f, data))
         elif f.font or f.char_h:
@@ -282,6 +290,23 @@ class _Reader:
             value=value, model=model if model in (1, 2) else 2,
             magnification=magnification, error_correction=level,
         )
+
+    def datamatrix(self, f: _Field, data: str) -> DataMatrixElement:
+        p = f.datamatrix["params"]                   # type: ignore[index]
+        module = _ints(p, 2)[1] or 6
+        quality = _ints(p, 3)[2] or 200
+        side = self.matrix_size(data) * module
+        return DataMatrixElement(
+            name=self.name_for("datamatrix"), box=self.box(f, side, side),
+            value=data, module_dots=module,
+            quality=quality if quality in (0, 50, 80, 100, 140, 200) else 200,
+        )
+
+    def matrix_size(self, data: str) -> int:
+        try:
+            return len(DataMatrix(data).matrix)
+        except Exception:                            # noqa: BLE001 — a hint, not a contract
+            return 16
 
     def qr_size(self, data: str, magnification: int) -> float:
         try:

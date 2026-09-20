@@ -10,6 +10,7 @@ from .binding import BindingError, MissingField, raw_value, render_value
 from .models import (
     BarcodeElement,
     BoxShape,
+    DataMatrixElement,
     ImageElement,
     LineShape,
     QrElement,
@@ -107,6 +108,16 @@ class ZplRenderer:
                 f"{cmd.replace('N,N', f'{above},N', 1) if above == 'Y' else cmd}"
                 f"^FD{prefix}{_esc(data)}^FS"
             )
+
+        if isinstance(el, DataMatrixElement):
+            data = render_value(el.value, row).strip()
+            if not data:
+                if el.skip_if_blank:
+                    warnings.append(f"{el.name} is blank — label skipped")
+                    return None
+                warnings.append(f"{el.name} is blank")
+                return ""
+            return f"^FO{x},{y}^BX{o},{el.module_dots},{el.quality}^FD{_esc(data)}^FS"
 
         if isinstance(el, QrElement):
             data = _esc(render_value(el.value, row))
