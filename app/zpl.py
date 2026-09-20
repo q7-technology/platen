@@ -151,7 +151,10 @@ def render_run(template: Template, rows: list[Mapping[str, Any]], copies: int = 
     """Render every label before a single byte goes near a printer."""
     labels, warnings = [], []
     for i, row in enumerate(rows, start=1):
-        label = ZplRenderer(template).render(row)
+        try:
+            label = ZplRenderer(template).render(row)
+        except RenderError as exc:
+            raise RenderError(f"row {i}: {exc}") from exc
         warnings += [f"row {i}: {w}" for w in label.warnings]
         if not label.skipped:
             labels.extend([label.zpl] * copies)

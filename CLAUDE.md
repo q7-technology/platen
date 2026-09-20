@@ -17,6 +17,7 @@ printer. MIT licensed, built by Q7 Technology in Ballarat.
 
 ```
 app/            the service
+  settings.py     everything read from the environment, in one place
   models.py       template + element schema (pydantic), mm↔dots
   binding.py      "{{ order.sku }}" → a value from a row
   datasources.py  connection registry, read-only query runner
@@ -26,6 +27,8 @@ app/            the service
   printers.py     raw 9100 / CUPS / local agent transports
   jobs.py         redis queue worker, retries, cancel
   main.py         the HTTP surface
+db/             Platen's own storage: SQLAlchemy models, Alembic migrations
+tests/          pytest; SQLite and fakeredis, no Docker needed
 web/            the public landing page (static, single file)
 docs/           the design canvas artboards and the walkthrough reel
 ```
@@ -39,9 +42,9 @@ uvicorn app.main:app --reload     # API
 rq worker platen                  # worker, second terminal
 ```
 
-Storage is deliberately thin — `TEMPLATES`, `PRINTERS` and `RUNS` are
-module-level dicts. Swapping them for real tables is a known job, not an
-oversight; don't "fix" it as a side effect of another change.
+Storage is Postgres through SQLAlchemy 2 (`db/models.py`) with Alembic
+migrations in `db/migrations/`. Add a migration for every schema change; the
+test suite runs the same models on SQLite, so keep column types portable.
 
 ## Invariants — do not break these quietly
 

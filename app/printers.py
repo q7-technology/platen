@@ -5,9 +5,12 @@ from __future__ import annotations
 import socket
 import subprocess
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Callable, Protocol
 
 import httpx
+from sqlalchemy.orm import Session
+
+from db.models import Printer as PrinterRow
 
 
 class Transport(Protocol):
@@ -98,19 +101,33 @@ class Printer:
     transport: Transport
 
 
-PRINTERS: dict[str, Printer] = {}
+# kind -> constructor. A dict rather than an if-chain so a deployment (or a
+# test) can register a transport without editing this file.
+TRANSPORTS: dict[str, Callable[[dict], Transport]] = {
+    "tcp": lambda c: RawTcp(c["host"], c.get("port", 9100)),
+    "cups": lambda c: Cups(c["queue"]),
+    "agent": lambda c: Agent(c["relay_url"], c["agent_id"], c["device"], c["token"]),
+}
 
 
-def build(config: dict) -> Transport:
-    kind = config["kind"]
-    if kind == "tcp":
-        return RawTcp(config["host"], config.get("port", 9100))
-    if kind == "cups":
-        return Cups(config["queue"])
-    if kind == "agent":
-        return Agent(config["relay_url"], config["agent_id"],
-                     config["device"], config["token"])
-    raise ValueError(f"unknown transport: {kind}")
+def build(kind: str, config: dict) -> Transport:
+    try:
+        factory = TRANSPORTS[kind]
+    except KeyError:
+        raise ValueError(
+            f"unknown transport {kind!r}; one of {', '.join(sorted(TRANSPORTS))}"
+        ) from None
+    return factory(config)
+
+
+def from_row(row: PrinterRow) -> Printer:
+    return Printer(id=row.id, name=row.name, model=row.model, dpi=row.dpi,
+                   transport=build(row.transport_kind, row.transport_config))
+
+
+def load(session: Session, printer_id: str) -> Printer | None:
+    row = session.get(PrinterRow, printer_id)
+    return from_row(row) if row else None
 
 
 TEST_LABEL = (

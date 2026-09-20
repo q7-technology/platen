@@ -1,5 +1,9 @@
 """Connections to the customer's own databases, and the saved queries that run
-against them. Everything here is read-only by construction."""
+against them. Everything here is read-only by construction.
+
+The records live in the datasource / saved_query / query_parameter tables;
+the engines (connection pools) live here in memory, one per datasource, and
+are rebuilt if the stored URL changes."""
 
 from __future__ import annotations
 
@@ -10,6 +14,9 @@ from typing import Any
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
+
+from db import models as db
 
 from . import images
 
@@ -58,15 +65,44 @@ class Parameter:
     label: str = ""
 
 
-REGISTRY: dict[str, DataSource] = {}
-QUERIES: dict[str, SavedQuery] = {}
+_ENGINES: dict[str, DataSource] = {}
 
 
-def run(query: SavedQuery, params: dict[str, Any], limit: int | None = None):
+def datasource(session: Session, datasource_id: str) -> DataSource | None:
+    """The DataSource for a row, with its engine cached across requests."""
+    row = session.get(db.DataSource, datasource_id)
+    if row is None:
+        return None
+    cached = _ENGINES.get(row.id)
+    if cached is None or cached.url != row.url or cached.pool_size != row.pool_size:
+        if cached is not None and cached._engine is not None:
+            cached._engine.dispose()
+        cached = DataSource(name=row.id, url=row.url, label=row.label or row.name,
+                            pool_size=row.pool_size)
+        _ENGINES[row.id] = cached
+    return cached
+
+
+def saved_query(session: Session, query_id: str) -> SavedQuery | None:
+    row = session.get(db.SavedQuery, query_id)
+    if row is None:
+        return None
+    return SavedQuery(
+        name=row.id, datasource=row.datasource_id, sql=row.sql,
+        parameters=[Parameter(name=p.name, type=p.type, default=p.default,
+                              ask_at_print=p.ask_at_print, label=p.label)
+                    for p in row.parameters],
+    )
+
+
+def run(session: Session, query: SavedQuery, params: dict[str, Any],
+        limit: int | None = None) -> list[dict[str, Any]]:
     """Execute a saved query as a prepared statement and return plain dicts."""
-    ds = REGISTRY[query.datasource]
+    ds = datasource(session, query.datasource)
+    if ds is None:
+        raise ValueError(f"query {query.name!r}: its data source {query.datasource!r} no longer exists")
     bound = {p.name: params.get(p.name, p.default) for p in query.parameters}
-    missing = [p.name for p in query.parameters if bound[p.name] is None and not p.ask_at_print]
+    missing = [p.name for p in query.parameters if bound[p.name] is None]
     if missing:
         raise ValueError(f"missing parameters: {', '.join(missing)}")
 

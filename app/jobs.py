@@ -1,87 +1,97 @@
-"""The queue. By the time a job gets here every label is already rendered, so
-the worker does nothing that can fail for an interesting reason."""
+"""The queue. By the time a job gets here every label is already rendered and
+sitting in run_label, so the worker does nothing that can fail for an
+interesting reason. Redis carries only the job id; the run itself is a row."""
 
 from __future__ import annotations
 
-import json
-import time
-from dataclasses import asdict, dataclass, field
-from typing import Literal
+from datetime import datetime, timezone
 
 import redis
 from rq import Queue
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-r = redis.Redis()
-queue = Queue("platen", connection=r)
+from db import session as dbsession
+from db.models import PrintRun, RunLabel
 
-Status = Literal["queued", "printing", "done", "failed", "cancelled"]
+from . import printers
 
-
-@dataclass
-class Run:
-    id: str
-    template_id: str
-    printer_id: str
-    labels: list[str]              # rendered ZPL, one entry per physical label
-    status: Status = "queued"
-    printed: int = 0
-    error: str | None = None
-    warnings: list[str] = field(default_factory=list)
-    created_at: float = field(default_factory=time.time)
-
-    @property
-    def total(self) -> int:
-        return len(self.labels)
+_redis: redis.Redis | None = None
 
 
-def _key(run_id: str) -> str:
-    return f"platen:run:{run_id}"
+def bind(conn: redis.Redis) -> None:
+    global _redis
+    _redis = conn
 
 
-def save(run: Run) -> None:
-    r.set(_key(run.id), json.dumps(asdict(run)), ex=7 * 24 * 3600)
+def connection() -> redis.Redis:
+    if _redis is None:
+        from .settings import settings
+
+        bind(redis.Redis.from_url(settings.redis_url))
+    assert _redis is not None
+    return _redis
 
 
-def load(run_id: str) -> Run:
-    raw = r.get(_key(run_id))
-    if raw is None:
+def queue() -> Queue:
+    return Queue("platen", connection=connection())
+
+
+def enqueue(run_id: str) -> None:
+    """Call only after the run and all its labels are committed."""
+    queue().enqueue(print_run, run_id, job_timeout=3600, retry=None)
+
+
+def cancel(session: Session, run_id: str) -> PrintRun:
+    run = session.get(PrintRun, run_id)
+    if run is None:
         raise KeyError(run_id)
-    return Run(**json.loads(raw))
+    run.cancel_requested = True
+    session.commit()
+    return run
 
 
-def cancel(run_id: str) -> None:
-    r.set(f"platen:cancel:{run_id}", "1", ex=3600)
-
-
-def enqueue(run: Run) -> None:
-    save(run)
-    queue.enqueue(print_run, run.id, job_timeout=3600, retry=None)
+def _cancelled(session: Session, run_id: str) -> bool:
+    # commit first so progress lands and the next read starts a fresh
+    # transaction: the API sets this flag from another process
+    session.commit()
+    return bool(session.scalar(select(PrintRun.cancel_requested).where(PrintRun.id == run_id)))
 
 
 def print_run(run_id: str) -> None:
     """Runs in the worker process."""
-    from .printers import PRINTERS
+    dbsession.engine()
+    with dbsession.SessionLocal() as s:
+        run = s.get(PrintRun, run_id)
+        if run is None:
+            raise KeyError(run_id)
+        printer = printers.load(s, run.printer_id)
+        if printer is None:
+            run.status, run.error = "failed", f"printer {run.printer_id!r} no longer exists"
+            run.finished_at = datetime.now(timezone.utc)
+            s.commit()
+            return
 
-    run = load(run_id)
-    printer = PRINTERS[run.printer_id]
-    run.status = "printing"
-    save(run)
+        run.status, run.started_at = "printing", datetime.now(timezone.utc)
+        s.commit()
+        labels = s.scalars(
+            select(RunLabel).where(RunLabel.run_id == run_id).order_by(RunLabel.seq)
+        ).all()
 
-    try:
-        for i, zpl in enumerate(run.labels, start=1):
-            if r.get(f"platen:cancel:{run_id}"):
-                run.status = "cancelled"
-                save(run)
-                return
-            # one label per write: the printer buffers a few, and a mid-run
-            # failure then costs one label instead of the whole batch
-            printer.transport.send(zpl.encode("ascii") + b"\n")
-            run.printed = i
-            if i % 5 == 0 or i == run.total:
-                save(run)
-        run.status = "done"
-    except Exception as exc:                          # noqa: BLE001 — recorded, not swallowed
-        run.status = "failed"
-        run.error = f"{type(exc).__name__}: {exc}"
-    finally:
-        save(run)
+        try:
+            for label in labels:
+                if _cancelled(s, run_id):
+                    run.status = "cancelled"
+                    return
+                # one label per write: the printer buffers a few, and a mid-run
+                # failure then costs one label instead of the whole batch
+                printer.transport.send(label.zpl.encode("ascii") + b"\n")
+                label.printed_at = datetime.now(timezone.utc)
+                run.printed = label.seq
+            run.status = "done"
+        except Exception as exc:                      # noqa: BLE001 — recorded, not swallowed
+            run.status = "failed"
+            run.error = f"{type(exc).__name__}: {exc}"
+        finally:
+            run.finished_at = datetime.now(timezone.utc)
+            s.commit()

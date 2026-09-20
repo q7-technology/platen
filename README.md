@@ -28,14 +28,36 @@ MIT licensed. Built by [Q7 Technology](https://q7technology.com.au) in Ballarat.
 
 ## Running it
 
+The whole stack, with its own Postgres and Redis:
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+The API is on http://localhost:8000 and runs the migrations before it starts.
+
+On your own machine instead:
+
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
+export DATABASE_URL=postgresql+psycopg://platen:platen@localhost:5432/platen
+export REDIS_URL=redis://localhost:6379/0
+alembic upgrade head              # once, and after pulling a new migration
 uvicorn app.main:app --reload     # API
 rq worker platen                  # worker, in a second terminal
 ```
 
 Needs Python 3.11+, a Postgres for its own storage and a Redis for the queue.
+Every setting comes from the environment; `.env.example` lists them.
+
+Tests need neither Docker nor a database:
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
 
 ## How it fits together
 
@@ -55,9 +77,10 @@ head. Open either in a browser.
 
 ## Status
 
-Early. The storage layer is deliberately thin — `TEMPLATES`, `PRINTERS` and
-`RUNS` are module-level dicts waiting to become real tables. Auth is left to
-whatever you already use.
+Early. Templates, data sources, printers and runs live in Postgres (see
+`db/models.py`); publishing a template writes an immutable version and every
+print run records which version it rendered from. Auth is left to whatever
+you already use.
 
 ## Contributing
 
