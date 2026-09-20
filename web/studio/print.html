@@ -16,6 +16,10 @@
     <header>
       <h1>Print run</h1>
       <span class="sub">Pick a template, pull the data, send it to a printer</span>
+      <span class="spacer"></span>
+      <label for="saved" class="sr-only">Load a saved run</label>
+      <select id="saved" style="height: 34px; width: auto; font-size: 13px;"></select>
+      <button class="btn sm" type="button" id="save-run" disabled>Save this run</button>
     </header>
 
     <div class="work">
@@ -79,6 +83,10 @@
               <input id="separator" type="checkbox" style="width: auto; height: auto; accent-color: var(--accent);">
               Print a separator label in front of the job
             </label>
+            <label class="ask" style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--mut);">
+              <input id="pause-between" type="checkbox" style="width: auto; height: auto; accent-color: var(--accent);">
+              Wait after each label
+            </label>
             <span class="spacer"></span>
             <button class="btn sm" type="button" id="choose">Choose records</button>
             <button class="btn sm" type="button" id="pdf">Download PDF</button>
@@ -125,6 +133,7 @@
               <span class="st" id="run-status"></span>
               <span class="spacer"></span>
               <span class="mono mut" id="run-printed"></span>
+              <button class="btn sm" type="button" id="next" hidden>Print the next one</button>
               <button class="btn sm gold" type="button" id="cancel">Cancel</button>
             </div>
             <div class="bar" style="margin-top: 10px;"><i id="run-bar"></i></div>
@@ -142,6 +151,7 @@
   'use strict';
   renderShell('print');
   const state = { templates: [], template: null, query: null, printers: [], check: null,
+                  saved: [],
                   record: 0, skip: [], run: null, timer: null, previewUrl: null };
 
   const size = (t) => `${t.size_mm[0]} × ${t.size_mm[1]} mm · ${t.dpi} dpi`;
@@ -171,6 +181,7 @@
     state.template = t; state.check = null; state.skip = []; state.record = 0;
     for (const b of $('tpl-list').children) b.setAttribute('aria-pressed', String(b.dataset.id === t.id));
     $('step2').classList.remove('is-off');
+    $('save-run').disabled = false;
     $('q-note').hidden = true; $('q-err').hidden = true;
     renderWarnings([]); showPreview(null); updateGo();
     state.query = t.query ? await api('GET', `/queries/${encodeURIComponent(t.query)}`) : null;
@@ -209,7 +220,8 @@
     return { template_id: state.template.id, params: collectParams(),
              copies: Math.max(1, Number($('copies').value) || 1),
              start_at: Math.max(1, Number($('start-at').value) || 1),
-             skip_rows: state.skip, separator: $('separator').checked };
+             skip_rows: state.skip, separator: $('separator').checked,
+             pause_between: $('pause-between').checked };
   }
 
   async function check() {
@@ -382,13 +394,16 @@
   async function poll() {
     const r = await api('GET', `/runs/${state.run.id}`);
     const done = ['done', 'failed', 'cancelled'].includes(r.status);
-    const words = { queued: 'Queued', printing: 'Printing', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
+    const words = { queued: 'Queued', printing: 'Printing', done: 'Done', failed: 'Failed',
+                    cancelled: 'Cancelled', retrying: 'Retrying', paused: 'Held',
+                    waiting: 'Waiting for you' };
     $('run-status').textContent = words[r.status] || r.status;
     $('run-status').classList.toggle('gold', r.status === 'failed' || r.status === 'cancelled');
     $('run-printed').textContent = `${r.printed} / ${r.total}`;
     $('run-bar').style.width = r.total ? `${(100 * r.printed) / r.total}%` : '0%';
     $('run-bar').parentElement.classList.toggle('gold', r.status === 'failed' || r.status === 'cancelled');
     $('cancel').hidden = done;
+    $('next').hidden = r.status !== 'waiting';
     $('run-error').hidden = !r.error; $('run-error').textContent = r.error || '';
     if (done) {
       state.run = null; state.timer = null;
@@ -397,10 +412,76 @@
         ? `${r.printed} labels sent to the printer. Run it again or pick another template.`
         : 'Nothing more will print from this run.';
       updateGo();
+    } else if (r.status === 'waiting') {
+      state.timer = null;          // it is waiting on a person, not on a printer
     } else {
       state.timer = setTimeout(poll, 1000);
     }
   }
+
+  $('next').addEventListener('click', async () => {
+    if (!state.run) return;
+    $('next').disabled = true;
+    try {
+      await api('POST', `/runs/${state.run.id}/continue`);
+      poll();
+    } finally { $('next').disabled = false; }
+  });
+
+  // ---------- saved runs
+  async function loadSaved() {
+    const runs = await api('GET', '/saved-runs');
+    runs.sort((a, b) => a.name.localeCompare(b.name));
+    state.saved = runs;
+    $('saved').replaceChildren(
+      el('option', { value: '', text: runs.length ? 'Load a saved run…' : 'No saved runs yet' }),
+      ...runs.map((r) => el('option', { value: r.id, text: r.name })));
+  }
+
+  async function useSaved(id) {
+    const saved = state.saved.find((r) => r.id === id);
+    if (!saved) return;
+    // the saved list can arrive before the templates do, so make sure
+    let template = state.templates.find((t) => t.id === saved.template_id);
+    if (!template) {
+      await loadTemplates();
+      template = state.templates.find((t) => t.id === saved.template_id);
+    }
+    if (!template) {
+      $('q-err-text').textContent = `${saved.name} points at ${saved.template_id}, which is gone.`;
+      $('q-err').hidden = false;
+      return;
+    }
+    await pickTemplate(template);
+    for (const [name, value] of Object.entries(saved.params || {})) {
+      const input = $(`p-${name}`);
+      if (input) input.value = value;
+    }
+    $('copies').value = saved.copies;
+    $('separator').checked = saved.separator;
+    $('pause-between').checked = saved.pause_between;
+    if (saved.printer_id) $('printer').value = saved.printer_id;
+    await check();
+  }
+
+  async function saveRun() {
+    const name = prompt('What should this run be called?',
+                        state.template ? state.template.name : '');
+    if (!name) return;
+    const id = slug(name);
+    try {
+      await api('PUT', `/saved-runs/${encodeURIComponent(id)}`, {
+        name, template_id: state.template.id, printer_id: $('printer').value,
+        params: collectParams(), copies: spec().copies,
+        separator: $('separator').checked, pause_between: $('pause-between').checked,
+      });
+      await loadSaved();
+      $('saved').value = id;
+    } catch (e) { $('q-err-text').textContent = e.message; $('q-err').hidden = false; }
+  }
+
+  $('saved').addEventListener('change', () => $('saved').value && useSaved($('saved').value));
+  $('save-run').addEventListener('click', saveRun);
 
   $('cancel').addEventListener('click', async () => {
     if (!state.run) return;
@@ -415,12 +496,13 @@
   });
   $('pdf').addEventListener('click', downloadPdf);
   $('separator').addEventListener('change', () => state.check && check());
+  $('pause-between').addEventListener('change', () => state.check && check());
   $('copies').addEventListener('change', () => state.check && check());
   $('start-at').addEventListener('change', () => { state.record = 0; state.check && check(); });
   $('printer').addEventListener('change', updateGo);
   $('go-btn').addEventListener('click', go);
 
-  Promise.all([loadTemplates(), loadPrinters()]).catch((e) => {
+  Promise.all([loadTemplates(), loadPrinters(), loadSaved()]).catch((e) => {
     $('q-err-text').textContent = e.message; $('q-err').hidden = false;
   });
 })();

@@ -166,7 +166,8 @@ def _as_template(row: db.Template) -> Template:
     return Template(
         id=row.id, name=row.name, version=latest.version if latest else 0,
         width_mm=row.width_mm, height_mm=row.height_mm, dpi=row.dpi,
-        darkness=row.darkness, datasource=row.datasource_id, query=row.query_id,
+        darkness=row.darkness, folder=row.folder,
+        datasource=row.datasource_id, query=row.query_id,
         elements=row.elements,
     )
 
@@ -179,13 +180,35 @@ def _template_row(s: Session, template_id: str) -> db.Template:
 
 
 @app.get("/templates", dependencies=[Depends(current_user)])
-def list_templates(s: Session = Depends(get_session)) -> list[dict[str, Any]]:
+def list_templates(q: str = "", folder: str | None = None,
+                   s: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    stmt = select(db.Template).order_by(db.Template.name)
+    if folder is not None:
+        stmt = stmt.where(db.Template.folder == folder)
+    if q.strip():
+        like = f"%{q.strip().lower()}%"
+        stmt = stmt.where(func.lower(db.Template.name).like(like)
+                          | func.lower(db.Template.id).like(like))
     return [
         {"id": t.id, "name": t.name, "version": v.version if (v := _latest_version(t)) else 0,
          "size_mm": [t.width_mm, t.height_mm], "dpi": t.dpi, "datasource": t.datasource_id,
-         "query": t.query_id, "updated_at": t.updated_at}
-        for t in s.scalars(select(db.Template).order_by(db.Template.name))
+         "query": t.query_id, "folder": t.folder, "updated_at": t.updated_at}
+        for t in s.scalars(stmt)
     ]
+
+
+@app.get("/templates/folders", dependencies=[Depends(current_user)])
+def list_folders(s: Session = Depends(get_session)) -> dict[str, Any]:
+    """What the library groups by, and how many are in each."""
+    rows = s.execute(
+        select(db.Template.folder, func.count()).group_by(db.Template.folder)
+    ).all()
+    named = sorted(((f, n) for f, n in rows if f), key=lambda r: r[0].lower())
+    return {
+        "total": sum(n for _, n in rows),
+        "unfiled": sum(n for f, n in rows if not f),
+        "folders": [{"name": f, "count": n} for f, n in named],
+    }
 
 
 class ImportZpl(BaseModel):
@@ -231,6 +254,7 @@ def put_template(template_id: str, template: Template,
     row.name = template.name
     row.width_mm, row.height_mm, row.dpi = template.width_mm, template.height_mm, template.dpi
     row.darkness = template.darkness
+    row.folder = template.folder
     row.datasource_id, row.query_id = template.datasource, template.query
     row.elements = [e.model_dump(mode="json") for e in template.elements]
     s.add(row)
@@ -569,6 +593,7 @@ class RunSpec(BaseModel):
     start_at: int = 1
     skip_rows: list[int] = []      # 1-based record numbers, as the operator sees them
     separator: bool = False        # a divider label in front of the job
+    pause_between: bool = False    # stop after each label, for hand-fed stock
 
 
 MAX_RECORDS = 200                  # what the check will describe back
@@ -698,7 +723,7 @@ def _run_json(run: db.PrintRun) -> dict[str, Any]:
         "template_id": run.template_version.template_id,
         "template_name": run.template_version.definition.get("name"),
         "template_version": run.template_version.version, "printer_id": run.printer_id,
-        "params": run.params, "copies": run.copies,
+        "params": run.params, "copies": run.copies, "pause_between": run.pause_between,
         "warnings": [f"row {w.row_no}: {w.message}" if w.row_no else w.message
                      for w in run.warnings],
         "created_at": run.created_at, "started_at": run.started_at,
@@ -719,7 +744,8 @@ def create_run(body: NewRun, s: Session = Depends(get_session),
     labels = _with_separator(p, run_id) if body.separator else p.labels
     run = db.PrintRun(
         id=run_id, template_version_id=p.version_id,
-        printer_id=body.printer_id, params=body.params, copies=body.copies, total=len(labels),
+        printer_id=body.printer_id, params=body.params, copies=body.copies,
+        pause_between=body.pause_between, total=len(labels),
         labels=[db.RunLabel(seq=i, zpl=z) for i, z in enumerate(labels, start=1)],
         warnings=[_warning(w) for w in p.warnings],
     )
@@ -791,6 +817,20 @@ def retry_run(run_id: str, s: Session = Depends(get_session),
     s.commit()
     jobs.enqueue(run_id)
     return {"id": run_id, "status": "queued", "remaining": left}
+
+
+@app.post("/runs/{run_id}/continue", status_code=202)
+def continue_run(run_id: str, s: Session = Depends(get_session),
+                 user: AppUser = Depends(current_user)) -> dict[str, Any]:
+    """The next label of a hand-fed job."""
+    run = _run_row(s, run_id)
+    if run.status != "waiting":
+        raise HTTPException(409, f"{run_id} is {run.status}; it is not waiting on anyone")
+    run.status = "queued"
+    audit(s, "continue", "run", run_id, actor=user)
+    s.commit()
+    jobs.enqueue(run_id)
+    return {"id": run_id, "status": "queued", "remaining": jobs.remaining(s, run_id)}
 
 
 @app.post("/runs/{run_id}/cancel", status_code=202)
@@ -898,6 +938,57 @@ def put_printer(printer_id: str, body: PrinterBody,
     audit(s, "save", "printer", row.id, transport=kind, actor=user)
     s.commit()
     return _printer_json(row, None)
+
+
+# ----------------------------------------------------------------- saved runs
+
+class SavedRunBody(BaseModel):
+    name: str
+    template_id: str
+    printer_id: str | None = None
+    params: dict[str, Any] = {}
+    copies: int = 1
+    separator: bool = False
+    pause_between: bool = False
+
+
+def _saved_run_json(row: db.SavedRun) -> dict[str, Any]:
+    return {"id": row.id, "name": row.name, "template_id": row.template_id,
+            "printer_id": row.printer_id, "params": row.params, "copies": row.copies,
+            "separator": row.separator, "pause_between": row.pause_between,
+            "created_by": row.created_by, "updated_at": row.updated_at}
+
+
+@app.get("/saved-runs", dependencies=[Depends(current_user)])
+def list_saved_runs(s: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    return [_saved_run_json(r) for r in s.scalars(
+        select(db.SavedRun).order_by(db.SavedRun.name))]
+
+
+@app.put("/saved-runs/{saved_id}")
+def put_saved_run(saved_id: str, body: SavedRunBody, s: Session = Depends(get_session),
+                  user: AppUser = Depends(current_user)) -> dict[str, Any]:
+    if s.get(db.Template, body.template_id) is None:
+        raise HTTPException(422, f"no template {body.template_id!r} to save a run for")
+    row = s.get(db.SavedRun, saved_id) or db.SavedRun(id=saved_id, created_by=user.username)
+    row.name, row.template_id, row.printer_id = body.name, body.template_id, body.printer_id
+    row.params, row.copies = body.params, body.copies
+    row.separator, row.pause_between = body.separator, body.pause_between
+    s.add(row)
+    s.commit()
+    return _saved_run_json(row)
+
+
+@app.delete("/saved-runs/{saved_id}", status_code=204)
+def delete_saved_run(saved_id: str, s: Session = Depends(get_session),
+                     user: AppUser = Depends(current_user)) -> Response:
+    row = s.get(db.SavedRun, saved_id)
+    if row is None:
+        raise HTTPException(404, f"no saved run {saved_id!r}")
+    s.delete(row)
+    audit(s, "delete", "saved_run", saved_id, actor=user)
+    s.commit()
+    return Response(status_code=204)
 
 
 # ------------------------------------------------------------------ the front

@@ -109,6 +109,7 @@ class Template(BaseModel):
     height_mm: float
     dpi: Literal[203, 300, 600] = 203
     darkness: int | None = None    # None = leave the printer's own setting alone
+    folder: str = ""               # how the library groups it; "" is unfiled
     datasource: str | None = None  # name in the datasource registry
     query: str | None = None       # name of a saved query on that datasource
     elements: list[Element] = Field(default_factory=list)

@@ -146,6 +146,12 @@ def print_run(run_id: str) -> None:
                 label.printed_at = datetime.now(UTC)
                 printed += 1
                 run.printed = printed
+                # hand-fed stock: one label, then wait to be told to carry on.
+                # A different kind of stopped from a held queue, so it says so.
+                if run.pause_between and printed < run.total:
+                    run.status = "waiting"
+                    s.commit()
+                    return
             run.status = "done"
         except Exception as exc:
             run.attempts += 1

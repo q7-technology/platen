@@ -146,6 +146,7 @@ class Template(Base):
     height_mm: Mapped[float]
     dpi: Mapped[int] = mapped_column(Integer, default=203)
     darkness: Mapped[int | None]
+    folder: Mapped[str] = mapped_column(String(100), default="")
     datasource_id: Mapped[str | None] = mapped_column(String(64))
     query_id: Mapped[str | None] = mapped_column(String(64))
     elements: Mapped[list[Any]] = mapped_column(JSON, default=list)
@@ -236,6 +237,7 @@ class PrintRun(Base):
     printer_id: Mapped[str] = mapped_column(ForeignKey("printer.id"))
     params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     copies: Mapped[int] = mapped_column(Integer, default=1)
+    pause_between: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(16), default="queued")
     printed: Mapped[int] = mapped_column(Integer, default=0)
     total: Mapped[int] = mapped_column(Integer, default=0)
@@ -279,6 +281,23 @@ class RunWarning(Base):
     message: Mapped[str] = mapped_column(Text)
 
     run: Mapped[PrintRun] = relationship(back_populates="warnings")
+
+
+class SavedRun(Base):
+    """A run somebody does every morning, kept so they do not set it up again."""
+
+    __tablename__ = "saved_run"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    template_id: Mapped[str] = mapped_column(ForeignKey("template.id"))
+    printer_id: Mapped[str | None] = mapped_column(String(64))
+    params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    copies: Mapped[int] = mapped_column(Integer, default=1)
+    separator: Mapped[bool] = mapped_column(Boolean, default=False)
+    pause_between: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now, onupdate=now)
 
 
 class AuditLog(Base):

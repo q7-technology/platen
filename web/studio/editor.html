@@ -439,6 +439,7 @@
   function templateProps(box) {
     const t = state.tpl;
     box.append(control(t, 'name', 'txt', 'Template name'));
+    box.append(control(t, 'folder', 'txt', 'Folder (blank leaves it unfiled)'));
     box.append(el('div', { class: 'grid2' },
       control(t, 'width_mm', 'num', 'Width mm', { step: 0.5, min: 5 }),
       control(t, 'height_mm', 'num', 'Height mm', { step: 0.5, min: 5 })));
