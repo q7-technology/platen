@@ -4,9 +4,6 @@ commit a roll to it."""
 
 from __future__ import annotations
 
-import io
-
-from PIL import Image
 from sqlalchemy import select
 
 from db import session as dbsession

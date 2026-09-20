@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io
-import re
 
 from PIL import Image
 from ppf.datamatrix import DataMatrix

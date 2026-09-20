@@ -3,7 +3,7 @@ in production and on SQLite in the test suite."""
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -21,7 +21,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class UtcDateTime(TypeDecorator):
@@ -38,12 +38,12 @@ class UtcDateTime(TypeDecorator):
 
     def process_bind_param(self, value: datetime | None, dialect) -> datetime | None:
         if value is not None and value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
+            return value.replace(tzinfo=UTC)
         return value
 
     def process_result_value(self, value: datetime | None, dialect) -> datetime | None:
         if value is not None and value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
+            return value.replace(tzinfo=UTC)
         return value
 
 
@@ -140,7 +140,7 @@ class Template(Base):
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now, onupdate=now)
 
-    versions: Mapped[list["TemplateVersion"]] = relationship(
+    versions: Mapped[list[TemplateVersion]] = relationship(
         back_populates="template", order_by="TemplateVersion.version",
         cascade="all, delete-orphan",
     )
@@ -183,7 +183,7 @@ class SavedQuery(Base):
     sql: Mapped[str] = mapped_column(Text)          # or a request path, for rest
     row_path: Mapped[str] = mapped_column(String(200), default="")
 
-    parameters: Mapped[list["QueryParameter"]] = relationship(
+    parameters: Mapped[list[QueryParameter]] = relationship(
         back_populates="query", order_by="QueryParameter.position",
         cascade="all, delete-orphan",
     )
@@ -235,10 +235,10 @@ class PrintRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
     template_version: Mapped[TemplateVersion] = relationship()
-    labels: Mapped[list["RunLabel"]] = relationship(
+    labels: Mapped[list[RunLabel]] = relationship(
         back_populates="run", order_by="RunLabel.seq", cascade="all, delete-orphan"
     )
-    warnings: Mapped[list["RunWarning"]] = relationship(
+    warnings: Mapped[list[RunWarning]] = relationship(
         back_populates="run", order_by="RunWarning.id", cascade="all, delete-orphan"
     )
 

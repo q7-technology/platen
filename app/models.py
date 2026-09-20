@@ -3,7 +3,7 @@ that JSON is what the editor in the browser reads and writes."""
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -95,8 +95,8 @@ class LineShape(_Element):
 
 
 Element = Annotated[
-    Union[TextElement, BarcodeElement, QrElement, DataMatrixElement, ImageElement,
-          BoxShape, LineShape],
+    TextElement | BarcodeElement | QrElement | DataMatrixElement
+    | ImageElement | BoxShape | LineShape,
     Field(discriminator="kind"),
 ]
 

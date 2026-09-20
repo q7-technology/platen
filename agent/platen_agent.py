@@ -98,7 +98,7 @@ def run(server: Server, printer: str, use_cups: bool, interval: float) -> None:
                     write_to_cups(printer, job["zpl"])
                 else:
                     write_to_device(printer, job["zpl"])
-            except Exception as exc:                  # noqa: BLE001 — reported, not swallowed
+            except Exception as exc:
                 log.error("label %s did not print: %s", job["id"], exc)
                 _tell(server, job["id"], f"{type(exc).__name__}: {exc}")
             else:

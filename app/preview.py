@@ -8,20 +8,21 @@ by when they see it on paper.
 from __future__ import annotations
 
 import io
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 import barcode
 import qrcode
-from ppf.datamatrix import DataMatrix
 from PIL import Image, ImageDraw, ImageFont
+from ppf.datamatrix import DataMatrix
 
 from . import images
 from .binding import BindingError, MissingField, raw_value, render_value
 from .models import (
     BarcodeElement,
+    BoxShape,
     DataMatrixElement,
     Element,
-    BoxShape,
     ImageElement,
     LineShape,
     QrElement,
@@ -78,7 +79,6 @@ def _barcode(draw: ImageDraw.ImageDraw, el: BarcodeElement, value: str,
 
 
 def render_png(template: Template, row: Mapping[str, Any]) -> bytes:
-    d = template.dots
     canvas = Image.new("L", (template.width_dots, template.height_dots), 255)
     draw = ImageDraw.Draw(canvas)
 

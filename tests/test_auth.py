@@ -8,7 +8,6 @@ print. An operator never needs to see a connection string.
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app import auth

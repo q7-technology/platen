@@ -23,7 +23,7 @@ SEEN: list[dict] = []
 class Handler(BaseHTTPRequestHandler):
     payload: dict = {}
 
-    def do_GET(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:
         SEEN.append({"path": self.path, "headers": dict(self.headers)})
         body = json.dumps(self.payload).encode()
         self.send_response(200)
@@ -32,7 +32,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def do_POST(self) -> None:  # noqa: N802
+    def do_POST(self) -> None:
         SEEN.append({"path": self.path, "method": "POST"})
         self.send_response(405)
         self.end_headers()

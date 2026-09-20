@@ -4,7 +4,7 @@ interesting reason. Redis carries only the job id; the run itself is a row."""
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import redis
 from rq import Queue, Retry
@@ -90,11 +90,11 @@ def print_run(run_id: str) -> None:
         if printer is None:
             run.status = "failed"
             run.error = f"printer {run.printer_id!r} no longer exists"
-            run.finished_at = datetime.now(timezone.utc)
+            run.finished_at = datetime.now(UTC)
             s.commit()
             return
 
-        run.status, run.started_at, run.error = "printing", datetime.now(timezone.utc), None
+        run.status, run.started_at, run.error = "printing", datetime.now(UTC), None
         s.commit()
         printed = run.total - remaining(s, run_id)
         labels = s.scalars(
@@ -106,24 +106,24 @@ def print_run(run_id: str) -> None:
             for label in labels:
                 if _cancelled(s, run_id):
                     run.status = "cancelled"
-                    run.finished_at = datetime.now(timezone.utc)
+                    run.finished_at = datetime.now(UTC)
                     s.commit()
                     return
                 # one label per write: the printer buffers a few, and a mid-run
                 # failure then costs one label instead of the whole batch
                 printer.transport.send(label.zpl.encode("ascii") + b"\n")
-                label.printed_at = datetime.now(timezone.utc)
+                label.printed_at = datetime.now(UTC)
                 printed += 1
                 run.printed = printed
             run.status = "done"
-        except Exception as exc:                      # noqa: BLE001 — recorded, then re-raised
+        except Exception as exc:
             run.attempts += 1
             run.printed = printed
             run.error = f"{type(exc).__name__}: {exc}"
             left = getattr(job, "retries_left", 0) or 0
             run.status = "retrying" if left else "failed"
-            run.finished_at = None if left else datetime.now(timezone.utc)
+            run.finished_at = None if left else datetime.now(UTC)
             s.commit()
             raise                                     # rq schedules the next attempt
-        run.finished_at = datetime.now(timezone.utc)
+        run.finished_at = datetime.now(UTC)
         s.commit()

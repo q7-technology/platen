@@ -11,13 +11,14 @@ from __future__ import annotations
 import base64
 import io
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Any, Iterator
+from typing import Any
 
 import barcode
 import qrcode
-from ppf.datamatrix import DataMatrix
 from PIL import Image
+from ppf.datamatrix import DataMatrix
 
 from .models import (
     BarcodeElement,
@@ -245,7 +246,8 @@ class _Reader:
     def text(self, f: _Field, data: str) -> TextElement:
         h = f.char_h or 30
         width = f.block[0] if f.block else max(self.width_dots - f.x, h * len(data) * 0.6)
-        align = {"L": "left", "C": "centre", "R": "right"}.get(f.block[2] if f.block else "L", "left")
+        justify = f.block[2] if f.block else "L"
+        align = {"L": "left", "C": "centre", "R": "right"}.get(justify, "left")
         return TextElement(
             name=self.name_for("text"), box=self.box(f, width, h, lift=h), value=data,
             font=f.font or "0", height_pt=round(h * 72 / self.dpi, 1),
@@ -275,7 +277,7 @@ class _Reader:
         try:
             modules = "".join(barcode.get_barcode_class(PY_SYMBOLOGY[kind])(data).build())
             return len(modules) * module
-        except Exception:                            # noqa: BLE001 — a hint, not a contract
+        except Exception:
             return len(data) * 11 * module
 
     def qr(self, f: _Field, data: str) -> QrElement:
@@ -305,7 +307,7 @@ class _Reader:
     def matrix_size(self, data: str) -> int:
         try:
             return len(DataMatrix(data).matrix)
-        except Exception:                            # noqa: BLE001 — a hint, not a contract
+        except Exception:
             return 16
 
     def qr_size(self, data: str, magnification: int) -> float:
@@ -314,7 +316,7 @@ class _Reader:
             q.add_data(data)
             q.make(fit=True)
             return len(q.get_matrix()) * magnification
-        except Exception:                            # noqa: BLE001
+        except Exception:
             return 25 * magnification
 
     def graphic_box(self, params: str) -> None:

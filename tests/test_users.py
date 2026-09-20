@@ -9,7 +9,6 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app import auth
 from app.main import app
 from db import session as dbsession
 from db.models import ApiToken, AppUser, UserSession

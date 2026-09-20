@@ -8,10 +8,11 @@ import socket
 import subprocess
 import time
 import uuid
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Callable, Protocol
+from datetime import UTC, datetime, timedelta
+from typing import Protocol
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -51,7 +52,7 @@ class RawTcp:
             s.settimeout(3.0)
             try:
                 return s.recv(4096).decode("ascii", "replace")
-            except socket.timeout:
+            except TimeoutError:
                 return ""
 
 
@@ -140,7 +141,7 @@ class Agent:
             return False
         row = self.session.get(PrintAgent, self.agent_id)
         return bool(row and row.last_seen_at
-                    and row.last_seen_at > datetime.now(timezone.utc) - AGENT_ONLINE)
+                    and row.last_seen_at > datetime.now(UTC) - AGENT_ONLINE)
 
 
 @dataclass

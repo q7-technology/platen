@@ -15,7 +15,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
-
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session
@@ -23,7 +22,6 @@ from sqlalchemy.orm import Session
 from db import models as db
 
 from . import images
-
 
 PLACEHOLDER = re.compile(r":([a-zA-Z_]\w*)")
 REST_TIMEOUT = 20.0
@@ -68,7 +66,7 @@ class SavedQuery:
     datasource: str
     sql: str                       # uses :named parameters, never f-strings
     row_path: str = ""             # rest only: where the rows sit in the response
-    parameters: list["Parameter"] = field(default_factory=list)
+    parameters: list[Parameter] = field(default_factory=list)
 
 
 @dataclass
@@ -88,13 +86,13 @@ def masked(url: str) -> str:
     the server, so an operator with the screen open can't read it off it."""
     try:
         return make_url(url).render_as_string(hide_password=True)
-    except Exception:                                 # noqa: BLE001 — show it as typed
+    except Exception:
         return url
 
 
 def masked_headers(headers: dict[str, str] | None) -> dict[str, str]:
     """Header names are useful to see; their values are tokens."""
-    return {k: MASK for k in (headers or {})}
+    return dict.fromkeys(headers or {}, MASK)
 
 
 def unmasked_headers(submitted: dict[str, str] | None,
@@ -110,7 +108,7 @@ def unmasked(submitted: str, stored: str | None) -> str:
         return submitted
     try:
         new, old = make_url(submitted), make_url(stored)
-    except Exception:                                 # noqa: BLE001
+    except Exception:
         return submitted
     if new.password != MASK:
         return submitted
@@ -155,7 +153,8 @@ def run(session: Session, query: SavedQuery, params: dict[str, Any],
     """Execute a saved query as a prepared statement and return plain dicts."""
     ds = datasource(session, query.datasource)
     if ds is None:
-        raise ValueError(f"query {query.name!r}: its data source {query.datasource!r} no longer exists")
+        raise ValueError(
+            f"query {query.name!r}: its data source {query.datasource!r} no longer exists")
     bound = {p.name: params.get(p.name, p.default) for p in query.parameters}
     missing = [p.name for p in query.parameters if bound[p.name] is None]
     if missing:
@@ -227,7 +226,8 @@ def columns(session: Session, query: SavedQuery) -> list[str]:
     """
     ds = datasource(session, query.datasource)
     if ds is None:
-        raise ValueError(f"query {query.name!r}: its data source {query.datasource!r} no longer exists")
+        raise ValueError(
+            f"query {query.name!r}: its data source {query.datasource!r} no longer exists")
     bound: dict[str, Any] = {p.name: None for p in query.parameters}
     if ds.kind == "rest":
         # no endpoint can describe its own shape, so ask for one record

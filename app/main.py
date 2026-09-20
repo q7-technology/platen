@@ -13,7 +13,8 @@ from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import FileResponse, Response as RawResponse
+from fastapi.responses import FileResponse
+from fastapi.responses import Response as RawResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from pydantic import BaseModel
@@ -28,6 +29,7 @@ from . import auth, binding, datasources, jobs, preview, printers, zplimport
 from .models import Template
 from .settings import settings
 from .zpl import RenderError, render_run, separator
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -139,8 +141,11 @@ def whoami(user: AppUser = Depends(current_user)) -> dict[str, Any]:
     return _me(user)
 
 
-SCREENS = {"print": "print.html", "login": "login.html", "people": "people.html", "data": "data.html", "printers": "printers.html",
-           "templates": "templates.html", "editor": "editor.html", "jobs": "jobs.html"}
+SCREENS = {
+    "print": "print.html", "login": "login.html", "people": "people.html",
+    "data": "data.html", "printers": "printers.html", "templates": "templates.html",
+    "editor": "editor.html", "jobs": "jobs.html",
+}
 
 
 @app.get("/studio/{screen}", include_in_schema=False)
@@ -202,7 +207,7 @@ def import_zpl(body: ImportZpl, s: Session = Depends(get_session),
         result = zplimport.parse(body.zpl, id=body.id, name=body.name, dpi=body.dpi)
     except zplimport.NotZpl as exc:
         raise HTTPException(422, str(exc)) from None
-    except Exception as exc:                          # noqa: BLE001 — arbitrary input
+    except Exception as exc:
         raise HTTPException(422, f"this label could not be read: {exc}") from None
 
     put_template(body.id, result.template, s)
@@ -383,7 +388,7 @@ def test_datasource(datasource_id: str, s: Session = Depends(get_session)) -> di
         raise HTTPException(404, f"no data source {datasource_id!r}")
     try:
         return ds.probe()
-    except Exception as exc:                          # noqa: BLE001
+    except Exception as exc:
         return {"ok": False, "error": str(exc)}
 
 
@@ -449,7 +454,7 @@ def query_columns(query_id: str, s: Session = Depends(get_session)) -> dict[str,
         return {"columns": datasources.columns(s, _query(s, query_id))}
     except HTTPException:
         raise
-    except Exception as exc:                          # noqa: BLE001 — the operator wrote the SQL
+    except Exception as exc:
         raise HTTPException(422, f"{query_id}: {exc}") from None
 
 
@@ -485,7 +490,7 @@ def preview_query(query_id: str, body: PreviewQuery,
         rows = datasources.run(s, _query(s, query_id), body.params, limit=body.limit)
     except HTTPException:
         raise
-    except Exception as exc:                          # noqa: BLE001 — the operator wrote the SQL
+    except Exception as exc:
         raise HTTPException(422, f"{query_id}: {exc}") from None
     return {"rows": jsonable_encoder(rows), "fields": datasources.describe(rows),
             "count": len(rows),
@@ -509,7 +514,8 @@ def _preview_template(s: Session, template_id: str, published: bool) -> Template
         return _as_template(row)
     version = _latest_version(row)
     if version is None:
-        raise HTTPException(422, f"template {template_id!r} has no published version; publish it first")
+        raise HTTPException(
+            422, f"template {template_id!r} has no published version; publish it first")
     return Template.model_validate(version.definition)
 
 
@@ -547,7 +553,7 @@ def _one_row(s: Session, t: Template, body: RenderPreview) -> dict[str, Any]:
         rows = datasources.run(s, query, body.params, limit=body.record + 1)
     except HTTPException:
         raise
-    except Exception as exc:                          # noqa: BLE001 — the operator wrote the SQL
+    except Exception as exc:
         raise HTTPException(422, f"{t.query}: {exc}") from None
     if not rows:
         raise HTTPException(422, "the query returned no rows")
@@ -588,7 +594,8 @@ def _prepare(s: Session, body: RunSpec) -> Prepared:
     real one so the operator's check and the print never disagree."""
     version = _latest_version(_template_row(s, body.template_id))
     if version is None:
-        raise HTTPException(422, f"template {body.template_id!r} has no published version; publish it first")
+        raise HTTPException(
+            422, f"template {body.template_id!r} has no published version; publish it first")
     t = Template.model_validate(version.definition)
 
     rows = datasources.run(s, _query(s, t.query), body.params) if t.query else [{}]
@@ -614,7 +621,7 @@ def _summarise(row: dict[str, Any]) -> str:
     """Enough of a record for someone to recognise it in a list. Image columns
     are four kilobytes of nothing anyone can read, so they are left out."""
     bits = []
-    for name, value in row.items():
+    for value in row.values():
         if value is None or isinstance(value, (bytes, memoryview)):
             continue
         text = str(value)
@@ -723,7 +730,7 @@ def create_run(body: NewRun, s: Session = Depends(get_session),
 
     try:
         jobs.enqueue(run.id)
-    except Exception as exc:                          # noqa: BLE001
+    except Exception as exc:
         run.status, run.error = "failed", f"could not queue: {type(exc).__name__}: {exc}"
         s.commit()
         raise HTTPException(503, run.error) from None
@@ -817,7 +824,7 @@ def _probe(row: db.Printer, agents: dict[str, bool]) -> bool | None:
         return agents.get((row.transport_config or {}).get("agent_id"), False)
     try:
         return printers.from_row(row).transport.probe()
-    except Exception:                                 # noqa: BLE001 — unreachable is not online
+    except Exception:
         return False
 
 
@@ -834,7 +841,7 @@ def list_printers(probe: bool = True,
     agents = {a.id: _agent_online(a) for a in s.scalars(select(db.PrintAgent))}
     with ThreadPoolExecutor(max_workers=min(8, max(1, len(rows)))) as pool:
         states = list(pool.map(lambda r: _probe(r, agents), rows))
-    return [_printer_json(r, online) for r, online in zip(rows, states)]
+    return [_printer_json(r, online) for r, online in zip(rows, states, strict=True)]
 
 
 def _printer_row(s: Session, printer_id: str) -> db.Printer:
@@ -946,14 +953,14 @@ def put_user(username: str, body: UserBody, s: Session = Depends(get_session),
 
     # the one thing an administrator must not be able to do is shut the door
     # on themselves and have nobody left holding a key
-    if row is not None and username == user.username:
-        if body.role != "admin" or body.disabled:
-            raise HTTPException(
-                409, "you can't take your own administrator rights away; "
-                     "ask another administrator to do it")
-    if row is not None and row.role == "admin" and (body.role != "admin" or body.disabled):
-        if not _other_admins(s, username):
-            raise HTTPException(409, f"{username} is the last administrator")
+    losing_rights = body.role != "admin" or body.disabled
+    if row is not None and username == user.username and losing_rights:
+        raise HTTPException(
+            409, "you can't take your own administrator rights away; "
+                 "ask another administrator to do it")
+    if (row is not None and row.role == "admin" and losing_rights
+            and not _other_admins(s, username)):
+        raise HTTPException(409, f"{username} is the last administrator")
 
     if row is None:
         if not body.password:
@@ -1213,6 +1220,6 @@ def test_printer(printer_id: str, s: Session = Depends(get_session)) -> dict[str
         raise HTTPException(404, f"no printer {printer_id!r}")
     try:
         p.transport.send(printers.TEST_LABEL)
-    except Exception as exc:                          # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(502, f"{printer_id}: {type(exc).__name__}: {exc}") from None
     return {"id": printer_id, "sent": "test label"}

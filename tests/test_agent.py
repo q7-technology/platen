@@ -13,7 +13,7 @@ import time
 import pytest
 from sqlalchemy import select
 
-from app import auth, jobs, printers
+from app import printers
 from db import session as dbsession
 from db.models import AgentJob, ApiToken
 
@@ -35,6 +35,7 @@ def _as_agent(client, token: str):
 
 def _poll(client, token: str, agent_id: str = "wks-office-02"):
     from fastapi.testclient import TestClient
+
     from app.main import app
     c = TestClient(app)
     c.headers["authorization"] = f"Bearer {token}"
@@ -56,6 +57,7 @@ def test_the_token_is_shown_once_and_never_again(client, agent):
 
 def test_an_agent_token_cannot_wander_into_the_rest_of_platen(anon, users, agent):
     from fastapi.testclient import TestClient
+
     from app.main import app
     c = TestClient(app)
     c.headers["authorization"] = f"Bearer {agent['token']}"
@@ -81,6 +83,7 @@ def test_rotating_the_token_shuts_the_old_one_out(client, agent):
 
 def test_nonsense_in_the_header_is_refused(anon, users, agent):
     from fastapi.testclient import TestClient
+
     from app.main import app
     c = TestClient(app)
     c.headers["authorization"] = "Bearer plt_not_a_real_token"
@@ -127,6 +130,7 @@ def test_sending_waits_until_the_agent_says_it_came_out(client, agent):
                 job = body["jobs"][0]
                 done.append(job)
                 from fastapi.testclient import TestClient
+
                 from app.main import app
                 c = TestClient(app)
                 c.headers["authorization"] = f"Bearer {token}"
@@ -164,6 +168,7 @@ def test_an_agent_that_cannot_print_says_why(client, agent):
 
     def the_agent() -> None:
         from fastapi.testclient import TestClient
+
         from app.main import app
         c = TestClient(app)
         c.headers["authorization"] = f"Bearer {token}"
@@ -176,9 +181,8 @@ def test_an_agent_that_cannot_print_says_why(client, agent):
             time.sleep(0.05)
 
     threading.Thread(target=the_agent, daemon=True).start()
-    with dbsession.SessionLocal() as s:
-        with pytest.raises(Exception) as exc:
-            printers.load(s, "desk").transport.send(b"^XA^XZ")
+    with dbsession.SessionLocal() as s, pytest.raises(Exception) as exc:
+        printers.load(s, "desk").transport.send(b"^XA^XZ")
 
     assert "out of labels" in str(exc.value)
 
@@ -187,9 +191,8 @@ def test_an_agent_that_never_answers_gives_up_rather_than_hanging(client, agent,
     monkeypatch.setattr(printers, "AGENT_TIMEOUT", 0.4)
     _printer_on_the_agent(client)
 
-    with dbsession.SessionLocal() as s:
-        with pytest.raises(Exception) as exc:
-            printers.load(s, "desk").transport.send(b"^XA^XZ")
+    with dbsession.SessionLocal() as s, pytest.raises(Exception) as exc:
+        printers.load(s, "desk").transport.send(b"^XA^XZ")
 
     assert "wks-office-02" in str(exc.value)
 
