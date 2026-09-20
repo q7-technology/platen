@@ -12,7 +12,6 @@ from typing import Any, Mapping
 
 import barcode
 import qrcode
-from barcode.writer import ImageWriter
 from PIL import Image, ImageDraw, ImageFont
 
 from . import images
@@ -41,6 +40,36 @@ def _font(px: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
+def _barcode(draw: ImageDraw.ImageDraw, el: BarcodeElement, value: str,
+             x: int, y: int, h: int) -> None:
+    """Draw the bars the way the print head will lay them down.
+
+    ^BC takes a narrow-bar width and a bar height and draws whatever width
+    that comes to — it never scales a barcode to fit a box. So neither do we:
+    one module is `module_dots` wide, the bars get the box height to
+    themselves, and the readable line goes underneath, outside that height.
+    A barcode too wide for its box overflows here exactly as it would on the
+    label, which is the point of looking at a preview.
+    """
+    code = barcode.get_barcode_class(SYMBOLOGY[el.symbology])(value)
+    modules = "".join(code.build())
+    mw = max(1, el.module_dots)
+
+    for i, module in enumerate(modules):
+        if module == "1":
+            draw.rectangle([x + i * mw, y, x + (i + 1) * mw - 1, y + h - 1], fill=0)
+
+    if el.human_readable == "none":
+        return
+    px = max(12, round(h * 0.22))
+    font = _font(px)
+    text = code.get_fullcode()
+    width = draw.textlength(text, font=font)
+    tx = x + (len(modules) * mw - width) / 2
+    ty = y + h + max(2, px // 5) if el.human_readable == "below" else y - px - max(2, px // 5)
+    draw.text((tx, ty), text, fill=0, font=font)
+
+
 def render_png(template: Template, row: Mapping[str, Any]) -> bytes:
     d = template.dots
     canvas = Image.new("L", (template.width_dots, template.height_dots), 255)
@@ -59,12 +88,7 @@ def render_png(template: Template, row: Mapping[str, Any]) -> bytes:
         elif isinstance(el, BarcodeElement):
             value = render_value(el.value, row).strip()
             if value:
-                cls = barcode.get_barcode_class(SYMBOLOGY[el.symbology])
-                buf = io.BytesIO()
-                cls(value, writer=ImageWriter()).write(
-                    buf, {"module_height": el.box.h, "write_text": el.human_readable != "none"}
-                )
-                canvas.paste(Image.open(buf).convert("L").resize((w, h)), (x, y))
+                _barcode(draw, el, value, x, y, h)
 
         elif isinstance(el, QrElement):
             value = render_value(el.value, row)
