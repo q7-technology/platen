@@ -9,14 +9,30 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping
 
 BINDING = re.compile(r"\{\{\s*([a-zA-Z_][\w.]*)((?:\s*\|\s*\w+(?::[^|}]+)?)*)\s*\}\}")
 
 
-class MissingField(KeyError):
+class BindingError(Exception):
+    """A binding could not produce a value. Always names what and why."""
+
+
+class MissingField(BindingError, KeyError):
     """A template asks for a column the query did not return."""
+
+
+class FilterError(BindingError, ValueError):
+    """A named filter was handed something it can't work with."""
+
+
+class Placeholder(str):
+    """A column standing in for its own value in a layout preview.
+
+    Filters leave it alone: a rounding or a date format can't apply to a column
+    name, and failing there would report a fault the template doesn't have.
+    """
 
 
 def _lookup(path: str, row: Mapping[str, Any]) -> Any:
@@ -39,19 +55,47 @@ def _apply(value: Any, spec: str) -> Any:
     name, _, arg = spec.partition(":")
     name = name.strip()
     arg = arg.strip()
-    if name == "upper":
-        return str(value).upper()
-    if name == "date":
-        if isinstance(value, (date, datetime)):
-            return value.strftime(arg or "%d/%m/%y")
+    if name not in FILTERS:
+        raise FilterError(f"unknown filter {name!r}; one of {', '.join(sorted(FILTERS))}")
+    if isinstance(value, Placeholder):
         return value
-    if name == "round":
-        return f"{Decimal(str(value)):.{int(arg or 2)}f}"
-    if name == "pad":
-        return str(value).rjust(int(arg or 0), "0")
-    if name == "default":
-        return arg if value in (None, "") else value
-    raise ValueError(f"unknown filter: {name}")
+    return FILTERS[name](value, arg)
+
+
+def _upper(value: Any, arg: str) -> str:
+    return str(value).upper()
+
+
+def _date(value: Any, arg: str) -> Any:
+    if isinstance(value, (date, datetime)):
+        return value.strftime(arg or "%d/%m/%y")
+    return value
+
+
+def _round(value: Any, arg: str) -> str:
+    try:
+        places = int(arg or 2)
+    except ValueError:
+        raise FilterError(f"round wants a number of places, not {arg!r}") from None
+    try:
+        return f"{Decimal(str(value)):.{places}f}"
+    except (InvalidOperation, ValueError):
+        raise FilterError(f"round expects a number, and this value is {value!r}") from None
+
+
+def _pad(value: Any, arg: str) -> str:
+    try:
+        width = int(arg or 0)
+    except ValueError:
+        raise FilterError(f"pad wants a width, not {arg!r}") from None
+    return str(value).rjust(width, "0")
+
+
+def _default(value: Any, arg: str) -> Any:
+    return arg if value in (None, "") else value
+
+
+FILTERS = {"upper": _upper, "date": _date, "round": _round, "pad": _pad, "default": _default}
 
 
 def render_value(expr: str, row: Mapping[str, Any]) -> str:

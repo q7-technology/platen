@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 from . import images
-from .binding import MissingField, raw_value, render_value
+from .binding import BindingError, MissingField, raw_value, render_value
 from .models import (
     BarcodeElement,
     BoxShape,
@@ -64,6 +64,8 @@ class ZplRenderer:
                 raise RenderError(
                     f"{el.name}: the query returned no column {exc.args[0]!r}"
                 ) from exc
+            except BindingError as exc:
+                raise RenderError(f"{el.name}: {exc}") from exc
             if chunk is None:
                 return Label(zpl="", warnings=warnings, skipped=True)
             body.append(chunk)

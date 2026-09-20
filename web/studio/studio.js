@@ -44,6 +44,16 @@ const ICONS = {
   trash: ['M3 6h18', 'M8 6V4h8v2', 'M19 6l-1 14H6L5 6'],
   plug: ['M12 22v-5', 'M9 8V2', 'M15 8V2', 'M18 8v3a6 6 0 0 1-12 0V8z'],
   image: ['M3 5h18v14H3z', 'm4 16 4.5-4.5 3.5 3.5 2.6-2.6L20 17', 'M15.5 9h.01'],
+  layers: ['m12 2 9 5-9 5-9-5z', 'm3 12 9 5 9-5', 'm3 17 9 5 9-5'],
+  text: ['M4 6V4h16v2', 'M12 4v16', 'M9 20h6'],
+  barcode: ['M3 4v16', 'M6 4v16', 'M10 4v10', 'M14 4v16', 'M18 4v16', 'M21 4v16'],
+  qr: ['M3 3h7v7H3z', 'M14 3h7v7h-7z', 'M3 14h7v7H3z', 'M14 14h3v3h-3z', 'M19 19h2v2h-2z'],
+  line: ['M3 12h18'],
+  square: ['M3 3h18v18H3z'],
+  eye: ['M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7', 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6'],
+  eyeoff: ['M10.7 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a18 18 0 0 1-2.6 3.5', 'M6.6 6.6A18 18 0 0 0 2 12s3.5 7 10 7a10 10 0 0 0 4-.8', 'M3 3l18 18'],
+  up: ['m18 15-6-6-6 6'],
+  down: ['m6 9 6 6 6-6'],
 };
 
 function icon(name, size = 16) {
@@ -63,6 +73,7 @@ function icon(name, size = 16) {
 
 const NAV = [
   { href: '/studio/print', label: 'Print run', icon: 'play', key: 'print' },
+  { href: '/studio/templates', label: 'Templates', icon: 'layers', key: 'templates' },
   { href: '/studio/data', label: 'Data sources', icon: 'database', key: 'data' },
   { href: '/studio/printers', label: 'Printers', icon: 'printer', key: 'printers' },
   { href: '/docs', label: 'API reference', icon: 'book', key: 'docs' },
@@ -71,7 +82,9 @@ const NAV = [
 function renderShell(current, footNote) {
   const aside = $('shell-nav');
   if (!aside) return;
-  aside.replaceChildren(
+  // replaceChildren stringifies a null, so the optional foot note is filtered
+  // out rather than passed through as one
+  aside.replaceChildren(...[
     el('div', { class: 'wordmark' },
       el('img', { src: '/studio/static/q7-logo-128.png', alt: 'Q7Technology Logo',
                   width: 32, height: 28 }),
@@ -80,7 +93,7 @@ function renderShell(current, footNote) {
       el('a', { href: n.href, 'aria-current': n.key === current ? 'page' : null },
         icon(n.icon), el('span', { text: n.label })))),
     footNote ? el('p', { class: 'foot', text: footNote }) : null,
-  );
+  ].filter(Boolean));
 }
 
 /* A failure the operator needs to read, in the gold that means "look here". */

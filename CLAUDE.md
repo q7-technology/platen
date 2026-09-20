@@ -32,7 +32,9 @@ tests/          pytest; SQLite and fakeredis, no Docker needed
 web/            the public landing page (static, single file)
   studio/         the operator screens, served by the API under /studio
                   studio.css and studio.js are shared; one page per screen,
-                  vanilla DOM, no build step
+                  vanilla DOM, no build step. The editor auto-saves the draft
+                  and asks the server to re-render — the canvas background is
+                  a real preview, not a CSS impression of one
 docs/           the design canvas artboards and the walkthrough reel
 ```
 
@@ -52,8 +54,10 @@ test suite runs the same models on SQLite, so keep column types portable.
 ## Invariants — do not break these quietly
 
 1. **A template can never execute anything.** Bindings are dotted lookups plus
-   a fixed list of named filters. No `eval`, no expression parser, no
-   attribute traversal into callables. Templates arrive from a browser.
+   a fixed list of named filters (`binding.FILTERS`). No `eval`, no expression
+   parser, no attribute traversal into callables. Templates arrive from a
+   browser. A filter handed the wrong sort of value raises `FilterError`
+   naming the filter and the value — never an unhandled exception.
 2. **Queries are read-only and parameterised.** Connections use a read-only
    role; every query runs as a prepared statement. Never interpolate an
    operator's input into SQL.
@@ -66,7 +70,11 @@ test suite runs the same models on SQLite, so keep column types portable.
    saved back unchanged keeps the stored one.
 7. **The preview is what the printer will do**, at the printer's dot pitch —
    including dithering, and barcodes drawn at their real module width rather
-   than scaled to fit a box.
+   than scaled to fit a box. `preview.render_png` and `zpl.render_run` fail
+   the same way, with the same message, on the same input.
+8. **Timestamps leave the API knowing their time zone.** Use `UtcDateTime`,
+   never a bare `DateTime` — SQLite drops the offset and a browser then reads
+   UTC as local.
 
 ## Code
 

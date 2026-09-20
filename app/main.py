@@ -6,7 +6,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.encoders import jsonable_encoder
@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from db import models as db
 from db.session import get_session
 
-from . import datasources, jobs, preview, printers
+from . import binding, datasources, jobs, preview, printers
 from .models import Template
 from .zpl import RenderError, render_run
 
@@ -29,7 +29,8 @@ WEB = Path(__file__).resolve().parent.parent / "web"
 app.mount("/studio/static", StaticFiles(directory=WEB), name="static")
 
 
-SCREENS = {"print": "print.html", "data": "data.html", "printers": "printers.html"}
+SCREENS = {"print": "print.html", "data": "data.html", "printers": "printers.html",
+           "templates": "templates.html", "editor": "editor.html"}
 
 
 @app.get("/studio/{screen}", include_in_schema=False)
@@ -110,6 +111,24 @@ def publish_template(template_id: str, s: Session = Depends(get_session)) -> dic
     audit(s, "publish", "template", row.id, version=version.version)
     s.commit()
     return {"id": row.id, "version": version.version, "published_at": version.published_at}
+
+
+@app.delete("/templates/{template_id}", status_code=204)
+def delete_template(template_id: str, s: Session = Depends(get_session)) -> Response:
+    row = _template_row(s, template_id)
+    used = s.scalars(
+        select(db.PrintRun.id).join(db.TemplateVersion)
+        .where(db.TemplateVersion.template_id == template_id)
+        .order_by(db.PrintRun.created_at.desc()).limit(3)
+    ).all()
+    if used:
+        raise HTTPException(
+            409, f"{template_id!r} has been printed, most recently as "
+                 f"{', '.join(used)}. Deleting it would take that history with it.")
+    s.delete(row)
+    audit(s, "delete", "template", template_id)
+    s.commit()
+    return Response(status_code=204)
 
 
 @app.get("/templates/{template_id}/versions")
@@ -269,6 +288,17 @@ def get_query(query_id: str, s: Session = Depends(get_session)) -> dict[str, Any
     }
 
 
+@app.get("/queries/{query_id}/columns")
+def query_columns(query_id: str, s: Session = Depends(get_session)) -> dict[str, Any]:
+    """The bindable fields, for the editor's field list. No parameters needed."""
+    try:
+        return {"columns": datasources.columns(s, _query(s, query_id))}
+    except HTTPException:
+        raise
+    except Exception as exc:                          # noqa: BLE001 — the operator wrote the SQL
+        raise HTTPException(422, f"{query_id}: {exc}") from None
+
+
 @app.delete("/queries/{query_id}", status_code=204)
 def delete_query(query_id: str, s: Session = Depends(get_session)) -> Response:
     row = s.get(db.SavedQuery, query_id)
@@ -313,6 +343,9 @@ class RenderPreview(BaseModel):
     params: dict[str, Any] = {}
     record: int = 0
     published: bool = False        # the latest published version, not the draft
+    data: Literal["row", "columns"] = "row"
+    # "columns": no rows, every column standing in for its own value. It is how
+    # the editor draws a label before anyone has answered the query.
 
 
 def _preview_template(s: Session, template_id: str, published: bool) -> Template:
@@ -329,15 +362,18 @@ def _preview_template(s: Session, template_id: str, published: bool) -> Template
 def preview_png(template_id: str, body: RenderPreview,
                 s: Session = Depends(get_session)) -> Response:
     t = _preview_template(s, template_id, body.published)
-    row = _one_row(s, t, body.params, body.record)
-    return Response(preview.render_png(t, row), media_type="image/png")
+    row = _one_row(s, t, body)
+    try:
+        return Response(preview.render_png(t, row), media_type="image/png")
+    except preview.RenderError as exc:
+        raise HTTPException(422, str(exc)) from None
 
 
 @app.post("/templates/{template_id}/preview.zpl")
 def preview_zpl(template_id: str, body: RenderPreview,
                 s: Session = Depends(get_session)) -> Response:
     t = _preview_template(s, template_id, body.published)
-    row = _one_row(s, t, body.params, body.record)
+    row = _one_row(s, t, body)
     try:
         labels, warnings = render_run(t, [row])
     except RenderError as exc:
@@ -346,13 +382,21 @@ def preview_zpl(template_id: str, body: RenderPreview,
                     headers={"x-platen-warnings": "; ".join(warnings)})
 
 
-def _one_row(s: Session, t: Template, params: dict[str, Any], index: int) -> dict[str, Any]:
+def _one_row(s: Session, t: Template, body: RenderPreview) -> dict[str, Any]:
     if not t.query:
         return {}
-    rows = datasources.run(s, _query(s, t.query), params, limit=index + 1)
+    query = _query(s, t.query)
+    try:
+        if body.data == "columns":
+            return {c: binding.Placeholder(c) for c in datasources.columns(s, query)}
+        rows = datasources.run(s, query, body.params, limit=body.record + 1)
+    except HTTPException:
+        raise
+    except Exception as exc:                          # noqa: BLE001 — the operator wrote the SQL
+        raise HTTPException(422, f"{t.query}: {exc}") from None
     if not rows:
         raise HTTPException(422, "the query returned no rows")
-    return rows[min(index, len(rows) - 1)]
+    return rows[min(body.record, len(rows) - 1)]
 
 
 # ---------------------------------------------------------------- print runs

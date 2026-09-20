@@ -137,6 +137,22 @@ def run(session: Session, query: SavedQuery, params: dict[str, Any],
         return [dict(r) for r in result.mappings()]
 
 
+def columns(session: Session, query: SavedQuery) -> list[str]:
+    """What a query returns, without needing its parameters answered.
+
+    Every parameter binds as NULL and the statement is limited to no rows, so
+    the database still describes the result it would have produced. The editor
+    uses this to know which bindings can resolve before anyone has typed a
+    despatch date.
+    """
+    ds = datasource(session, query.datasource)
+    if ds is None:
+        raise ValueError(f"query {query.name!r}: its data source {query.datasource!r} no longer exists")
+    bound = {p.name: None for p in query.parameters}
+    with ds.engine.connect() as c:
+        return list(c.execute(text(f"select * from ({query.sql}) q limit 0"), bound).keys())
+
+
 def describe(rows: list[dict[str, Any]]) -> list[dict[str, str]]:
     """What the editor shows as the field list — and which columns are images.
 

@@ -37,8 +37,9 @@ docker compose up --build
 
 The API is on http://localhost:8000 and runs the migrations before it starts.
 The screens are at http://localhost:8000/studio/print (run a job),
-`/studio/data` (connections and saved queries) and `/studio/printers`. The API
-reference is at http://localhost:8000/docs.
+`/studio/templates` (the library and the editor), `/studio/data` (connections
+and saved queries) and `/studio/printers`. The API reference is at
+http://localhost:8000/docs.
 
 On your own machine instead:
 
@@ -80,12 +81,13 @@ head. Open either in a browser.
 
 ## Status
 
-Early. Templates, data sources, printers and runs live in Postgres (see
-`db/models.py`); publishing a template writes an immutable version and every
-print run records which version it rendered from. The screens for running a
-job, wiring up a data source and registering a printer are built; templates
-are still set up through the API until the editor exists. Auth is left to
-whatever you already use.
+Early, but it goes end to end: draw a label, bind it to a query, and print it
+without touching the API. Templates, data sources, printers and runs live in
+Postgres (see `db/models.py`); publishing a template writes an immutable
+version and every print run records which version it rendered from.
+
+Not built yet: importing existing ZPL, a job history screen, and a printer
+network scan. Auth is left to whatever you already use.
 
 ## Contributing
 

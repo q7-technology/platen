@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    TypeDecorator,
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -21,6 +22,29 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 def now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class UtcDateTime(TypeDecorator):
+    """A timestamp that always comes back knowing it is UTC.
+
+    Postgres keeps the offset; SQLite has no time zones and hands back a naive
+    value, which a browser then reads as local time — a label edited a minute
+    ago claims to be ten hours old in Ballarat. Both ends are pinned here so
+    every reader gets the same answer.
+    """
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+
+    def process_result_value(self, value: datetime | None, dialect) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
 
 
 class Base(DeclarativeBase):
@@ -41,13 +65,12 @@ class Template(Base):
     datasource_id: Mapped[str | None] = mapped_column(String(64))
     query_id: Mapped[str | None] = mapped_column(String(64))
     elements: Mapped[list[Any]] = mapped_column(JSON, default=list)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now, onupdate=now
-    )
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now, onupdate=now)
 
     versions: Mapped[list["TemplateVersion"]] = relationship(
-        back_populates="template", order_by="TemplateVersion.version"
+        back_populates="template", order_by="TemplateVersion.version",
+        cascade="all, delete-orphan",
     )
 
 
@@ -62,7 +85,7 @@ class TemplateVersion(Base):
     template_id: Mapped[str] = mapped_column(ForeignKey("template.id"))
     version: Mapped[int]
     definition: Mapped[dict[str, Any]] = mapped_column(JSON)
-    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    published_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
 
     template: Mapped[Template] = relationship(back_populates="versions")
 
@@ -131,9 +154,9 @@ class PrintRun(Base):
     total: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str | None] = mapped_column(Text)
     cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now, index=True)
+    started_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
     template_version: Mapped[TemplateVersion] = relationship()
     labels: Mapped[list["RunLabel"]] = relationship(
@@ -154,7 +177,7 @@ class RunLabel(Base):
     run_id: Mapped[str] = mapped_column(ForeignKey("print_run.id"))
     seq: Mapped[int]
     zpl: Mapped[str] = mapped_column(Text)
-    printed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    printed_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
     run: Mapped[PrintRun] = relationship(back_populates="labels")
 
@@ -174,7 +197,7 @@ class AuditLog(Base):
     __tablename__ = "audit_log"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+    at: Mapped[datetime] = mapped_column(UtcDateTime, default=now, index=True)
     actor: Mapped[str] = mapped_column(String(200), default="")
     action: Mapped[str] = mapped_column(String(64))
     entity: Mapped[str] = mapped_column(String(32))

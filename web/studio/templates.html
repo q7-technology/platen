@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Templates — Platen Label Studio</title>
+<link rel="icon" href="/studio/static/q7-logo-128.png">
+<link rel="stylesheet" href="/studio/static/studio/studio.css">
+<script src="/studio/static/studio/studio.js"></script>
+</head>
+<body>
+<div class="shell">
+  <aside id="shell-nav"></aside>
+
+  <main>
+    <header>
+      <h1>Templates</h1>
+      <span class="sub" id="sub">What a label looks like, and where its values come from</span>
+      <span class="spacer"></span>
+      <button class="btn" type="button" id="new">New template</button>
+    </header>
+
+    <div class="work" style="display: block;">
+      <div class="col">
+
+        <section class="card" id="new-card" aria-labelledby="h-new" hidden>
+          <div class="card-head"><h2 id="h-new">New template</h2></div>
+          <div class="row">
+            <div class="field"><label for="n-name">Name</label><input id="n-name" type="text" placeholder="Carton despatch"></div>
+            <div class="field narrow"><label for="n-w">Width mm</label><input id="n-w" class="mono" type="number" min="5" max="300" step="0.5" value="100"></div>
+            <div class="field narrow"><label for="n-h">Height mm</label><input id="n-h" class="mono" type="number" min="5" max="500" step="0.5" value="150"></div>
+            <div class="field narrow">
+              <label for="n-dpi">Dots per inch</label>
+              <select id="n-dpi"><option>203</option><option>300</option><option>600</option></select>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn pri" type="button" id="n-create" style="height: 38px;">Create and open</button>
+            <button class="btn" type="button" id="n-cancel">Cancel</button>
+            <span class="mut" style="font-size: 12px;">A new template starts as a draft. Nothing prints from it until you publish.</span>
+          </div>
+          <div id="n-msg" hidden></div>
+        </section>
+
+        <section class="card" aria-labelledby="h-list">
+          <div class="card-head"><h2 id="h-list">Template library</h2></div>
+          <div class="scroll">
+            <table>
+              <thead><tr>
+                <th>Name</th><th>Size</th><th>Data</th><th>Published</th><th>Edited</th><th></th>
+              </tr></thead>
+              <tbody id="rows"></tbody>
+            </table>
+          </div>
+          <p class="mut" id="empty" hidden>No templates yet. Make one and draw it in millimetres.</p>
+          <div id="msg" hidden></div>
+        </section>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  renderShell('templates');
+
+  const ago = (iso) => {
+    const s = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (s < 90) return 'just now';
+    if (s < 5400) return `${Math.round(s / 60)} min ago`;
+    if (s < 172800) return `${Math.round(s / 3600)} h ago`;
+    return `${Math.round(s / 86400)} days ago`;
+  };
+
+  async function load() {
+    const templates = await api('GET', '/templates');
+    const body = $('rows');
+    body.replaceChildren();
+    $('empty').hidden = templates.length > 0;
+    $('sub').textContent = templates.length
+      ? `${templates.length} template${templates.length === 1 ? '' : 's'}`
+      : 'What a label looks like, and where its values come from';
+    for (const t of templates) {
+      const open = () => { location.href = `/studio/editor?id=${encodeURIComponent(t.id)}`; };
+      body.append(el('tr', { class: 'clickable', tabindex: '0', onclick: open,
+                             onkeydown: (e) => { if (e.key === 'Enter') open(); } },
+        el('td', {}, el('b', { text: t.name || t.id }),
+                     el('small', { class: 'mut mono', style: 'display:block', text: t.id })),
+        el('td', { class: 'mono', text: `${t.size_mm[0]} × ${t.size_mm[1]} mm · ${t.dpi} dpi` }),
+        el('td', { class: 'mono', text: t.query ? `${t.datasource || '?'} · ${t.query}` : 'no query' }),
+        el('td', {}, t.version
+          ? el('span', { class: 'badge', text: `v${t.version}` })
+          : el('span', { class: 'badge gold', text: 'draft only' })),
+        el('td', { class: 'mut', text: ago(t.updated_at) }),
+        el('td', {}, el('button', {
+          class: 'btn sm gold', type: 'button', 'aria-label': `Delete ${t.name || t.id}`,
+          onclick: (e) => { e.stopPropagation(); remove(t); },
+        }, icon('trash', 13)))));
+    }
+  }
+
+  async function remove(t) {
+    if (!confirm(`Delete the template ${t.id}?`)) return;
+    try { await api('DELETE', `/templates/${encodeURIComponent(t.id)}`); clearError($('msg')); await load(); }
+    catch (e) { showError($('msg'), e.message); }
+  }
+
+  async function create() {
+    const name = $('n-name').value.trim();
+    const id = slug(name);
+    if (!id) { showError($('n-msg'), 'A template needs a name.'); return; }
+    try {
+      await api('PUT', `/templates/${encodeURIComponent(id)}`, {
+        id, name, width_mm: Number($('n-w').value), height_mm: Number($('n-h').value),
+        dpi: Number($('n-dpi').value), elements: [],
+      });
+      location.href = `/studio/editor?id=${encodeURIComponent(id)}`;
+    } catch (e) { showError($('n-msg'), e.message); }
+  }
+
+  $('new').addEventListener('click', () => {
+    $('new-card').hidden = false; clearError($('n-msg')); $('n-name').focus();
+  });
+  $('n-cancel').addEventListener('click', () => { $('new-card').hidden = true; });
+  $('n-create').addEventListener('click', create);
+
+  load().catch((e) => showError($('msg'), e.message));
+})();
+</script>
+</body>
+</html>
