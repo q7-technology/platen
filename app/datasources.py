@@ -163,7 +163,8 @@ def run(session: Session, query: SavedQuery, params: dict[str, Any],
     if ds.kind == "rest":
         return _fetch(ds, query, bound, limit)
 
-    sql = query.sql if limit is None else f"select * from ({query.sql}) q limit {int(limit)}"
+    sql = (query.sql if limit is None
+           else limited(query.sql, limit, ds.engine.dialect.name))
     with ds.engine.connect() as c:
         result = c.execute(text(sql), bound)
         return [dict(r) for r in result.mappings()]
@@ -216,6 +217,19 @@ def _dig(body: Any, path: str, query_name: str) -> list[dict[str, Any]]:
     return node
 
 
+def limited(sql: str, limit: int, dialect: str) -> str:
+    """Wrap a saved query so it returns at most `limit` rows.
+
+    SQL Server has no LIMIT — it puts TOP in front of the columns — and it is
+    one of the four databases Platen offers, so the shape has to follow the
+    dialect rather than assume Postgres.
+    """
+    rows = int(limit)
+    if dialect.startswith("mssql"):
+        return f"select top {rows} * from ({sql}) q"
+    return f"select * from ({sql}) q limit {rows}"
+
+
 def columns(session: Session, query: SavedQuery) -> list[str]:
     """What a query returns, without needing its parameters answered.
 
@@ -234,7 +248,8 @@ def columns(session: Session, query: SavedQuery) -> list[str]:
         rows = _fetch(ds, query, bound, limit=1)
         return list(rows[0]) if rows else []
     with ds.engine.connect() as c:
-        return list(c.execute(text(f"select * from ({query.sql}) q limit 0"), bound).keys())
+        statement = text(limited(query.sql, 0, ds.engine.dialect.name))
+        return list(c.execute(statement, bound).keys())
 
 
 def describe(rows: list[dict[str, Any]]) -> list[dict[str, str]]:

@@ -8,9 +8,22 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      # Platen offers MySQL, so something has to actually connect to one
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: wms
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -uroot -proot"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      PLATEN_TEST_MYSQL_URL: mysql+pymysql://root:root@127.0.0.1:3306/wms
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -41,8 +54,8 @@ jobs:
     env:
       DATABASE_URL: postgresql+psycopg://platen:platen@localhost:5432/platen
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -60,7 +73,7 @@ jobs:
     # command still brings up something that answers.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Bring it up
         run: |
           cp .env.example .env
