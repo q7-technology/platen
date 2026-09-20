@@ -23,6 +23,7 @@ app/            the service
   datasources.py  connection registry, read-only query runner
   images.py       base64 → PIL → 1-bit → ^GFA
   zpl.py          element tree → ^XA … ^XZ
+  zplimport.py    ^XA … ^XZ → element tree, with a list of what it dropped
   preview.py      the same tree → PNG, for the browser
   printers.py     raw 9100 / CUPS / local agent transports
   jobs.py         redis queue worker, retries, cancel
@@ -75,6 +76,10 @@ test suite runs the same models on SQLite, so keep column types portable.
 8. **Timestamps leave the API knowing their time zone.** Use `UtcDateTime`,
    never a bare `DateTime` — SQLite drops the offset and a browser then reads
    UTC as local.
+9. **An import says what it dropped.** `zplimport` collects a warning for
+   every command it doesn't carry over, and the screen shows them before the
+   label is opened. A silent importer is worse than none: the gap only turns
+   up on stock.
 
 ## Code
 

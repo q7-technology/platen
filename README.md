@@ -12,7 +12,8 @@ MIT licensed. Built by [Q7 Technology](https://q7technology.com.au) in Ballarat.
 ## What it does
 
 - **A canvas in millimetres.** Text, barcodes, QR, images and shapes at your
-  printer's real dot pitch — 203, 300 or 600 dpi.
+  printer's real dot pitch — 203, 300 or 600 dpi. Already have ZPL? Paste it
+  in and carry on editing; the importer says what it couldn't carry over.
 - **Binds to what you already run.** Postgres, SQL Server, MySQL, SQLite or a
   REST endpoint. Read-only role, prepared statements, parameters the operator
   answers at print time.
@@ -86,8 +87,8 @@ without touching the API. Templates, data sources, printers and runs live in
 Postgres (see `db/models.py`); publishing a template writes an immutable
 version and every print run records which version it rendered from.
 
-Not built yet: importing existing ZPL, a job history screen, and a printer
-network scan. Auth is left to whatever you already use.
+Not built yet: a job history screen and a printer network scan. Auth is left
+to whatever you already use.
 
 ## Contributing
 

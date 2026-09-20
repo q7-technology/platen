@@ -17,6 +17,7 @@
       <h1>Templates</h1>
       <span class="sub" id="sub">What a label looks like, and where its values come from</span>
       <span class="spacer"></span>
+      <button class="btn" type="button" id="import">Import ZPL</button>
       <button class="btn" type="button" id="new">New template</button>
     </header>
 
@@ -40,6 +41,30 @@
             <span class="mut" style="font-size: 12px;">A new template starts as a draft. Nothing prints from it until you publish.</span>
           </div>
           <div id="n-msg" hidden></div>
+        </section>
+
+        <section class="card" id="import-card" aria-labelledby="h-import" hidden>
+          <div class="card-head"><h2 id="h-import">Import ZPL</h2>
+            <span class="spacer"></span>
+            <span class="mut" style="font-size: 12px;">Paste one label, from ^XA to ^XZ</span></div>
+          <div class="row">
+            <div class="field"><label for="i-name">Name</label><input id="i-name" type="text" placeholder="Carton despatch"></div>
+            <div class="field narrow">
+              <label for="i-dpi">Printer dots per inch</label>
+              <select id="i-dpi"><option>203</option><option>300</option><option>600</option></select>
+            </div>
+          </div>
+          <div class="field">
+            <label for="i-zpl">ZPL</label>
+            <textarea id="i-zpl" spellcheck="false" placeholder="^XA&#10;^PW812^LL1218&#10;^FO48,160^A0N,39,0^FDColes DC Truganina^FS&#10;^XZ"></textarea>
+          </div>
+          <p class="mut" style="font-size: 12px;">The dots in the file only become millimetres once Platen knows the printer they were written for, so the dpi matters. It lands as a draft with its values as literal text; bind them to your query in the editor.</p>
+          <div class="actions">
+            <button class="btn pri" type="button" id="i-go" style="height: 38px;">Import and open</button>
+            <button class="btn" type="button" id="i-cancel">Cancel</button>
+          </div>
+          <div id="i-warn"></div>
+          <div id="i-msg" hidden></div>
         </section>
 
         <section class="card" aria-labelledby="h-list">
@@ -119,6 +144,35 @@
       location.href = `/studio/editor?id=${encodeURIComponent(id)}`;
     } catch (e) { showError($('n-msg'), e.message); }
   }
+
+  async function runImport() {
+    const name = $('i-name').value.trim();
+    const id = slug(name);
+    if (!id) { showError($('i-msg'), 'Give the label a name first.'); return; }
+    $('i-go').disabled = true;
+    $('i-warn').replaceChildren();
+    try {
+      const r = await api('POST', '/templates/import', {
+        id, name, dpi: Number($('i-dpi').value), zpl: $('i-zpl').value,
+      });
+      clearError($('i-msg'));
+      if (!r.warnings.length) { location.href = `/studio/editor?id=${encodeURIComponent(id)}`; return; }
+      // read the warnings before the editor, not after the stock is gone
+      $('i-warn').replaceChildren(el('div', { class: 'warn' }, icon('alert', 18),
+        el('span', { class: 'txt' },
+          el('b', { text: `${r.elements} elements imported, with ${r.warnings.length} thing${r.warnings.length === 1 ? '' : 's'} Platen could not carry over` }),
+          ...r.warnings.map((w) => el('span', { text: w }))),
+        el('button', { class: 'btn sm gold', type: 'button', text: 'Open it anyway',
+                       onclick: () => { location.href = `/studio/editor?id=${encodeURIComponent(id)}`; } })));
+    } catch (e) { showError($('i-msg'), e.message); }
+    finally { $('i-go').disabled = false; }
+  }
+
+  $('import').addEventListener('click', () => {
+    $('import-card').hidden = false; clearError($('i-msg')); $('i-warn').replaceChildren(); $('i-name').focus();
+  });
+  $('i-cancel').addEventListener('click', () => { $('import-card').hidden = true; });
+  $('i-go').addEventListener('click', runImport);
 
   $('new').addEventListener('click', () => {
     $('new-card').hidden = false; clearError($('n-msg')); $('n-name').focus();

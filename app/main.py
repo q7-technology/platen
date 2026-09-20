@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from db import models as db
 from db.session import get_session
 
-from . import binding, datasources, jobs, preview, printers
+from . import binding, datasources, jobs, preview, printers, zplimport
 from .models import Template
 from .zpl import RenderError, render_run
 
@@ -75,6 +75,35 @@ def list_templates(s: Session = Depends(get_session)) -> list[dict[str, Any]]:
          "query": t.query_id, "updated_at": t.updated_at}
         for t in s.scalars(select(db.Template).order_by(db.Template.name))
     ]
+
+
+class ImportZpl(BaseModel):
+    id: str
+    name: str
+    zpl: str
+    dpi: Literal[203, 300, 600] = 203
+
+
+@app.post("/templates/import", status_code=201)
+def import_zpl(body: ImportZpl, s: Session = Depends(get_session)) -> dict[str, Any]:
+    """Read a label somebody else wrote. It lands as a draft, never published,
+    and the warnings say what didn't survive the trip."""
+    if s.get(db.Template, body.id) is not None:
+        raise HTTPException(409, f"a template called {body.id!r} already exists; "
+                                 "pick another name or delete that one first")
+    try:
+        result = zplimport.parse(body.zpl, id=body.id, name=body.name, dpi=body.dpi)
+    except zplimport.NotZpl as exc:
+        raise HTTPException(422, str(exc)) from None
+    except Exception as exc:                          # noqa: BLE001 — arbitrary input
+        raise HTTPException(422, f"this label could not be read: {exc}") from None
+
+    put_template(body.id, result.template, s)
+    audit(s, "import", "template", body.id, elements=len(result.template.elements),
+          warnings=result.warnings)
+    s.commit()
+    return {"id": body.id, "elements": len(result.template.elements),
+            "warnings": result.warnings}
 
 
 @app.get("/templates/{template_id}")
