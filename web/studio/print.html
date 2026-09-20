@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Print run — Platen Label Studio</title>
+<link rel="icon" href="/studio/static/q7-logo-128.png">
+<style>
+  :root {
+    --ground: #0d1117;
+    --well: #080b10;
+    --surface: rgba(13,17,23,0.62);
+    --sunk: rgba(41,171,226,0.08);
+    --line: rgba(41,171,226,0.20);
+    --line-soft: rgba(41,171,226,0.12);
+    --ink: #ccd6f6;
+    --mut: #8892b0;
+    --accent: #29abe2;
+    --accent-ink: #0d1117;
+    --signal: #f7941d;
+    --signal-line: rgba(247,148,29,0.35);
+    --signal-fill: rgba(247,148,29,0.12);
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13.5px; line-height: 1.45;
+    color: var(--ink); background-color: var(--ground);
+    background-image:
+      radial-gradient(1.2px 1.2px at 11% 14%, rgba(204,214,246,.55), transparent 60%),
+      radial-gradient(1px 1px at 63% 9%, rgba(204,214,246,.40), transparent 60%),
+      radial-gradient(1.3px 1.3px at 84% 57%, rgba(100,255,218,.35), transparent 60%),
+      radial-gradient(1px 1px at 29% 71%, rgba(204,214,246,.35), transparent 60%),
+      radial-gradient(1px 1px at 47% 38%, rgba(204,214,246,.28), transparent 60%),
+      radial-gradient(1.1px 1.1px at 92% 22%, rgba(204,214,246,.30), transparent 60%),
+      radial-gradient(1px 1px at 8% 88%, rgba(204,214,246,.25), transparent 60%),
+      radial-gradient(1px 1px at 72% 84%, rgba(204,214,246,.22), transparent 60%),
+      radial-gradient(900px 520px at 82% -12%, rgba(41,171,226,.10), transparent 70%);
+    background-attachment: fixed;
+  }
+  a { color: var(--accent); text-underline-offset: 3px; }
+  a:hover { color: var(--ink); }
+  h1, h2 { margin: 0; letter-spacing: -0.01em; }
+  h1 { font-size: 19px; font-weight: 500; }
+  h2 { font-size: 14px; font-weight: 600; }
+  p { margin: 0; }
+  .mono { font-family: var(--mono); }
+  .mut { color: var(--mut); }
+  svg { flex: none; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+
+  /* ---------- shell ---------- */
+  .shell { min-height: 100%; display: flex; }
+  aside { width: 240px; flex: none; padding: 22px 14px; display: flex; flex-direction: column; background: var(--ground); }
+  .wordmark { padding: 0 10px 24px; display: flex; align-items: center; gap: 12px; }
+  .wordmark img { width: 32px; height: auto; }
+  .wordmark b { display: block; font-weight: 700; font-size: 19px; letter-spacing: 0.15em; }
+  .wordmark small { display: block; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mut); }
+  nav { display: flex; flex-direction: column; gap: 2px; }
+  nav a { display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: 7px; text-decoration: none; color: var(--mut); white-space: nowrap; }
+  nav a:hover { color: var(--ink); }
+  nav a[aria-current="page"] { background: rgba(41,171,226,0.14); color: var(--ink); }
+  .foot { margin-top: auto; padding: 10px; font-size: 11.5px; color: var(--mut); }
+  main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  header { height: 64px; flex: none; padding: 0 28px; display: flex; align-items: center; gap: 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  header .sub { font-size: 12.5px; color: var(--mut); }
+  .work { flex: 1; padding: 24px 28px; display: grid; grid-template-columns: minmax(0, 1fr) 480px; gap: 20px; align-items: start; }
+  .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+  /* ---------- cards ---------- */
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+  .card.is-off { opacity: 0.45; pointer-events: none; }
+  .card-head { display: flex; align-items: center; gap: 14px; }
+  .n { width: 26px; height: 26px; flex: none; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: 12.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .chip { font-family: var(--mono); font-size: 11.5px; padding: 3px 8px; border-radius: 5px; background: rgba(41,171,226,0.10); color: var(--mut); }
+  .spacer { flex: 1; }
+  .row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+  .field { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 150px; }
+  .field.narrow { flex: none; width: 130px; }
+  label { font-size: 11.5px; font-weight: 500; color: var(--mut); }
+  input, select {
+    height: 38px; width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
+    color: var(--ink); font: inherit; font-size: 13px; padding: 0 11px; color-scheme: dark;
+  }
+  input.mono { font-family: var(--mono); }
+  input:disabled, select:disabled { opacity: 0.5; }
+  .btn {
+    height: 38px; padding: 0 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
+    color: var(--mut); font: inherit; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+  }
+  .btn:hover { color: var(--ink); border-color: var(--ink); }
+  .btn.sm { height: 28px; padding: 0 11px; border-radius: 7px; font-size: 12.5px; }
+  .btn.icon { width: 28px; padding: 0; justify-content: center; }
+  .btn.pri { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+  .btn.pri:hover { filter: brightness(1.08); color: var(--accent-ink); }
+  .btn.gold { color: var(--signal); border-color: rgba(247,148,29,0.40); }
+  .btn.gold:hover { border-color: var(--signal); color: var(--signal); }
+  .btn:disabled { opacity: 0.45; cursor: default; filter: none; }
+
+  .note { display: flex; align-items: center; gap: 10px; padding: 11px 13px; border-radius: 8px; background: var(--sunk); border: 1px solid rgba(41,171,226,0.25); color: var(--accent); font-size: 13px; }
+  .note b { font-weight: 600; }
+  .warn { border: 1px solid var(--signal-line); background: var(--signal-fill); border-radius: 10px; padding: 13px 16px; display: flex; align-items: center; gap: 11px; color: var(--signal); }
+  .warn .txt { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+  .warn .txt b { font-weight: 500; font-size: 13px; }
+  .warn .txt span { font-size: 12.5px; }
+  .err { border: 1px solid var(--signal-line); background: var(--signal-fill); border-radius: 10px; padding: 13px 16px; display: flex; gap: 11px; color: var(--signal); align-items: flex-start; }
+  .err .txt { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+  .err .txt b { font-weight: 500; }
+  .err .txt code { font-family: var(--mono); font-size: 12.5px; word-break: break-word; }
+  .tpl-list { display: flex; flex-direction: column; gap: 6px; }
+  .tpl-list button {
+    text-align: left; display: flex; align-items: center; gap: 14px; padding: 11px 13px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; cursor: pointer;
+  }
+  .tpl-list button:hover { border-color: var(--accent); }
+  .tpl-list button[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .tpl-list button:disabled { opacity: 0.5; cursor: default; }
+  .tpl-list b { font-weight: 600; font-size: 14px; }
+  .tpl-list small { font-family: var(--mono); font-size: 11.5px; color: var(--mut); }
+  .tpl-list .gold { color: var(--signal); font-family: var(--mono); font-size: 11.5px; }
+
+  /* ---------- preview ---------- */
+  .preview { padding: 0; overflow: hidden; gap: 0; }
+  .preview-head { height: 46px; padding: 0 18px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line-soft); }
+  .preview-head h2 { font-size: 13.5px; }
+  .well { min-height: 420px; background: var(--well); display: flex; align-items: center; justify-content: center; padding: 18px; }
+  .well img { max-width: 100%; max-height: 520px; background: #fff; border: 1px solid #c3c8d3; }
+  .well .empty { color: var(--mut); font-size: 12.5px; text-align: center; max-width: 30ch; }
+
+  /* ---------- go ---------- */
+  .count { display: flex; align-items: baseline; gap: 8px; }
+  .count b { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+  .count span { font-size: 13px; color: var(--mut); }
+  .btn.go { height: 48px; border-radius: 9px; font-size: 15px; justify-content: center; gap: 9px; }
+  .bar { height: 8px; border-radius: 999px; background: rgba(41,171,226,0.14); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  .bar.gold i { background: var(--signal); }
+  .status { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+  .status .st { font-weight: 600; }
+  .status .st.gold { color: var(--signal); }
+  .fine { font-size: 11.5px; color: var(--mut); text-align: center; }
+
+  @media (max-width: 1100px) {
+    .work { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 760px) {
+    .shell { flex-direction: column; }
+    aside { width: auto; flex-direction: row; align-items: center; padding: 12px 16px; gap: 12px; }
+    .wordmark { padding: 0; } .wordmark small { display: none; }
+    nav { flex-direction: row; } .foot { display: none; }
+    header, .work { padding-inline: 16px; }
+    header { height: auto; padding-block: 12px; flex-wrap: wrap; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside>
+    <div class="wordmark">
+      <img src="/studio/static/q7-logo-128.png" alt="Q7Technology Logo" width="32" height="28">
+      <span><b>PLATEN</b><small>Label Studio</small></span>
+    </div>
+    <nav aria-label="Studio">
+      <a href="/studio/print" aria-current="page">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+        <span>Print run</span>
+      </a>
+      <a href="/docs">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
+        <span>API reference</span>
+      </a>
+    </nav>
+    <p class="foot">Templates, data sources and printers are set up through the API for now.</p>
+  </aside>
+
+  <main>
+    <header>
+      <h1>Print run</h1>
+      <span class="sub">Pick a template, pull the data, send it to a printer</span>
+    </header>
+
+    <div class="work">
+      <div class="col">
+
+        <section class="card" id="step1" aria-labelledby="h-step1">
+          <div class="card-head">
+            <span class="n" aria-hidden="true">1</span>
+            <h2 id="h-step1">Template</h2>
+            <span class="spacer"></span>
+            <span class="chip mono" id="tpl-count"></span>
+          </div>
+          <div class="tpl-list" id="tpl-list" role="group" aria-label="Templates"></div>
+          <p class="mut" id="tpl-empty" hidden>No templates yet. Create one with <span class="mono">PUT /templates/{id}</span> and publish it with <span class="mono">POST /templates/{id}/publish</span>.</p>
+        </section>
+
+        <section class="card is-off" id="step2" aria-labelledby="h-step2">
+          <div class="card-head">
+            <span class="n" aria-hidden="true">2</span>
+            <h2 id="h-step2">Data</h2>
+            <span class="chip mono" id="q-chip">no query</span>
+          </div>
+          <form class="row" id="q-form">
+            <div id="q-params" class="row" style="flex: 1; align-items: flex-end;"></div>
+            <button class="btn" type="submit" id="q-run">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>
+              Run query
+            </button>
+          </form>
+          <div class="note" id="q-note" hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <span id="q-note-text"></span>
+          </div>
+          <div class="err" id="q-err" hidden>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+            <span class="txt"><b>Nothing was printed</b><code id="q-err-text"></code></span>
+          </div>
+        </section>
+
+        <section class="card is-off" id="step3" aria-labelledby="h-step3">
+          <div class="card-head">
+            <span class="n" aria-hidden="true">3</span>
+            <h2 id="h-step3">Printer and options</h2>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label for="printer">Printer</label>
+              <select id="printer"></select>
+            </div>
+            <div class="field narrow">
+              <label for="copies">Copies each</label>
+              <input id="copies" class="mono" type="number" min="1" max="99" value="1" inputmode="numeric">
+            </div>
+            <div class="field narrow">
+              <label for="start-at">Start at record</label>
+              <input id="start-at" class="mono" type="number" min="1" value="1" inputmode="numeric">
+            </div>
+          </div>
+        </section>
+
+        <div id="warnings" class="col"></div>
+      </div>
+
+      <div class="col">
+        <section class="card preview" aria-labelledby="h-preview">
+          <div class="preview-head">
+            <h2 id="h-preview">Preview</h2>
+            <span class="spacer"></span>
+            <button class="btn sm icon" type="button" id="prev" aria-label="Previous record" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+            <span class="mono mut" id="rec-label">Record – of –</span>
+            <button class="btn sm icon" type="button" id="next" aria-label="Next record" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+          </div>
+          <div class="well">
+            <p class="empty" id="preview-empty">Pick a template and run its query to see the first label.</p>
+            <img id="preview-img" alt="" hidden>
+          </div>
+        </section>
+
+        <section class="card" id="go" aria-live="polite">
+          <div class="count">
+            <b id="go-count">–</b>
+            <span id="go-where">labels</span>
+            <span class="spacer"></span>
+            <span class="mono mut" id="go-version"></span>
+          </div>
+          <button class="btn pri go" type="button" id="go-btn" disabled>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3h12v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+            <span id="go-text">Print</span>
+          </button>
+          <div id="progress" hidden>
+            <div class="status">
+              <span class="mono" id="run-id"></span>
+              <span class="st" id="run-status"></span>
+              <span class="spacer"></span>
+              <span class="mono mut" id="run-printed"></span>
+              <button class="btn sm gold" type="button" id="cancel">Cancel</button>
+            </div>
+            <div class="bar" style="margin-top: 10px;"><i id="run-bar"></i></div>
+            <p class="mut" id="run-error" style="margin-top: 8px;" hidden></p>
+          </div>
+          <p class="fine" id="go-fine">Every label is rendered before the first one prints.</p>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const state = { templates: [], template: null, query: null, printers: [], check: null,
+                  record: 0, skip: [], run: null, timer: null, previewUrl: null };
+
+  async function api(method, path, body) {
+    const r = await fetch(path, {
+      method, headers: body ? { 'content-type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!r.ok) {
+      let detail = r.statusText;
+      try { detail = (await r.json()).detail || detail; } catch (e) { /* not json */ }
+      throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    }
+    return r.headers.get('content-type')?.includes('json') ? r.json() : r;
+  }
+
+  function el(tag, attrs, ...children) {
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (k === 'class') node.className = v;
+      else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
+      else if (v !== null && v !== undefined) node.setAttribute(k, v);
+    }
+    for (const c of children) node.append(c);
+    return node;
+  }
+
+  const size = (t) => `${t.size_mm[0]} × ${t.size_mm[1]} mm · ${t.dpi} dpi`;
+
+  // ---------- step 1: templates
+  async function loadTemplates() {
+    state.templates = await api('GET', '/templates');
+    const list = $('tpl-list');
+    list.replaceChildren();
+    $('tpl-empty').hidden = state.templates.length > 0;
+    $('tpl-count').textContent = state.templates.length ? `${state.templates.length} templates` : '';
+    for (const t of state.templates) {
+      const published = t.version > 0;
+      const btn = el('button', { type: 'button', 'aria-pressed': 'false', disabled: published ? null : '',
+                                 onclick: () => pickTemplate(t) },
+        el('span', { style: 'display:flex;flex-direction:column;gap:2px;flex:1' },
+          el('b', {}, t.name),
+          el('small', {}, `${size(t)} · ${published ? 'v' + t.version + ' published' : 'draft only'}`)),
+        published ? el('span', { class: 'chip mono' }, t.query || 'no query')
+                  : el('span', { class: 'gold' }, 'not published'));
+      btn.dataset.id = t.id;
+      list.append(btn);
+    }
+  }
+
+  async function pickTemplate(t) {
+    state.template = t; state.check = null; state.skip = []; state.record = 0;
+    for (const b of $('tpl-list').children) b.setAttribute('aria-pressed', String(b.dataset.id === t.id));
+    $('step2').classList.remove('is-off');
+    $('q-note').hidden = true; $('q-err').hidden = true;
+    renderWarnings([]); showPreview(null); updateGo();
+    state.query = t.query ? await api('GET', `/queries/${encodeURIComponent(t.query)}`) : null;
+    $('q-chip').textContent = state.query ? `${state.query.datasource_id} · ${state.query.id}` : 'no query · one label';
+    renderParams();
+  }
+
+  // ---------- step 2: parameters and the check
+  function renderParams() {
+    const box = $('q-params');
+    box.replaceChildren();
+    const params = (state.query?.parameters || []).filter((p) => p.ask_at_print);
+    for (const p of params) {
+      const id = `p-${p.name}`;
+      const type = { date: 'date', int: 'number', bool: 'checkbox' }[p.type] || 'text';
+      const input = el('input', { id, name: p.name, type, class: type === 'text' ? '' : 'mono' });
+      if (p.default != null) { if (type === 'checkbox') input.checked = p.default === 'true'; else input.value = p.default; }
+      box.append(el('div', { class: 'field' }, el('label', { for: id }, p.label || p.name), input));
+    }
+    if (!params.length) box.append(el('p', { class: 'mut' }, state.query ? 'This query takes no parameters.' : 'This template has no query, so it prints one label from literal values.'));
+  }
+
+  function collectParams() {
+    const out = {};
+    for (const input of $('q-params').querySelectorAll('input')) {
+      if (input.type === 'checkbox') out[input.name] = input.checked;
+      else if (input.value !== '') out[input.name] = input.type === 'number' ? Number(input.value) : input.value;
+    }
+    return out;
+  }
+
+  function spec() {
+    return { template_id: state.template.id, params: collectParams(),
+             copies: Math.max(1, Number($('copies').value) || 1),
+             start_at: Math.max(1, Number($('start-at').value) || 1), skip_rows: state.skip };
+  }
+
+  async function check() {
+    if (!state.template) return;
+    $('q-run').disabled = true; $('q-err').hidden = true;
+    try {
+      state.check = await api('POST', '/runs/check', spec());
+      const c = state.check;
+      $('q-note-text').replaceChildren(el('b', {}, `${c.records} record${c.records === 1 ? '' : 's'}`),
+        ` returned in ${c.elapsed_ms} ms · ${c.labels} label${c.labels === 1 ? '' : 's'} at ${spec().copies} cop${spec().copies === 1 ? 'y' : 'ies'} each`);
+      $('q-note').hidden = false;
+      $('step3').classList.remove('is-off');
+      renderWarnings(c.warnings);
+      state.record = Math.min(state.record, Math.max(0, c.records - 1));
+      await loadPreview();
+    } catch (e) {
+      state.check = null;
+      $('q-note').hidden = true;
+      $('q-err-text').textContent = e.message; $('q-err').hidden = false;
+      renderWarnings([]); showPreview(null);
+    } finally {
+      $('q-run').disabled = false;
+      updateGo();
+    }
+  }
+
+  // render_run numbers rows after start-at and skips are applied; the
+  // operator thinks in query record numbers, so map back
+  function toRecord(n) {
+    let rec = spec().start_at - 1, seen = 0;
+    while (seen < n) { rec += 1; if (!state.skip.includes(rec)) seen += 1; }
+    return rec;
+  }
+
+  function renderWarnings(list) {
+    const box = $('warnings');
+    box.replaceChildren();
+    for (const w of list) {
+      const m = /^row (\d+): (.*)$/.exec(w);
+      const rec = m ? toRecord(Number(m[1])) : null;
+      box.append(el('div', { class: 'warn', role: 'status' },
+        triangle(),
+        el('span', { class: 'txt' },
+          el('b', {}, rec ? `Record ${rec}: ${m[2]}` : w),
+          el('span', {}, 'That label still prints, without the missing part.')),
+        rec ? el('button', { class: 'btn sm gold', type: 'button', onclick: () => skip(rec) }, 'Skip that record') : ''));
+    }
+  }
+
+  function triangle() {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    for (const [k, v] of Object.entries({ width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' })) svg.setAttribute(k, v);
+    for (const d of ['m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3', 'M12 9v4', 'M12 17h.01']) {
+      const path = document.createElementNS(ns, 'path'); path.setAttribute('d', d); svg.append(path);
+    }
+    return svg;
+  }
+
+  function skip(rec) {
+    if (!state.skip.includes(rec)) state.skip.push(rec);
+    check();
+  }
+
+  // ---------- preview
+  function showPreview(url) {
+    if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
+    state.previewUrl = url;
+    $('preview-img').hidden = !url; $('preview-empty').hidden = !!url;
+    if (url) { $('preview-img').src = url; $('preview-img').alt = `Label for record ${state.record + 1}`; }
+    const n = state.check?.records || 0;
+    $('rec-label').textContent = n ? `Record ${state.record + 1} of ${n}` : 'Record – of –';
+    $('prev').disabled = !n || state.record === 0;
+    $('next').disabled = !n || state.record >= n - 1;
+  }
+
+  async function loadPreview() {
+    if (!state.check || !state.check.records) { showPreview(null); return; }
+    const row = toRecord(state.record + 1) - 1;   // the preview endpoint is 0-based
+    const r = await api('POST', `/templates/${encodeURIComponent(state.template.id)}/preview.png`,
+                        { params: collectParams(), record: row, published: true });
+    showPreview(URL.createObjectURL(await r.blob()));
+  }
+
+  $('prev').addEventListener('click', () => { state.record -= 1; loadPreview(); });
+  $('next').addEventListener('click', () => { state.record += 1; loadPreview(); });
+
+  // ---------- step 3: printer, then go
+  async function loadPrinters() {
+    state.printers = await api('GET', '/printers');
+    const sel = $('printer');
+    sel.replaceChildren();
+    for (const p of state.printers) {
+      sel.append(el('option', { value: p.id }, `${p.model ? p.model + ' · ' : ''}${p.name} — ${p.online ? 'online' : 'not answering'}`));
+    }
+    if (!state.printers.length) sel.append(el('option', { value: '' }, 'No printers registered'));
+    updateGo();
+  }
+
+  function updateGo() {
+    const ready = !!(state.check && state.check.labels && $('printer').value && !state.run);
+    const p = state.printers.find((x) => x.id === $('printer').value);
+    $('go-count').textContent = state.check ? state.check.labels : '–';
+    $('go-where').textContent = p && state.check ? `labels to ${p.name}` : 'labels';
+    $('go-version').textContent = state.check ? `${state.template.id} v${state.check.template_version}` : '';
+    $('go-text').textContent = state.check ? `Print ${state.check.labels} label${state.check.labels === 1 ? '' : 's'}` : 'Print';
+    $('go-btn').disabled = !ready;
+  }
+
+  async function go() {
+    $('go-btn').disabled = true; $('q-err').hidden = true;
+    try {
+      const run = await api('POST', '/runs', { ...spec(), printer_id: $('printer').value });
+      state.run = run;
+      $('progress').hidden = false; $('go-fine').hidden = true;
+      $('run-id').textContent = run.id;
+      poll();
+    } catch (e) {
+      $('q-err-text').textContent = e.message; $('q-err').hidden = false;
+      updateGo();
+    }
+  }
+
+  async function poll() {
+    const r = await api('GET', `/runs/${state.run.id}`);
+    const done = ['done', 'failed', 'cancelled'].includes(r.status);
+    const words = { queued: 'Queued', printing: 'Printing', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
+    $('run-status').textContent = words[r.status] || r.status;
+    $('run-status').classList.toggle('gold', r.status === 'failed' || r.status === 'cancelled');
+    $('run-printed').textContent = `${r.printed} / ${r.total}`;
+    $('run-bar').style.width = r.total ? `${(100 * r.printed) / r.total}%` : '0%';
+    $('run-bar').parentElement.classList.toggle('gold', r.status === 'failed' || r.status === 'cancelled');
+    $('cancel').hidden = done;
+    $('run-error').hidden = !r.error; $('run-error').textContent = r.error || '';
+    if (done) {
+      state.run = null; state.timer = null;
+      $('go-fine').hidden = false;
+      $('go-fine').textContent = r.status === 'done'
+        ? `${r.printed} labels sent to the printer. Run it again or pick another template.`
+        : 'Nothing more will print from this run.';
+      updateGo();
+    } else {
+      state.timer = setTimeout(poll, 1000);
+    }
+  }
+
+  $('cancel').addEventListener('click', async () => {
+    if (!state.run) return;
+    $('cancel').disabled = true;
+    try { await api('POST', `/runs/${state.run.id}/cancel`); } finally { $('cancel').disabled = false; }
+  });
+
+  $('q-form').addEventListener('submit', (e) => { e.preventDefault(); check(); });
+  $('copies').addEventListener('change', () => state.check && check());
+  $('start-at').addEventListener('change', () => { state.record = 0; state.check && check(); });
+  $('printer').addEventListener('change', updateGo);
+  $('go-btn').addEventListener('click', go);
+
+  Promise.all([loadTemplates(), loadPrinters()]).catch((e) => {
+    $('q-err-text').textContent = e.message; $('q-err').hidden = false;
+  });
+})();
+</script>
+</body>
+</html>

@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import time
 import uuid
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -18,6 +22,14 @@ from .models import Template
 from .zpl import RenderError, render_run
 
 app = FastAPI(title="Platen")
+
+WEB = Path(__file__).resolve().parent.parent / "web"
+app.mount("/studio/static", StaticFiles(directory=WEB), name="static")
+
+
+@app.get("/studio/print", include_in_schema=False)
+def print_screen() -> FileResponse:
+    return FileResponse(WEB / "studio" / "print.html", media_type="text/html")
 
 
 def audit(s: Session, action: str, entity: str, entity_id: str, **detail: Any) -> None:
@@ -51,7 +63,8 @@ def _template_row(s: Session, template_id: str) -> db.Template:
 def list_templates(s: Session = Depends(get_session)) -> list[dict[str, Any]]:
     return [
         {"id": t.id, "name": t.name, "version": v.version if (v := _latest_version(t)) else 0,
-         "size_mm": [t.width_mm, t.height_mm], "dpi": t.dpi, "updated_at": t.updated_at}
+         "size_mm": [t.width_mm, t.height_mm], "dpi": t.dpi, "datasource": t.datasource_id,
+         "query": t.query_id, "updated_at": t.updated_at}
         for t in s.scalars(select(db.Template).order_by(db.Template.name))
     ]
 
@@ -178,6 +191,19 @@ def put_query(query_id: str, body: QueryBody, s: Session = Depends(get_session))
     return {"id": row.id, "name": row.name, "parameters": [p.name for p in row.parameters]}
 
 
+@app.get("/queries/{query_id}")
+def get_query(query_id: str, s: Session = Depends(get_session)) -> dict[str, Any]:
+    row = s.get(db.SavedQuery, query_id)
+    if row is None:
+        raise HTTPException(404, f"no saved query {query_id!r}")
+    return {
+        "id": row.id, "name": row.name, "datasource_id": row.datasource_id, "sql": row.sql,
+        "parameters": [{"name": p.name, "type": p.type, "default": p.default,
+                        "ask_at_print": p.ask_at_print, "label": p.label}
+                       for p in row.parameters],
+    }
+
+
 def _query(s: Session, query_id: str) -> datasources.SavedQuery:
     q = datasources.saved_query(s, query_id)
     if q is None:
@@ -197,12 +223,23 @@ def preview_query(query_id: str, body: PreviewQuery,
 class RenderPreview(BaseModel):
     params: dict[str, Any] = {}
     record: int = 0
+    published: bool = False        # the latest published version, not the draft
+
+
+def _preview_template(s: Session, template_id: str, published: bool) -> Template:
+    row = _template_row(s, template_id)
+    if not published:
+        return _as_template(row)
+    version = _latest_version(row)
+    if version is None:
+        raise HTTPException(422, f"template {template_id!r} has no published version; publish it first")
+    return Template.model_validate(version.definition)
 
 
 @app.post("/templates/{template_id}/preview.png")
 def preview_png(template_id: str, body: RenderPreview,
                 s: Session = Depends(get_session)) -> Response:
-    t = _as_template(_template_row(s, template_id))
+    t = _preview_template(s, template_id, body.published)
     row = _one_row(s, t, body.params, body.record)
     return Response(preview.render_png(t, row), media_type="image/png")
 
@@ -210,7 +247,7 @@ def preview_png(template_id: str, body: RenderPreview,
 @app.post("/templates/{template_id}/preview.zpl")
 def preview_zpl(template_id: str, body: RenderPreview,
                 s: Session = Depends(get_session)) -> Response:
-    t = _as_template(_template_row(s, template_id))
+    t = _preview_template(s, template_id, body.published)
     row = _one_row(s, t, body.params, body.record)
     try:
         labels, warnings = render_run(t, [row])
@@ -231,12 +268,54 @@ def _one_row(s: Session, t: Template, params: dict[str, Any], index: int) -> dic
 
 # ---------------------------------------------------------------- print runs
 
-class NewRun(BaseModel):
+class RunSpec(BaseModel):
     template_id: str
-    printer_id: str
     params: dict[str, Any] = {}
     copies: int = 1
     start_at: int = 1
+    skip_rows: list[int] = []      # 1-based record numbers, as the operator sees them
+
+
+class NewRun(RunSpec):
+    printer_id: str
+
+
+class Prepared(BaseModel):
+    version_id: int
+    version: int
+    records: int
+    labels: list[str]
+    warnings: list[str]
+
+
+def _prepare(s: Session, body: RunSpec) -> Prepared:
+    """Pull the rows and render every label. Shared by the dry run and the
+    real one so the operator's check and the print never disagree."""
+    version = _latest_version(_template_row(s, body.template_id))
+    if version is None:
+        raise HTTPException(422, f"template {body.template_id!r} has no published version; publish it first")
+    t = Template.model_validate(version.definition)
+
+    rows = datasources.run(s, _query(s, t.query), body.params) if t.query else [{}]
+    skip = set(body.skip_rows)
+    rows = [r for i, r in enumerate(rows, start=1) if i >= body.start_at and i not in skip]
+
+    try:
+        labels, warnings = render_run(t, rows, copies=body.copies)
+    except RenderError as exc:
+        raise HTTPException(422, str(exc)) from None
+    return Prepared(version_id=version.id, version=version.version, records=len(rows),
+                    labels=labels, warnings=warnings)
+
+
+@app.post("/runs/check")
+def check_run(body: RunSpec, s: Session = Depends(get_session)) -> dict[str, Any]:
+    """Everything a run would do short of writing it down or queueing it."""
+    started = time.perf_counter()
+    p = _prepare(s, body)
+    return {"records": p.records, "labels": len(p.labels), "warnings": p.warnings,
+            "template_version": p.version,
+            "elapsed_ms": round((time.perf_counter() - started) * 1000)}
 
 
 def _run_json(run: db.PrintRun) -> dict[str, Any]:
@@ -253,31 +332,21 @@ def _run_json(run: db.PrintRun) -> dict[str, Any]:
 
 @app.post("/runs", status_code=202)
 def create_run(body: NewRun, s: Session = Depends(get_session)) -> dict[str, Any]:
-    version = _latest_version(_template_row(s, body.template_id))
-    if version is None:
-        raise HTTPException(422, f"template {body.template_id!r} has no published version; publish it first")
     if s.get(db.Printer, body.printer_id) is None:
         raise HTTPException(404, f"no printer {body.printer_id!r}")
-    t = Template.model_validate(version.definition)
-
-    rows = datasources.run(s, _query(s, t.query), body.params) if t.query else [{}]
-    rows = rows[body.start_at - 1:]
 
     # every label renders here, before a run row exists, let alone a job
-    try:
-        labels, warnings = render_run(t, rows, copies=body.copies)
-    except RenderError as exc:
-        raise HTTPException(422, str(exc)) from None
+    p = _prepare(s, body)
 
     run = db.PrintRun(
-        id=f"JOB-{uuid.uuid4().hex[:6].upper()}", template_version=version,
-        printer_id=body.printer_id, params=body.params, copies=body.copies, total=len(labels),
-        labels=[db.RunLabel(seq=i, zpl=z) for i, z in enumerate(labels, start=1)],
-        warnings=[_warning(w) for w in warnings],
+        id=f"JOB-{uuid.uuid4().hex[:6].upper()}", template_version_id=p.version_id,
+        printer_id=body.printer_id, params=body.params, copies=body.copies, total=len(p.labels),
+        labels=[db.RunLabel(seq=i, zpl=z) for i, z in enumerate(p.labels, start=1)],
+        warnings=[_warning(w) for w in p.warnings],
     )
     s.add(run)
-    audit(s, "create", "run", run.id, template_id=t.id, template_version=version.version,
-          printer_id=body.printer_id, labels=len(labels))
+    audit(s, "create", "run", run.id, template_id=body.template_id, template_version=p.version,
+          printer_id=body.printer_id, labels=len(p.labels), skip_rows=body.skip_rows)
     s.commit()
 
     try:
@@ -286,8 +355,8 @@ def create_run(body: NewRun, s: Session = Depends(get_session)) -> dict[str, Any
         run.status, run.error = "failed", f"could not queue: {type(exc).__name__}: {exc}"
         s.commit()
         raise HTTPException(503, run.error) from None
-    return {"id": run.id, "labels": run.total, "warnings": warnings,
-            "template_version": version.version}
+    return {"id": run.id, "labels": run.total, "warnings": p.warnings,
+            "template_version": p.version}
 
 
 def _warning(text: str) -> db.RunWarning:

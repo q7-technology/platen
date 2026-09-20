@@ -32,6 +32,7 @@ SYMBOLOGY = {"code128": "code128", "gs1_128": "code128", "code39": "code39", "i2
 
 def _font(px: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     for path in ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                 "/System/Library/Fonts/Supplemental/Arial.ttf",
                  "/Library/Fonts/Arial.ttf"):
         try:
             return ImageFont.truetype(path, px)

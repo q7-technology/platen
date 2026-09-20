@@ -36,6 +36,8 @@ docker compose up --build
 ```
 
 The API is on http://localhost:8000 and runs the migrations before it starts.
+The operator's print screen is at http://localhost:8000/studio/print and the
+API reference at http://localhost:8000/docs.
 
 On your own machine instead:
 
@@ -79,8 +81,10 @@ head. Open either in a browser.
 
 Early. Templates, data sources, printers and runs live in Postgres (see
 `db/models.py`); publishing a template writes an immutable version and every
-print run records which version it rendered from. Auth is left to whatever
-you already use.
+print run records which version it rendered from. The operator's print screen
+(`/studio/print`) is built; templates, data sources and printers are set up
+through the API until their screens exist. Auth is left to whatever you
+already use.
 
 ## Contributing
 

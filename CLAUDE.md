@@ -30,6 +30,7 @@ app/            the service
 db/             Platen's own storage: SQLAlchemy models, Alembic migrations
 tests/          pytest; SQLite and fakeredis, no Docker needed
 web/            the public landing page (static, single file)
+  studio/         the operator screens, served by the API under /studio
 docs/           the design canvas artboards and the walkthrough reel
 ```
 
