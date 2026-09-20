@@ -674,6 +674,35 @@ def put_printer(printer_id: str, body: PrinterBody,
     return _printer_json(row, None)
 
 
+class ScanRequest(BaseModel):
+    network: str
+    port: int = 9100
+
+
+@app.post("/printers/scan")
+def scan_printers(body: ScanRequest, s: Session = Depends(get_session)) -> dict[str, Any]:
+    """Look for printers already on the network. Private ranges only."""
+    try:
+        found = printers.scan(body.network, port=body.port)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
+
+    known = {
+        (r.transport_config.get("host"), r.transport_config.get("port", 9100)): r.id
+        for r in s.scalars(select(db.Printer).where(db.Printer.transport_kind == "tcp"))
+    }
+    audit(s, "scan", "network", body.network, port=body.port, found=len(found))
+    s.commit()
+    return {
+        "scanned": len(found),
+        "found": [
+            {"host": f.host, "port": f.port, "model": f.model, "firmware": f.firmware,
+             "configured_as": known.get((f.host, f.port))}
+            for f in found
+        ],
+    }
+
+
 @app.post("/printers/{printer_id}/test", status_code=202)
 def test_printer(printer_id: str, s: Session = Depends(get_session)) -> dict[str, str]:
     p = printers.load(s, printer_id)

@@ -18,6 +18,7 @@
       <span class="sub" id="sub">Anything that takes ZPL</span>
       <span class="spacer"></span>
       <button class="btn" type="button" id="recheck">Re-check status</button>
+      <button class="btn" type="button" id="scan">Scan network</button>
       <button class="btn" type="button" id="add">Add printer</button>
     </header>
 
@@ -39,6 +40,25 @@
             </table>
           </div>
           <p class="mut" id="empty" hidden>No printers yet. Add one and Platen will talk to it over a socket, a local agent or a CUPS queue.</p>
+        </section>
+
+        <section class="card" id="scan-card" aria-labelledby="h-scan" hidden>
+          <div class="card-head"><h2 id="h-scan">Scan for printers</h2>
+            <span class="spacer"></span>
+            <span class="mut" id="s-note" style="font-size: 12px;"></span></div>
+          <div class="row">
+            <div class="field">
+              <label for="s-net">Network</label>
+              <input id="s-net" class="mono" type="text" placeholder="10.20.4.0/24" spellcheck="false">
+            </div>
+            <div class="field narrow"><label for="s-port">Port</label><input id="s-port" class="mono" type="number" value="9100"></div>
+            <div class="field narrow" style="align-self: flex-end;">
+              <button class="btn pri" type="button" id="s-go" style="height: 38px;">Scan</button>
+            </div>
+          </div>
+          <p class="mut" style="font-size: 12px;">Platen opens one connection per address on that one port and asks each answering device to identify itself. It only looks at private networks, up to 1024 addresses at a time, because a despatch printer is never on a public address.</p>
+          <div class="scroll" id="s-results"></div>
+          <div id="s-msg" hidden></div>
         </section>
 
         <section class="card" id="edit" aria-labelledby="h-edit" hidden>
@@ -107,7 +127,7 @@
 <script>
 (function () {
   'use strict';
-  renderShell('printers', 'Templates are set up through the API until the editor exists.');
+  renderShell('printers');
 
   const state = { printers: [], current: null };
 
@@ -237,6 +257,50 @@
   for (const r of document.getElementsByName('kind')) {
     r.addEventListener('change', () => showKind(r.value));
   }
+  async function runScan() {
+    $('s-go').disabled = true;
+    $('s-note').textContent = 'looking…';
+    $('s-results').replaceChildren();
+    try {
+      const r = await api('POST', '/printers/scan', {
+        network: $('s-net').value, port: Number($('s-port').value) || 9100,
+      });
+      clearError($('s-msg'));
+      $('s-note').textContent = r.scanned
+        ? `${r.scanned} device${r.scanned === 1 ? '' : 's'} answered`
+        : 'nothing answered on that port';
+      if (!r.scanned) return;
+      $('s-results').replaceChildren(el('table', {},
+        el('thead', {}, el('tr', {},
+          el('th', { text: 'Address' }), el('th', { text: 'Model' }),
+          el('th', { text: 'Firmware' }), el('th', {}))),
+        el('tbody', {}, ...r.found.map((f) => el('tr', {},
+          el('td', { class: 'mono', text: `${f.host}:${f.port}` }),
+          el('td', { text: f.model || 'did not say' }),
+          el('td', { class: 'mono mut', text: f.firmware || '—' }),
+          el('td', {}, f.configured_as
+            ? el('span', { class: 'badge', text: `already set up as ${f.configured_as}` })
+            : el('button', { class: 'btn sm', type: 'button', text: 'Add this one',
+                             onclick: () => adopt(f) })))))));
+    } catch (e) { $('s-note').textContent = ''; showError($('s-msg'), e.message); }
+    finally { $('s-go').disabled = false; }
+  }
+
+  /* Carry what the scan learned into the form rather than making someone
+     retype an address they just read off the screen. */
+  function adopt(f) {
+    add();
+    $('p-name').value = f.model ? `${f.model.split(' ').pop()} · ${f.host}` : f.host;
+    $('p-model').value = (f.model || '').split(' ').pop();
+    $('t-host').value = f.host;
+    $('t-port').value = f.port;
+    $('p-name').focus();
+  }
+
+  $('scan').addEventListener('click', () => {
+    $('scan-card').hidden = false; clearError($('s-msg')); $('s-net').focus();
+  });
+  $('s-go').addEventListener('click', runScan);
   $('add').addEventListener('click', add);
   $('save').addEventListener('click', save);
   $('test').addEventListener('click', test);

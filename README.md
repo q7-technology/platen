@@ -23,7 +23,8 @@ MIT licensed. Built by [Q7 Technology](https://q7technology.com.au) in Ballarat.
   signature, a photo — is decoded, scaled to the printer's dots, dithered and
   sent as a `^GFA` graphic.
 - **Printers however they're wired.** Raw TCP on 9100, a small agent for USB,
-  or an existing CUPS queue. No drivers on anyone's laptop.
+  or an existing CUPS queue. No drivers on anyone's laptop. Platen can find
+  the ones already on your network, private ranges only.
 - **Jobs you can answer for.** Queued, cancellable between labels, and retried
   twice by the worker on its own. A retry resumes rather than restarts, so a
   label that already came out is never printed twice. Warnings stay attached
@@ -89,8 +90,7 @@ without touching the API. Templates, data sources, printers and runs live in
 Postgres (see `db/models.py`); publishing a template writes an immutable
 version and every print run records which version it rendered from.
 
-Not built yet: a printer network scan. Auth is left to whatever you already
-use.
+Auth is left to whatever you already use.
 
 ## Contributing
 

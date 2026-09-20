@@ -25,7 +25,7 @@ app/            the service
   zpl.py          element tree → ^XA … ^XZ
   zplimport.py    ^XA … ^XZ → element tree, with a list of what it dropped
   preview.py      the same tree → PNG, for the browser
-  printers.py     raw 9100 / CUPS / local agent transports
+  printers.py     raw 9100 / CUPS / local agent transports, and network discovery
   jobs.py         redis queue worker, retries, cancel
   main.py         the HTTP surface
 db/             Platen's own storage: SQLAlchemy models, Alembic migrations
@@ -84,6 +84,10 @@ test suite runs the same models on SQLite, so keep column types portable.
     no `printed_at`. A second consignment barcode on a second carton is worse
     than a missing one, so nothing that has come out of the printer is ever
     sent again.
+11. **Discovery stays on the site's own network.** `printers.scan` refuses
+    anything but a private, loopback or link-local range, caps a call at 1024
+    addresses, and opens one connection per address on the one port it was
+    given. It is how you find your own printers, not a port sweep.
 
 ## Code
 
