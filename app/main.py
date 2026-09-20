@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -27,9 +29,14 @@ WEB = Path(__file__).resolve().parent.parent / "web"
 app.mount("/studio/static", StaticFiles(directory=WEB), name="static")
 
 
-@app.get("/studio/print", include_in_schema=False)
-def print_screen() -> FileResponse:
-    return FileResponse(WEB / "studio" / "print.html", media_type="text/html")
+SCREENS = {"print": "print.html", "data": "data.html", "printers": "printers.html"}
+
+
+@app.get("/studio/{screen}", include_in_schema=False)
+def studio(screen: str) -> FileResponse:
+    if screen not in SCREENS:
+        raise HTTPException(404, f"no screen {screen!r}")
+    return FileResponse(WEB / "studio" / SCREENS[screen], media_type="text/html")
 
 
 def audit(s: Session, action: str, entity: str, entity_id: str, **detail: Any) -> None:
@@ -140,20 +147,68 @@ class PreviewQuery(BaseModel):
     limit: int = 25
 
 
+def _datasource_json(s: Session, row: db.DataSource) -> dict[str, Any]:
+    queries = s.scalars(
+        select(db.SavedQuery.id).where(db.SavedQuery.datasource_id == row.id)
+        .order_by(db.SavedQuery.id)
+    ).all()
+    return {"id": row.id, "name": row.name, "label": row.label,
+            "url": datasources.masked(row.url), "pool_size": row.pool_size,
+            "queries": list(queries)}
+
+
 @app.get("/datasources")
-def list_datasources(s: Session = Depends(get_session)) -> list[dict[str, str]]:
-    return [{"id": d.id, "name": d.name, "label": d.label}
+def list_datasources(s: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    return [_datasource_json(s, d)
             for d in s.scalars(select(db.DataSource).order_by(db.DataSource.name))]
+
+
+def _datasource_row(s: Session, datasource_id: str) -> db.DataSource:
+    row = s.get(db.DataSource, datasource_id)
+    if row is None:
+        raise HTTPException(404, f"no data source {datasource_id!r}")
+    return row
+
+
+@app.get("/datasources/{datasource_id}")
+def get_datasource(datasource_id: str, s: Session = Depends(get_session)) -> dict[str, Any]:
+    return _datasource_json(s, _datasource_row(s, datasource_id))
+
+
+@app.get("/datasources/{datasource_id}/reveal")
+def reveal_datasource(datasource_id: str, s: Session = Depends(get_session)) -> dict[str, str]:
+    """The connection string with its password. Kept apart from the ordinary
+    read so it never rides along with a screen that only needs to show it."""
+    return {"id": datasource_id, "url": _datasource_row(s, datasource_id).url}
 
 
 @app.put("/datasources/{datasource_id}")
 def put_datasource(datasource_id: str, body: DataSourceBody,
-                   s: Session = Depends(get_session)) -> dict[str, str]:
-    row = s.get(db.DataSource, datasource_id) or db.DataSource(id=datasource_id)
-    row.name, row.label, row.url, row.pool_size = body.name, body.label, body.url, body.pool_size
+                   s: Session = Depends(get_session)) -> dict[str, Any]:
+    row = s.get(db.DataSource, datasource_id)
+    url = datasources.unmasked(body.url, row.url if row else None)
+    row = row or db.DataSource(id=datasource_id)
+    row.name, row.label, row.url, row.pool_size = body.name, body.label, url, body.pool_size
     s.add(row)
+    audit(s, "save", "datasource", row.id)
     s.commit()
-    return {"id": row.id, "name": row.name, "label": row.label}
+    return _datasource_json(s, row)
+
+
+@app.delete("/datasources/{datasource_id}", status_code=204)
+def delete_datasource(datasource_id: str, s: Session = Depends(get_session)) -> Response:
+    row = _datasource_row(s, datasource_id)
+    used = s.scalars(
+        select(db.SavedQuery.id).where(db.SavedQuery.datasource_id == row.id)
+    ).all()
+    if used:
+        raise HTTPException(
+            409, f"{datasource_id!r} still has saved queries on it: {', '.join(used)}. "
+                 "Delete those first.")
+    s.delete(row)
+    audit(s, "delete", "datasource", datasource_id)
+    s.commit()
+    return Response(status_code=204)
 
 
 @app.post("/datasources/{datasource_id}/test")
@@ -168,10 +223,14 @@ def test_datasource(datasource_id: str, s: Session = Depends(get_session)) -> di
 
 
 @app.get("/queries")
-def list_queries(s: Session = Depends(get_session)) -> list[dict[str, Any]]:
+def list_queries(datasource_id: str | None = None,
+                 s: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    stmt = select(db.SavedQuery).order_by(db.SavedQuery.name)
+    if datasource_id is not None:
+        stmt = stmt.where(db.SavedQuery.datasource_id == datasource_id)
     return [{"id": q.id, "name": q.name, "datasource_id": q.datasource_id,
              "parameters": [p.name for p in q.parameters]}
-            for q in s.scalars(select(db.SavedQuery).order_by(db.SavedQuery.name))]
+            for q in s.scalars(stmt)]
 
 
 @app.put("/queries/{query_id}")
@@ -180,12 +239,18 @@ def put_query(query_id: str, body: QueryBody, s: Session = Depends(get_session))
         raise HTTPException(422, f"no data source {body.datasource_id!r}")
     row = s.get(db.SavedQuery, query_id) or db.SavedQuery(id=query_id)
     row.datasource_id, row.name, row.sql = body.datasource_id, body.name, body.sql
-    row.parameters = [
+
+    # the old parameters go first and are flushed before the new ones arrive:
+    # a name reused across a save would otherwise collide with itself, because
+    # SQLAlchemy orders its inserts ahead of its deletes
+    row.parameters.clear()
+    s.flush()
+    row.parameters.extend(
         db.QueryParameter(name=p.name, type=p.type, label=p.label, position=i,
                           default=None if p.default is None else str(p.default),
                           ask_at_print=p.ask_at_print)
         for i, p in enumerate(body.parameters)
-    ]
+    )
     s.add(row)
     s.commit()
     return {"id": row.id, "name": row.name, "parameters": [p.name for p in row.parameters]}
@@ -204,6 +269,22 @@ def get_query(query_id: str, s: Session = Depends(get_session)) -> dict[str, Any
     }
 
 
+@app.delete("/queries/{query_id}", status_code=204)
+def delete_query(query_id: str, s: Session = Depends(get_session)) -> Response:
+    row = s.get(db.SavedQuery, query_id)
+    if row is None:
+        raise HTTPException(404, f"no saved query {query_id!r}")
+    used = s.scalars(select(db.Template.id).where(db.Template.query_id == query_id)).all()
+    if used:
+        raise HTTPException(
+            409, f"{query_id!r} is bound to templates: {', '.join(used)}. "
+                 "Point them somewhere else first.")
+    s.delete(row)
+    audit(s, "delete", "query", query_id)
+    s.commit()
+    return Response(status_code=204)
+
+
 def _query(s: Session, query_id: str) -> datasources.SavedQuery:
     q = datasources.saved_query(s, query_id)
     if q is None:
@@ -214,8 +295,16 @@ def _query(s: Session, query_id: str) -> datasources.SavedQuery:
 @app.post("/queries/{query_id}/preview")
 def preview_query(query_id: str, body: PreviewQuery,
                   s: Session = Depends(get_session)) -> dict[str, Any]:
-    rows = datasources.run(s, _query(s, query_id), body.params, limit=body.limit)
-    return {"rows": rows, "fields": datasources.describe(rows), "count": len(rows)}
+    started = time.perf_counter()
+    try:
+        rows = datasources.run(s, _query(s, query_id), body.params, limit=body.limit)
+    except HTTPException:
+        raise
+    except Exception as exc:                          # noqa: BLE001 — the operator wrote the SQL
+        raise HTTPException(422, f"{query_id}: {exc}") from None
+    return {"rows": jsonable_encoder(rows), "fields": datasources.describe(rows),
+            "count": len(rows),
+            "elapsed_ms": round((time.perf_counter() - started) * 1000)}
 
 
 # ------------------------------------------------------------------ previews
@@ -404,14 +493,61 @@ class PrinterBody(BaseModel):
     transport: dict[str, Any]
 
 
+def _printer_json(row: db.Printer, online: bool | None) -> dict[str, Any]:
+    return {"id": row.id, "name": row.name, "model": row.model, "dpi": row.dpi,
+            "transport": {"kind": row.transport_kind, **row.transport_config},
+            "online": online}
+
+
+def _probe(row: db.Printer) -> bool | None:
+    try:
+        return printers.from_row(row).transport.probe()
+    except Exception:                                 # noqa: BLE001 — unreachable is not online
+        return False
+
+
 @app.get("/printers")
-def list_printers(s: Session = Depends(get_session)) -> list[dict[str, Any]]:
-    out = []
-    for row in s.scalars(select(db.Printer).order_by(db.Printer.name)):
-        p = printers.from_row(row)
-        out.append({"id": p.id, "name": p.name, "model": p.model, "dpi": p.dpi,
-                    "transport": row.transport_kind, "online": p.transport.probe()})
-    return out
+def list_printers(probe: bool = True,
+                  s: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    """Probing talks to every printer, and an offline one only answers when it
+    times out — so they are asked all at once rather than one after another."""
+    rows = list(s.scalars(select(db.Printer).order_by(db.Printer.name)))
+    if not probe:
+        return [_printer_json(r, None) for r in rows]
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(rows)))) as pool:
+        states = list(pool.map(_probe, rows))
+    return [_printer_json(r, online) for r, online in zip(rows, states)]
+
+
+def _printer_row(s: Session, printer_id: str) -> db.Printer:
+    row = s.get(db.Printer, printer_id)
+    if row is None:
+        raise HTTPException(404, f"no printer {printer_id!r}")
+    return row
+
+
+@app.get("/printers/{printer_id}")
+def get_printer(printer_id: str, probe: bool = False,
+                s: Session = Depends(get_session)) -> dict[str, Any]:
+    row = _printer_row(s, printer_id)
+    return _printer_json(row, _probe(row) if probe else None)
+
+
+@app.delete("/printers/{printer_id}", status_code=204)
+def delete_printer(printer_id: str, s: Session = Depends(get_session)) -> Response:
+    row = _printer_row(s, printer_id)
+    used = s.scalars(
+        select(db.PrintRun.id).where(db.PrintRun.printer_id == printer_id)
+        .order_by(db.PrintRun.created_at.desc()).limit(3)
+    ).all()
+    if used:
+        raise HTTPException(
+            409, f"{printer_id!r} has print runs against it, most recently "
+                 f"{', '.join(used)}. Deleting it would take their history with it.")
+    s.delete(row)
+    audit(s, "delete", "printer", printer_id)
+    s.commit()
+    return Response(status_code=204)
 
 
 @app.put("/printers/{printer_id}")
@@ -429,8 +565,9 @@ def put_printer(printer_id: str, body: PrinterBody,
     row.name, row.model, row.dpi = body.name, body.model, body.dpi
     row.transport_kind, row.transport_config = kind, config
     s.add(row)
+    audit(s, "save", "printer", row.id, transport=kind)
     s.commit()
-    return {"id": row.id, "name": row.name, "model": row.model, "dpi": row.dpi, "transport": kind}
+    return _printer_json(row, None)
 
 
 @app.post("/printers/{printer_id}/test", status_code=202)
@@ -438,5 +575,8 @@ def test_printer(printer_id: str, s: Session = Depends(get_session)) -> dict[str
     p = printers.load(s, printer_id)
     if p is None:
         raise HTTPException(404, f"no printer {printer_id!r}")
-    p.transport.send(printers.TEST_LABEL)
+    try:
+        p.transport.send(printers.TEST_LABEL)
+    except Exception as exc:                          # noqa: BLE001
+        raise HTTPException(502, f"{printer_id}: {type(exc).__name__}: {exc}") from None
     return {"id": printer_id, "sent": "test label"}

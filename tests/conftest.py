@@ -6,6 +6,8 @@ from __future__ import annotations
 import base64
 import io
 import sqlite3
+import threading
+import time
 from typing import Any
 
 import fakeredis
@@ -31,11 +33,14 @@ def small_png(seed: int = 0) -> bytes:
 
 
 class RecordingTransport:
-    """Stands in for a printer: keeps every write, can flip a cancel flag."""
+    """Stands in for a printer: keeps every write, can flip a cancel flag,
+    and notes which thread each probe ran on."""
 
     def __init__(self) -> None:
         self.sent: list[bytes] = []
         self.after_send: Any = None
+        self.probe_threads: list[int] = []
+        self.probe_delay = 0.0
 
     def send(self, data: bytes) -> None:
         self.sent.append(data)
@@ -43,6 +48,9 @@ class RecordingTransport:
             self.after_send(len(self.sent))
 
     def probe(self) -> bool:
+        if self.probe_delay:
+            time.sleep(self.probe_delay)
+        self.probe_threads.append(threading.get_ident())
         return True
 
 

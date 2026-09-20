@@ -31,6 +31,8 @@ db/             Platen's own storage: SQLAlchemy models, Alembic migrations
 tests/          pytest; SQLite and fakeredis, no Docker needed
 web/            the public landing page (static, single file)
   studio/         the operator screens, served by the API under /studio
+                  studio.css and studio.js are shared; one page per screen,
+                  vanilla DOM, no build step
 docs/           the design canvas artboards and the walkthrough reel
 ```
 
@@ -60,6 +62,11 @@ test suite runs the same models on SQLite, so keep column types portable.
 4. **Cancel is checked between labels**, not between batches.
 5. **A missing image degrades, it doesn't crash** — the element is skipped and
    a warning rides along with the run, unless `on_missing="fail"`.
+6. **A connection's password never reaches the browser.** Reads mask it; a URL
+   saved back unchanged keeps the stored one.
+7. **The preview is what the printer will do**, at the printer's dot pitch —
+   including dithering, and barcodes drawn at their real module width rather
+   than scaled to fit a box.
 
 ## Code
 

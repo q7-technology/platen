@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data sources — Platen Label Studio</title>
+<link rel="icon" href="/studio/static/q7-logo-128.png">
+<link rel="stylesheet" href="/studio/static/studio/studio.css">
+<script src="/studio/static/studio/studio.js"></script>
+</head>
+<body>
+<div class="shell">
+  <aside id="shell-nav"></aside>
+
+  <main>
+    <header>
+      <h1>Data sources</h1>
+      <span class="sub" id="sub">The databases your labels read from</span>
+      <span class="spacer"></span>
+      <button class="btn" type="button" id="add-conn">Add connection</button>
+    </header>
+
+    <div class="work" style="display: block;">
+      <div class="split">
+
+        <section class="card" aria-labelledby="h-conns">
+          <div class="card-head"><h2 id="h-conns">Connections</h2></div>
+          <div class="pick-list" id="conn-list" role="group" aria-label="Connections"></div>
+          <p class="mut" id="conn-empty" hidden>Nothing connected yet.</p>
+          <p class="mut" style="font-size: 12px;">Every query runs read-only, as a prepared statement. A password is kept on the server and never sent to this screen.</p>
+        </section>
+
+        <div class="col" id="detail" hidden>
+
+          <section class="card" aria-labelledby="h-conn">
+            <div class="card-head">
+              <h2 id="h-conn">Connection</h2>
+              <span class="badge mono" id="conn-id"></span>
+              <span class="spacer"></span>
+              <span id="conn-probe"></span>
+            </div>
+            <div class="row">
+              <div class="field"><label for="c-name">Name</label><input id="c-name" type="text"></div>
+              <div class="field narrow"><label for="c-pool">Pool size</label><input id="c-pool" class="mono" type="number" min="1" max="50" value="5"></div>
+            </div>
+            <div class="field">
+              <label for="c-url">Connection string</label>
+              <input id="c-url" class="mono" type="text" spellcheck="false"
+                     placeholder="postgresql+psycopg://platen_ro@host:5432/db">
+            </div>
+            <div class="actions">
+              <button class="btn" type="button" id="c-test">Test connection</button>
+              <button class="btn pri" type="button" id="c-save" style="height: 38px;">Save</button>
+              <span class="spacer"></span>
+              <button class="btn gold" type="button" id="c-del">Delete</button>
+            </div>
+            <div id="c-msg" hidden></div>
+          </section>
+
+          <section class="card" aria-labelledby="h-queries">
+            <div class="card-head">
+              <h2 id="h-queries">Saved queries</h2>
+              <span class="spacer"></span>
+              <button class="btn sm" type="button" id="q-new">New query</button>
+            </div>
+            <div class="pick-list" id="query-list" role="group" aria-label="Saved queries"></div>
+            <p class="mut" id="query-empty" hidden>No saved queries on this connection yet.</p>
+
+            <div id="query-edit" hidden style="display: flex; flex-direction: column; gap: 14px;">
+              <div class="row">
+                <div class="field"><label for="q-name">Query name</label><input id="q-name" type="text"></div>
+                <div class="field narrow"><label for="q-id">Id</label><input id="q-id" class="mono" type="text"></div>
+              </div>
+              <div class="field">
+                <label for="q-sql">SQL</label>
+                <textarea id="q-sql" spellcheck="false" placeholder="select … from … where col = :parameter"></textarea>
+              </div>
+              <div class="field">
+                <label>Parameters</label>
+                <div class="params" id="q-params"></div>
+                <div class="actions" style="margin-top: 4px;">
+                  <button class="btn sm" type="button" id="q-add-param">Add parameter</button>
+                  <span class="mut" style="font-size: 12px;">A parameter is bound, never pasted into the SQL.</span>
+                </div>
+              </div>
+              <div class="actions">
+                <button class="btn pri" type="button" id="q-save" style="height: 38px;">Save query</button>
+                <button class="btn" type="button" id="q-preview">Run preview</button>
+                <span class="spacer"></span>
+                <button class="btn gold" type="button" id="q-del">Delete</button>
+              </div>
+              <div id="q-msg" hidden></div>
+            </div>
+          </section>
+
+          <section class="card" id="preview-card" aria-labelledby="h-preview" hidden>
+            <div class="card-head">
+              <h2 id="h-preview">Preview</h2>
+              <span class="spacer"></span>
+              <span class="mut mono" id="p-count"></span>
+            </div>
+            <div class="row" id="p-params"></div>
+            <div id="p-detected" class="actions"></div>
+            <div class="scroll"><table id="p-table"></table></div>
+          </section>
+
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  renderShell('data', 'Templates are set up through the API until the editor exists.');
+
+  const state = { sources: [], current: null, queries: [], query: null };
+  const TYPES = ['text', 'int', 'date', 'bool'];
+
+  // ---------- connections
+  async function loadSources(select) {
+    state.sources = await api('GET', '/datasources');
+    const list = $('conn-list');
+    list.replaceChildren();
+    $('conn-empty').hidden = state.sources.length > 0;
+    $('sub').textContent = state.sources.length
+      ? `${state.sources.length} connection${state.sources.length === 1 ? '' : 's'}`
+      : 'The databases your labels read from';
+    for (const d of state.sources) {
+      list.append(el('button', {
+        type: 'button', 'aria-pressed': String(d.id === (select || state.current?.id)),
+        'data-id': d.id, onclick: () => pick(d.id),
+      }, el('span', { style: 'flex:1' },
+          el('b', { text: d.name || d.id }),
+          el('small', { text: `${d.id} · ${d.queries.length} quer${d.queries.length === 1 ? 'y' : 'ies'}` }))));
+    }
+    if (select) await pick(select);
+  }
+
+  async function pick(id) {
+    state.current = await api('GET', `/datasources/${encodeURIComponent(id)}`);
+    state.query = null;
+    for (const b of $('conn-list').children) b.setAttribute('aria-pressed', String(b.dataset.id === id));
+    $('detail').hidden = false;
+    $('conn-id').textContent = state.current.id;
+    $('c-name').value = state.current.name;
+    $('c-url').value = state.current.url;
+    $('c-pool').value = state.current.pool_size;
+    $('conn-probe').replaceChildren();
+    clearError($('c-msg'));
+    $('query-edit').hidden = true;
+    $('preview-card').hidden = true;
+    await loadQueries();
+  }
+
+  function newConnection() {
+    state.current = { id: '', name: '', url: '', pool_size: 5, queries: [] };
+    state.query = null;
+    for (const b of $('conn-list').children) b.setAttribute('aria-pressed', 'false');
+    $('detail').hidden = false;
+    $('conn-id').textContent = 'new';
+    $('c-name').value = ''; $('c-url').value = ''; $('c-pool').value = 5;
+    $('conn-probe').replaceChildren();
+    clearError($('c-msg'));
+    $('query-list').replaceChildren();
+    $('query-empty').hidden = false;
+    $('query-edit').hidden = true;
+    $('preview-card').hidden = true;
+    $('c-name').focus();
+  }
+
+  async function saveConnection() {
+    const id = state.current.id || slug($('c-name').value);
+    if (!id) { showError($('c-msg'), 'A connection needs a name.'); return; }
+    try {
+      await api('PUT', `/datasources/${encodeURIComponent(id)}`, {
+        name: $('c-name').value, url: $('c-url').value,
+        pool_size: Number($('c-pool').value) || 5,
+      });
+      clearError($('c-msg'));
+      await loadSources(id);
+    } catch (e) { showError($('c-msg'), e.message); }
+  }
+
+  async function testConnection() {
+    $('conn-probe').replaceChildren(el('span', { class: 'mut', text: 'testing…' }));
+    try {
+      const r = await api('POST', `/datasources/${encodeURIComponent(state.current.id)}/test`);
+      $('conn-probe').replaceChildren(r.ok
+        ? el('span', { class: 'ok' }, icon('check'), el('span', { text: 'connected' }))
+        : el('span', { class: 'badge gold', text: 'no answer' }));
+      if (!r.ok) showError($('c-msg'), r.error); else clearError($('c-msg'));
+    } catch (e) {
+      $('conn-probe').replaceChildren(el('span', { class: 'badge gold', text: 'no answer' }));
+      showError($('c-msg'), e.message);
+    }
+  }
+
+  async function deleteConnection() {
+    if (!confirm(`Delete the connection ${state.current.id}?`)) return;
+    try {
+      await api('DELETE', `/datasources/${encodeURIComponent(state.current.id)}`);
+      state.current = null;
+      $('detail').hidden = true;
+      await loadSources();
+    } catch (e) { showError($('c-msg'), e.message); }
+  }
+
+  // ---------- saved queries
+  async function loadQueries(select) {
+    state.queries = await api('GET', `/queries?datasource_id=${encodeURIComponent(state.current.id)}`);
+    const list = $('query-list');
+    list.replaceChildren();
+    $('query-empty').hidden = state.queries.length > 0;
+    for (const q of state.queries) {
+      list.append(el('button', {
+        type: 'button', 'data-id': q.id, 'aria-pressed': String(q.id === select),
+        onclick: () => pickQuery(q.id),
+      }, el('span', { style: 'flex:1' },
+          el('b', { text: q.name || q.id }),
+          el('small', { text: q.parameters.length ? `:${q.parameters.join('  :')}` : 'no parameters' }))));
+    }
+    if (select) await pickQuery(select);
+  }
+
+  async function pickQuery(id) {
+    state.query = await api('GET', `/queries/${encodeURIComponent(id)}`);
+    for (const b of $('query-list').children) b.setAttribute('aria-pressed', String(b.dataset.id === id));
+    $('query-edit').hidden = false;
+    $('q-name').value = state.query.name;
+    $('q-id').value = state.query.id;
+    $('q-id').disabled = true;
+    $('q-sql').value = state.query.sql;
+    renderParams(state.query.parameters);
+    clearError($('q-msg'));
+    $('preview-card').hidden = true;
+  }
+
+  function newQuery() {
+    state.query = null;
+    for (const b of $('query-list').children) b.setAttribute('aria-pressed', 'false');
+    $('query-edit').hidden = false;
+    $('q-name').value = ''; $('q-id').value = ''; $('q-id').disabled = false;
+    $('q-sql').value = '';
+    renderParams([]);
+    clearError($('q-msg'));
+    $('preview-card').hidden = true;
+    $('q-name').focus();
+  }
+
+  function renderParams(params) {
+    const box = $('q-params');
+    box.replaceChildren();
+    for (const p of params) box.append(paramRow(p));
+  }
+
+  function paramRow(p) {
+    const row = el('div', { class: 'param' },
+      el('input', { type: 'text', value: p.name, placeholder: 'name', 'data-k': 'name',
+                    'aria-label': 'Parameter name' }),
+      el('select', { 'data-k': 'type', 'aria-label': 'Parameter type' },
+        ...TYPES.map((t) => el('option', { value: t, selected: t === p.type, text: t }))),
+      el('input', { type: 'text', value: p.default ?? '', placeholder: 'default', 'data-k': 'default',
+                    'aria-label': 'Default value' }),
+      el('label', { class: 'ask' },
+        el('input', { type: 'checkbox', checked: p.ask_at_print, 'data-k': 'ask' }),
+        'Ask at print time'),
+      el('button', { class: 'btn sm gold', type: 'button', 'aria-label': `Remove ${p.name || 'parameter'}`,
+                     onclick: () => row.remove() }, icon('trash', 13)));
+    return row;
+  }
+
+  function collectParams() {
+    return [...$('q-params').children].map((row) => {
+      const get = (k) => row.querySelector(`[data-k="${k}"]`);
+      return {
+        name: get('name').value.trim(), type: get('type').value,
+        default: get('default').value === '' ? null : get('default').value,
+        ask_at_print: get('ask').checked, label: '',
+      };
+    }).filter((p) => p.name);
+  }
+
+  async function saveQuery() {
+    const id = state.query?.id || $('q-id').value.trim() || slug($('q-name').value);
+    if (!id) { showError($('q-msg'), 'A query needs a name.'); return; }
+    try {
+      await api('PUT', `/queries/${encodeURIComponent(id)}`, {
+        datasource_id: state.current.id, name: $('q-name').value, sql: $('q-sql').value,
+        parameters: collectParams(),
+      });
+      clearError($('q-msg'));
+      await loadSources(state.current.id);
+      await loadQueries(id);
+    } catch (e) { showError($('q-msg'), e.message); }
+  }
+
+  async function deleteQuery() {
+    if (!state.query || !confirm(`Delete the query ${state.query.id}?`)) return;
+    try {
+      await api('DELETE', `/queries/${encodeURIComponent(state.query.id)}`);
+      state.query = null;
+      $('query-edit').hidden = true;
+      $('preview-card').hidden = true;
+      await loadSources(state.current.id);
+    } catch (e) { showError($('q-msg'), e.message); }
+  }
+
+  // ---------- preview
+  /* Rebuilt only when the parameter list changes — never on the way into a
+     run, or it would wipe what the operator just typed. */
+  function previewParams() {
+    const box = $('p-params');
+    const typed = {};
+    for (const input of box.querySelectorAll('input')) typed[input.name] = input.value;
+    box.replaceChildren();
+    for (const p of collectParams()) {
+      const id = `pp-${p.name}`;
+      const type = { date: 'date', int: 'number' }[p.type] || 'text';
+      const input = el('input', { id, name: p.name, type, class: type === 'text' ? '' : 'mono' });
+      input.value = typed[p.name] ?? p.default ?? '';
+      box.append(el('div', { class: 'field' }, el('label', { for: id, text: `:${p.name}` }), input));
+    }
+    box.append(el('div', { class: 'field narrow', style: 'align-self:flex-end' },
+      el('button', { class: 'btn', type: 'button', onclick: runPreview, text: 'Run' })));
+  }
+
+  function openPreview() {
+    if (!state.query) { showError($('q-msg'), 'Save the query before previewing it.'); return; }
+    $('preview-card').hidden = false;
+    previewParams();
+    // don't run a query that is missing a parameter just to show the operator
+    // the error they already know about — wait until they've filled them in
+    const inputs = [...$('p-params').querySelectorAll('input')];
+    if (inputs.every((i) => i.value !== '')) runPreview();
+    else {
+      $('p-count').textContent = '';
+      $('p-detected').replaceChildren();
+      $('p-table').replaceChildren();
+      inputs[0].focus();
+    }
+  }
+
+  async function runPreview() {
+    if (!state.query) return;
+    const params = {};
+    for (const input of $('p-params').querySelectorAll('input')) {
+      if (input.value !== '') params[input.name] = input.type === 'number' ? Number(input.value) : input.value;
+    }
+    try {
+      const r = await api('POST', `/queries/${encodeURIComponent(state.query.id)}/preview`,
+                          { params, limit: 10 });
+      clearError($('q-msg'));
+      $('p-count').textContent = `${r.count} row${r.count === 1 ? '' : 's'} · ${r.elapsed_ms} ms · ${r.fields.length} columns`;
+      const images = r.fields.filter((f) => f.type === 'base64_image' || f.type === 'image');
+      $('p-detected').replaceChildren(...images.map((f) =>
+        el('span', { class: 'badge gold' }, `${f.name} — detected as an image`)));
+      const table = $('p-table');
+      table.replaceChildren(
+        el('thead', {}, el('tr', {}, ...r.fields.map((f) => el('th', { class: 'mono', text: f.name })))),
+        el('tbody', {}, ...r.rows.map((row) => el('tr', {},
+          ...r.fields.map((f) => el('td', { class: 'mono' }, cell(row[f.name], f.type)))))));
+    } catch (e) { showError($('q-msg'), e.message); }
+  }
+
+  function cell(value, type) {
+    if (value === null || value === undefined) return el('span', { class: 'mut', text: 'null' });
+    if (type === 'base64_image' || type === 'image') {
+      return el('span', { class: 'badge' }, `${(String(value).length / 1024).toFixed(1)} KB`);
+    }
+    const text = String(value);
+    return text.length > 42 ? text.slice(0, 42) + '…' : text;
+  }
+
+  // ---------- wiring
+  $('add-conn').addEventListener('click', newConnection);
+  $('c-save').addEventListener('click', saveConnection);
+  $('c-test').addEventListener('click', testConnection);
+  $('c-del').addEventListener('click', deleteConnection);
+  $('q-new').addEventListener('click', newQuery);
+  $('q-save').addEventListener('click', saveQuery);
+  $('q-del').addEventListener('click', deleteQuery);
+  $('q-preview').addEventListener('click', openPreview);
+  $('q-add-param').addEventListener('click', () =>
+    $('q-params').append(paramRow({ name: '', type: 'text', default: null, ask_at_print: true })));
+
+  loadSources().catch((e) => showError($('c-msg'), e.message));
+})();
+</script>
+</body>
+</html>

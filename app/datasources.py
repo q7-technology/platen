@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session
 
 from db import models as db
@@ -63,6 +63,31 @@ class Parameter:
     default: Any = None
     ask_at_print: bool = True
     label: str = ""
+
+
+MASK = "***"                       # what SQLAlchemy renders a hidden password as
+
+
+def masked(url: str) -> str:
+    """A connection string safe to put in a browser. The password never leaves
+    the server, so an operator with the screen open can't read it off it."""
+    try:
+        return make_url(url).render_as_string(hide_password=True)
+    except Exception:                                 # noqa: BLE001 — show it as typed
+        return url
+
+
+def unmasked(submitted: str, stored: str | None) -> str:
+    """The other half: a URL saved back untouched keeps the password it had."""
+    if stored is None:
+        return submitted
+    try:
+        new, old = make_url(submitted), make_url(stored)
+    except Exception:                                 # noqa: BLE001
+        return submitted
+    if new.password != MASK:
+        return submitted
+    return new.set(password=old.password).render_as_string(hide_password=False)
 
 
 _ENGINES: dict[str, DataSource] = {}
