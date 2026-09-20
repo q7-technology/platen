@@ -15,7 +15,8 @@ MIT licensed. Built by [Q7 Technology](https://q7technology.com.au) in Ballarat.
   printer's real dot pitch — 203, 300 or 600 dpi. Already have ZPL? Paste it
   in and carry on editing; the importer says what it couldn't carry over.
 - **Binds to what you already run.** Postgres, SQL Server, MySQL, SQLite or a
-  REST endpoint. Read-only role, prepared statements, parameters the operator
+  REST endpoint returning JSON. Read-only role and prepared statements for a
+  database, GET and nothing else for an endpoint, and parameters the operator
   answers at print time.
 - **The symbologies that matter.** Code 128 with automatic subsets, GS1-128,
   Code 39, Interleaved 2 of 5, QR and Data Matrix.

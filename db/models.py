@@ -125,7 +125,9 @@ class DataSource(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
     label: Mapped[str] = mapped_column(String(200), default="")
+    kind: Mapped[str] = mapped_column(String(8), default="sql")     # sql | rest
     url: Mapped[str] = mapped_column(Text)
+    headers: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)   # rest only
     pool_size: Mapped[int] = mapped_column(Integer, default=5)
 
 
@@ -135,7 +137,8 @@ class SavedQuery(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     datasource_id: Mapped[str] = mapped_column(ForeignKey("datasource.id"))
     name: Mapped[str] = mapped_column(String(200))
-    sql: Mapped[str] = mapped_column(Text)
+    sql: Mapped[str] = mapped_column(Text)          # or a request path, for rest
+    row_path: Mapped[str] = mapped_column(String(200), default="")
 
     parameters: Mapped[list["QueryParameter"]] = relationship(
         back_populates="query", order_by="QueryParameter.position",

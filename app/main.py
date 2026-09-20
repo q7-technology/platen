@@ -250,7 +250,9 @@ def list_versions(template_id: str, s: Session = Depends(get_session)) -> list[d
 class DataSourceBody(BaseModel):
     name: str
     label: str = ""
+    kind: Literal["sql", "rest"] = "sql"
     url: str
+    headers: dict[str, str] = {}   # rest only; a value of *** keeps the stored one
     pool_size: int = 5
 
 
@@ -265,7 +267,8 @@ class ParameterBody(BaseModel):
 class QueryBody(BaseModel):
     datasource_id: str
     name: str
-    sql: str
+    sql: str                       # or a request path, when the source is rest
+    row_path: str = ""             # rest only: where the records sit in the response
     parameters: list[ParameterBody] = []
 
 
@@ -279,9 +282,10 @@ def _datasource_json(s: Session, row: db.DataSource) -> dict[str, Any]:
         select(db.SavedQuery.id).where(db.SavedQuery.datasource_id == row.id)
         .order_by(db.SavedQuery.id)
     ).all()
-    return {"id": row.id, "name": row.name, "label": row.label,
-            "url": datasources.masked(row.url), "pool_size": row.pool_size,
-            "queries": list(queries)}
+    return {"id": row.id, "name": row.name, "label": row.label, "kind": row.kind,
+            "url": datasources.masked(row.url),
+            "headers": datasources.masked_headers(row.headers),
+            "pool_size": row.pool_size, "queries": list(queries)}
 
 
 @app.get("/datasources", dependencies=[Depends(admin)])
@@ -315,8 +319,10 @@ def put_datasource(datasource_id: str, body: DataSourceBody,
                  user: AppUser = Depends(admin)) -> dict[str, Any]:
     row = s.get(db.DataSource, datasource_id)
     url = datasources.unmasked(body.url, row.url if row else None)
+    headers = datasources.unmasked_headers(body.headers, row.headers if row else None)
     row = row or db.DataSource(id=datasource_id)
     row.name, row.label, row.url, row.pool_size = body.name, body.label, url, body.pool_size
+    row.kind, row.headers = body.kind, headers
     s.add(row)
     audit(s, "save", "datasource", row.id, actor=user)
     s.commit()
@@ -368,6 +374,7 @@ def put_query(query_id: str, body: QueryBody, s: Session = Depends(get_session))
         raise HTTPException(422, f"no data source {body.datasource_id!r}")
     row = s.get(db.SavedQuery, query_id) or db.SavedQuery(id=query_id)
     row.datasource_id, row.name, row.sql = body.datasource_id, body.name, body.sql
+    row.row_path = body.row_path
 
     # the old parameters go first and are flushed before the new ones arrive:
     # a name reused across a save would otherwise collide with itself, because
@@ -400,7 +407,8 @@ def get_query(query_id: str, s: Session = Depends(get_session),
                        for p in row.parameters],
     }
     if user.role == "admin":
-        body |= {"datasource_id": row.datasource_id, "sql": row.sql}
+        body |= {"datasource_id": row.datasource_id, "sql": row.sql,
+                 "row_path": row.row_path}
     return body
 
 

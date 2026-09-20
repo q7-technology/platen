@@ -21,7 +21,7 @@ app/            the service
   auth.py         users, roles, password hashing, sessions
   models.py       template + element schema (pydantic), mm↔dots
   binding.py      "{{ order.sku }}" → a value from a row
-  datasources.py  connection registry, read-only query runner
+  datasources.py  connections (SQL or REST), read-only query runner
   images.py       base64 → PIL → 1-bit → ^GFA
   zpl.py          element tree → ^XA … ^XZ
   zplimport.py    ^XA … ^XZ → element tree, with a list of what it dropped
@@ -60,9 +60,11 @@ test suite runs the same models on SQLite, so keep column types portable.
    parser, no attribute traversal into callables. Templates arrive from a
    browser. A filter handed the wrong sort of value raises `FilterError`
    naming the filter and the value — never an unhandled exception.
-2. **Queries are read-only and parameterised.** Connections use a read-only
-   role; every query runs as a prepared statement. Never interpolate an
-   operator's input into SQL.
+2. **Queries are read-only and parameterised.** SQL connections use a
+   read-only role and every query runs as a prepared statement. A REST source
+   only ever issues a GET, and an operator's answer is quoted into the path or
+   sent as a query parameter. Never interpolate an operator's input into a
+   statement or a URL.
 3. **Every label in a run renders before the first one prints.** A render
    failure must surface as a message, not as half a roll of ruined stock.
 4. **Cancel is checked between labels**, not between batches.
