@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in — Platen Label Studio</title>
+<link rel="icon" href="/studio/static/q7-logo-128.png">
+<link rel="stylesheet" href="/studio/static/studio/studio.css">
+<script src="/studio/static/studio/studio.js"></script>
+<style>
+  .gate { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .gate form { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 18px; }
+  .gate .mark { display: flex; align-items: center; gap: 13px; }
+  .gate .mark img { width: 40px; height: auto; }
+  .gate .mark b { display: block; font-weight: 700; font-size: 21px; letter-spacing: 0.18em; }
+  .gate .mark small { display: block; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mut); }
+  .gate .card { gap: 16px; }
+  .gate h1 { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
+  .gate .btn { justify-content: center; }
+  .gate .fine { font-size: 12px; color: var(--mut); text-align: center; }
+</style>
+</head>
+<body>
+<div class="gate">
+  <form id="form" autocomplete="on">
+    <div class="mark">
+      <img src="/studio/static/q7-logo-128.png" alt="Q7Technology Logo" width="40" height="35">
+      <span><b>PLATEN</b><small>Label Studio</small></span>
+    </div>
+
+    <section class="card">
+      <h1>Sign in</h1>
+      <div class="field">
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button class="btn pri" type="submit" id="go" style="height: 44px;">Sign in</button>
+      <div id="msg" hidden></div>
+    </section>
+
+    <p class="fine">No account yet? Whoever set Platen up makes one with
+      <span class="mono">python -m app.adduser</span>.</p>
+  </form>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  const next = new URLSearchParams(location.search).get('next') || '/studio/print';
+
+  $('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('go').disabled = true;
+    clearError($('msg'));
+    try {
+      const r = await fetch('/auth/login', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username: $('username').value, password: $('password').value }),
+      });
+      if (!r.ok) {
+        let detail = 'that did not work';
+        try { detail = (await r.json()).detail || detail; } catch (err) { /* not json */ }
+        throw new Error(detail);
+      }
+      // an operator has no business on an administrator's screen
+      const me = await r.json();
+      const allowed = ['/studio/print', '/studio/jobs'];
+      location.href = me.role === 'admin' || allowed.some((p) => next.startsWith(p))
+        ? next : '/studio/print';
+    } catch (err) {
+      showError($('msg'), err.message);
+      $('password').value = '';
+      $('password').focus();
+    } finally {
+      $('go').disabled = false;
+    }
+  });
+
+  $('username').focus();
+})();
+</script>
+</body>
+</html>

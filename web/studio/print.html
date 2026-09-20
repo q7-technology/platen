@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Print run — Platen Label Studio</title>
+<link rel="icon" href="/studio/static/q7-logo-128.png">
+<link rel="stylesheet" href="/studio/static/studio/studio.css">
+<script src="/studio/static/studio/studio.js"></script>
+</head>
+<body>
+<div class="shell">
+  <aside id="shell-nav"></aside>
+
+  <main>
+    <header>
+      <h1>Print run</h1>
+      <span class="sub">Pick a template, pull the data, send it to a printer</span>
+    </header>
+
+    <div class="work">
+      <div class="col">
+
+        <section class="card" id="step1" aria-labelledby="h-step1">
+          <div class="card-head">
+            <span class="n" aria-hidden="true">1</span>
+            <h2 id="h-step1">Template</h2>
+            <span class="spacer"></span>
+            <span class="chip mono" id="tpl-count"></span>
+          </div>
+          <div class="tpl-list" id="tpl-list" role="group" aria-label="Templates"></div>
+          <p class="mut" id="tpl-empty" hidden>No templates yet. Create one with <span class="mono">PUT /templates/{id}</span> and publish it with <span class="mono">POST /templates/{id}/publish</span>.</p>
+        </section>
+
+        <section class="card is-off" id="step2" aria-labelledby="h-step2">
+          <div class="card-head">
+            <span class="n" aria-hidden="true">2</span>
+            <h2 id="h-step2">Data</h2>
+            <span class="chip mono" id="q-chip">no query</span>
+          </div>
+          <form class="row" id="q-form">
+            <div id="q-params" class="row" style="flex: 1; align-items: flex-end;"></div>
+            <button class="btn" type="submit" id="q-run">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>
+              Run query
+            </button>
+          </form>
+          <div class="note" id="q-note" hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <span id="q-note-text"></span>
+          </div>
+          <div class="err" id="q-err" hidden>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+            <span class="txt"><b>Nothing was printed</b><code id="q-err-text"></code></span>
+          </div>
+        </section>
+
+        <section class="card is-off" id="step3" aria-labelledby="h-step3">
+          <div class="card-head">
+            <span class="n" aria-hidden="true">3</span>
+            <h2 id="h-step3">Printer and options</h2>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label for="printer">Printer</label>
+              <select id="printer"></select>
+            </div>
+            <div class="field narrow">
+              <label for="copies">Copies each</label>
+              <input id="copies" class="mono" type="number" min="1" max="99" value="1" inputmode="numeric">
+            </div>
+            <div class="field narrow">
+              <label for="start-at">Start at record</label>
+              <input id="start-at" class="mono" type="number" min="1" value="1" inputmode="numeric">
+            </div>
+          </div>
+        </section>
+
+        <div id="warnings" class="col"></div>
+      </div>
+
+      <div class="col">
+        <section class="card preview" aria-labelledby="h-preview">
+          <div class="preview-head">
+            <h2 id="h-preview">Preview</h2>
+            <span class="spacer"></span>
+            <button class="btn sm icon" type="button" id="prev" aria-label="Previous record" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+            <span class="mono mut" id="rec-label">Record – of –</span>
+            <button class="btn sm icon" type="button" id="next" aria-label="Next record" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+          </div>
+          <div class="well">
+            <p class="empty" id="preview-empty">Pick a template and run its query to see the first label.</p>
+            <img id="preview-img" alt="" hidden>
+          </div>
+        </section>
+
+        <section class="card" id="go" aria-live="polite">
+          <div class="count">
+            <b id="go-count">–</b>
+            <span id="go-where">labels</span>
+            <span class="spacer"></span>
+            <span class="mono mut" id="go-version"></span>
+          </div>
+          <button class="btn pri go" type="button" id="go-btn" disabled>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3h12v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+            <span id="go-text">Print</span>
+          </button>
+          <div id="progress" hidden>
+            <div class="status">
+              <span class="mono" id="run-id"></span>
+              <span class="st" id="run-status"></span>
+              <span class="spacer"></span>
+              <span class="mono mut" id="run-printed"></span>
+              <button class="btn sm gold" type="button" id="cancel">Cancel</button>
+            </div>
+            <div class="bar" style="margin-top: 10px;"><i id="run-bar"></i></div>
+            <p class="mut" id="run-error" style="margin-top: 8px;" hidden></p>
+          </div>
+          <p class="fine" id="go-fine">Every label is rendered before the first one prints.</p>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  renderShell('print');
+  const state = { templates: [], template: null, query: null, printers: [], check: null,
+                  record: 0, skip: [], run: null, timer: null, previewUrl: null };
+
+  const size = (t) => `${t.size_mm[0]} × ${t.size_mm[1]} mm · ${t.dpi} dpi`;
+
+  // ---------- step 1: templates
+  async function loadTemplates() {
+    state.templates = await api('GET', '/templates');
+    const list = $('tpl-list');
+    list.replaceChildren();
+    $('tpl-empty').hidden = state.templates.length > 0;
+    $('tpl-count').textContent = state.templates.length ? `${state.templates.length} templates` : '';
+    for (const t of state.templates) {
+      const published = t.version > 0;
+      const btn = el('button', { type: 'button', 'aria-pressed': 'false', disabled: published ? null : '',
+                                 onclick: () => pickTemplate(t) },
+        el('span', { style: 'display:flex;flex-direction:column;gap:2px;flex:1' },
+          el('b', {}, t.name),
+          el('small', {}, `${size(t)} · ${published ? 'v' + t.version + ' published' : 'draft only'}`)),
+        published ? el('span', { class: 'chip mono' }, t.query || 'no query')
+                  : el('span', { class: 'gold' }, 'not published'));
+      btn.dataset.id = t.id;
+      list.append(btn);
+    }
+  }
+
+  async function pickTemplate(t) {
+    state.template = t; state.check = null; state.skip = []; state.record = 0;
+    for (const b of $('tpl-list').children) b.setAttribute('aria-pressed', String(b.dataset.id === t.id));
+    $('step2').classList.remove('is-off');
+    $('q-note').hidden = true; $('q-err').hidden = true;
+    renderWarnings([]); showPreview(null); updateGo();
+    state.query = t.query ? await api('GET', `/queries/${encodeURIComponent(t.query)}`) : null;
+    // an operator isn't told which connection it came from, so don't print a gap
+    $('q-chip').textContent = state.query
+      ? [state.query.datasource_id, state.query.id].filter(Boolean).join(' · ')
+      : 'no query · one label';
+    renderParams();
+  }
+
+  // ---------- step 2: parameters and the check
+  function renderParams() {
+    const box = $('q-params');
+    box.replaceChildren();
+    const params = (state.query?.parameters || []).filter((p) => p.ask_at_print);
+    for (const p of params) {
+      const id = `p-${p.name}`;
+      const type = { date: 'date', int: 'number', bool: 'checkbox' }[p.type] || 'text';
+      const input = el('input', { id, name: p.name, type, class: type === 'text' ? '' : 'mono' });
+      if (p.default != null) { if (type === 'checkbox') input.checked = p.default === 'true'; else input.value = p.default; }
+      box.append(el('div', { class: 'field' }, el('label', { for: id }, p.label || p.name), input));
+    }
+    if (!params.length) box.append(el('p', { class: 'mut' }, state.query ? 'This query takes no parameters.' : 'This template has no query, so it prints one label from literal values.'));
+  }
+
+  function collectParams() {
+    const out = {};
+    for (const input of $('q-params').querySelectorAll('input')) {
+      if (input.type === 'checkbox') out[input.name] = input.checked;
+      else if (input.value !== '') out[input.name] = input.type === 'number' ? Number(input.value) : input.value;
+    }
+    return out;
+  }
+
+  function spec() {
+    return { template_id: state.template.id, params: collectParams(),
+             copies: Math.max(1, Number($('copies').value) || 1),
+             start_at: Math.max(1, Number($('start-at').value) || 1), skip_rows: state.skip };
+  }
+
+  async function check() {
+    if (!state.template) return;
+    $('q-run').disabled = true; $('q-err').hidden = true;
+    try {
+      state.check = await api('POST', '/runs/check', spec());
+      const c = state.check;
+      $('q-note-text').replaceChildren(el('b', {}, `${c.records} record${c.records === 1 ? '' : 's'}`),
+        ` returned in ${c.elapsed_ms} ms · ${c.labels} label${c.labels === 1 ? '' : 's'} at ${spec().copies} cop${spec().copies === 1 ? 'y' : 'ies'} each`);
+      $('q-note').hidden = false;
+      $('step3').classList.remove('is-off');
+      renderWarnings(c.warnings);
+      state.record = Math.min(state.record, Math.max(0, c.records - 1));
+      await loadPreview();
+    } catch (e) {
+      state.check = null;
+      $('q-note').hidden = true;
+      $('q-err-text').textContent = e.message; $('q-err').hidden = false;
+      renderWarnings([]); showPreview(null);
+    } finally {
+      $('q-run').disabled = false;
+      updateGo();
+    }
+  }
+
+  // render_run numbers rows after start-at and skips are applied; the
+  // operator thinks in query record numbers, so map back
+  function toRecord(n) {
+    let rec = spec().start_at - 1, seen = 0;
+    while (seen < n) { rec += 1; if (!state.skip.includes(rec)) seen += 1; }
+    return rec;
+  }
+
+  function renderWarnings(list) {
+    const box = $('warnings');
+    box.replaceChildren();
+    for (const w of list) {
+      const m = /^row (\d+): (.*)$/.exec(w);
+      const rec = m ? toRecord(Number(m[1])) : null;
+      box.append(el('div', { class: 'warn', role: 'status' },
+        icon('alert', 18),
+        el('span', { class: 'txt' },
+          el('b', {}, rec ? `Record ${rec}: ${m[2]}` : w),
+          el('span', {}, 'That label still prints, without the missing part.')),
+        rec ? el('button', { class: 'btn sm gold', type: 'button', onclick: () => skip(rec) }, 'Skip that record') : ''));
+    }
+  }
+
+  function skip(rec) {
+    if (!state.skip.includes(rec)) state.skip.push(rec);
+    check();
+  }
+
+  // ---------- preview
+  function showPreview(url) {
+    if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
+    state.previewUrl = url;
+    $('preview-img').hidden = !url; $('preview-empty').hidden = !!url;
+    if (url) { $('preview-img').src = url; $('preview-img').alt = `Label for record ${state.record + 1}`; }
+    const n = state.check?.records || 0;
+    $('rec-label').textContent = n ? `Record ${state.record + 1} of ${n}` : 'Record – of –';
+    $('prev').disabled = !n || state.record === 0;
+    $('next').disabled = !n || state.record >= n - 1;
+  }
+
+  async function loadPreview() {
+    if (!state.check || !state.check.records) { showPreview(null); return; }
+    const row = toRecord(state.record + 1) - 1;   // the preview endpoint is 0-based
+    const r = await api('POST', `/templates/${encodeURIComponent(state.template.id)}/preview.png`,
+                        { params: collectParams(), record: row, published: true });
+    showPreview(URL.createObjectURL(await r.blob()));
+  }
+
+  $('prev').addEventListener('click', () => { state.record -= 1; loadPreview(); });
+  $('next').addEventListener('click', () => { state.record += 1; loadPreview(); });
+
+  // ---------- step 3: printer, then go
+  async function loadPrinters() {
+    state.printers = await api('GET', '/printers');
+    const sel = $('printer');
+    sel.replaceChildren();
+    for (const p of state.printers) {
+      sel.append(el('option', { value: p.id }, `${p.model ? p.model + ' · ' : ''}${p.name} — ${p.online ? 'online' : 'not answering'}`));
+    }
+    if (!state.printers.length) sel.append(el('option', { value: '' }, 'No printers registered'));
+    updateGo();
+  }
+
+  function updateGo() {
+    const ready = !!(state.check && state.check.labels && $('printer').value && !state.run);
+    const p = state.printers.find((x) => x.id === $('printer').value);
+    $('go-count').textContent = state.check ? state.check.labels : '–';
+    $('go-where').textContent = p && state.check ? `labels to ${p.name}` : 'labels';
+    $('go-version').textContent = state.check ? `${state.template.id} v${state.check.template_version}` : '';
+    $('go-text').textContent = state.check ? `Print ${state.check.labels} label${state.check.labels === 1 ? '' : 's'}` : 'Print';
+    $('go-btn').disabled = !ready;
+  }
+
+  async function go() {
+    $('go-btn').disabled = true; $('q-err').hidden = true;
+    try {
+      const run = await api('POST', '/runs', { ...spec(), printer_id: $('printer').value });
+      state.run = run;
+      $('progress').hidden = false; $('go-fine').hidden = true;
+      $('run-id').textContent = run.id;
+      poll();
+    } catch (e) {
+      $('q-err-text').textContent = e.message; $('q-err').hidden = false;
+      updateGo();
+    }
+  }
+
+  async function poll() {
+    const r = await api('GET', `/runs/${state.run.id}`);
+    const done = ['done', 'failed', 'cancelled'].includes(r.status);
+    const words = { queued: 'Queued', printing: 'Printing', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
+    $('run-status').textContent = words[r.status] || r.status;
+    $('run-status').classList.toggle('gold', r.status === 'failed' || r.status === 'cancelled');
+    $('run-printed').textContent = `${r.printed} / ${r.total}`;
+    $('run-bar').style.width = r.total ? `${(100 * r.printed) / r.total}%` : '0%';
+    $('run-bar').parentElement.classList.toggle('gold', r.status === 'failed' || r.status === 'cancelled');
+    $('cancel').hidden = done;
+    $('run-error').hidden = !r.error; $('run-error').textContent = r.error || '';
+    if (done) {
+      state.run = null; state.timer = null;
+      $('go-fine').hidden = false;
+      $('go-fine').textContent = r.status === 'done'
+        ? `${r.printed} labels sent to the printer. Run it again or pick another template.`
+        : 'Nothing more will print from this run.';
+      updateGo();
+    } else {
+      state.timer = setTimeout(poll, 1000);
+    }
+  }
+
+  $('cancel').addEventListener('click', async () => {
+    if (!state.run) return;
+    $('cancel').disabled = true;
+    try { await api('POST', `/runs/${state.run.id}/cancel`); } finally { $('cancel').disabled = false; }
+  });
+
+  $('q-form').addEventListener('submit', (e) => { e.preventDefault(); check(); });
+  $('copies').addEventListener('change', () => state.check && check());
+  $('start-at').addEventListener('change', () => { state.record = 0; state.check && check(); });
+  $('printer').addEventListener('change', updateGo);
+  $('go-btn').addEventListener('click', go);
+
+  Promise.all([loadTemplates(), loadPrinters()]).catch((e) => {
+    $('q-err-text').textContent = e.message; $('q-err').hidden = false;
+  });
+})();
+</script>
+</body>
+</html>

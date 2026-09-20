@@ -1,5 +1,9 @@
 """Connections to the customer's own databases, and the saved queries that run
-against them. Everything here is read-only by construction."""
+against them. Everything here is read-only by construction.
+
+The records live in the datasource / saved_query / query_parameter tables;
+the engines (connection pools) live here in memory, one per datasource, and
+are rebuilt if the stored URL changes."""
 
 from __future__ import annotations
 
@@ -9,7 +13,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.orm import Session
+
+from db import models as db
 
 from . import images
 
@@ -58,15 +65,69 @@ class Parameter:
     label: str = ""
 
 
-REGISTRY: dict[str, DataSource] = {}
-QUERIES: dict[str, SavedQuery] = {}
+MASK = "***"                       # what SQLAlchemy renders a hidden password as
 
 
-def run(query: SavedQuery, params: dict[str, Any], limit: int | None = None):
+def masked(url: str) -> str:
+    """A connection string safe to put in a browser. The password never leaves
+    the server, so an operator with the screen open can't read it off it."""
+    try:
+        return make_url(url).render_as_string(hide_password=True)
+    except Exception:                                 # noqa: BLE001 — show it as typed
+        return url
+
+
+def unmasked(submitted: str, stored: str | None) -> str:
+    """The other half: a URL saved back untouched keeps the password it had."""
+    if stored is None:
+        return submitted
+    try:
+        new, old = make_url(submitted), make_url(stored)
+    except Exception:                                 # noqa: BLE001
+        return submitted
+    if new.password != MASK:
+        return submitted
+    return new.set(password=old.password).render_as_string(hide_password=False)
+
+
+_ENGINES: dict[str, DataSource] = {}
+
+
+def datasource(session: Session, datasource_id: str) -> DataSource | None:
+    """The DataSource for a row, with its engine cached across requests."""
+    row = session.get(db.DataSource, datasource_id)
+    if row is None:
+        return None
+    cached = _ENGINES.get(row.id)
+    if cached is None or cached.url != row.url or cached.pool_size != row.pool_size:
+        if cached is not None and cached._engine is not None:
+            cached._engine.dispose()
+        cached = DataSource(name=row.id, url=row.url, label=row.label or row.name,
+                            pool_size=row.pool_size)
+        _ENGINES[row.id] = cached
+    return cached
+
+
+def saved_query(session: Session, query_id: str) -> SavedQuery | None:
+    row = session.get(db.SavedQuery, query_id)
+    if row is None:
+        return None
+    return SavedQuery(
+        name=row.id, datasource=row.datasource_id, sql=row.sql,
+        parameters=[Parameter(name=p.name, type=p.type, default=p.default,
+                              ask_at_print=p.ask_at_print, label=p.label)
+                    for p in row.parameters],
+    )
+
+
+def run(session: Session, query: SavedQuery, params: dict[str, Any],
+        limit: int | None = None) -> list[dict[str, Any]]:
     """Execute a saved query as a prepared statement and return plain dicts."""
-    ds = REGISTRY[query.datasource]
+    ds = datasource(session, query.datasource)
+    if ds is None:
+        raise ValueError(f"query {query.name!r}: its data source {query.datasource!r} no longer exists")
     bound = {p.name: params.get(p.name, p.default) for p in query.parameters}
-    missing = [p.name for p in query.parameters if bound[p.name] is None and not p.ask_at_print]
+    missing = [p.name for p in query.parameters if bound[p.name] is None]
     if missing:
         raise ValueError(f"missing parameters: {', '.join(missing)}")
 
@@ -74,6 +135,22 @@ def run(query: SavedQuery, params: dict[str, Any], limit: int | None = None):
     with ds.engine.connect() as c:
         result = c.execute(text(sql), bound)
         return [dict(r) for r in result.mappings()]
+
+
+def columns(session: Session, query: SavedQuery) -> list[str]:
+    """What a query returns, without needing its parameters answered.
+
+    Every parameter binds as NULL and the statement is limited to no rows, so
+    the database still describes the result it would have produced. The editor
+    uses this to know which bindings can resolve before anyone has typed a
+    despatch date.
+    """
+    ds = datasource(session, query.datasource)
+    if ds is None:
+        raise ValueError(f"query {query.name!r}: its data source {query.datasource!r} no longer exists")
+    bound = {p.name: None for p in query.parameters}
+    with ds.engine.connect() as c:
+        return list(c.execute(text(f"select * from ({query.sql}) q limit 0"), bound).keys())
 
 
 def describe(rows: list[dict[str, Any]]) -> list[dict[str, str]]:

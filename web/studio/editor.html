@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Template editor — Platen Label Studio</title>
+<link rel="icon" href="/studio/static/q7-logo-128.png">
+<link rel="stylesheet" href="/studio/static/studio/studio.css">
+<script src="/studio/static/studio/studio.js"></script>
+<style>
+  .ed { display: grid; grid-template-columns: 196px minmax(0, 1fr) 330px; gap: 16px; padding: 16px 20px; flex: 1; min-height: 0; }
+  .rail { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .rail .card { padding: 14px; }
+  .palette { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .palette button { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 10px 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--mut); font: inherit; font-size: 11.5px; cursor: pointer; }
+  .palette button:hover { border-color: var(--accent); color: var(--ink); }
+
+  .layers { display: flex; flex-direction: column; gap: 3px; max-height: 300px; overflow-y: auto; }
+  .layer { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 7px; border: 1px solid transparent; cursor: pointer; font-size: 12.5px; }
+  .layer:hover { background: var(--sunk); }
+  .layer[aria-selected="true"] { border-color: var(--accent); background: var(--sunk); }
+  .layer .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 11.5px; }
+  .layer.off .nm { color: var(--mut); text-decoration: line-through; }
+  .layer button { border: 0; background: none; color: var(--mut); cursor: pointer; padding: 2px; display: flex; }
+  .layer button:hover { color: var(--accent); }
+
+  .stage { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+  .canvas-wrap { flex: 1; min-height: 260px; overflow: auto; background: var(--well); border: 1px solid var(--line); border-radius: 10px; display: flex; align-items: flex-start; justify-content: center; padding: 22px; }
+  .canvas { position: relative; background: #fff no-repeat center / 100% 100%; box-shadow: 0 2px 3px rgba(0,0,0,.4), 0 24px 44px -28px rgba(0,0,0,.8); flex: none; }
+  .el { position: absolute; border: 1px solid transparent; cursor: move; }
+  .el:hover { border-color: rgba(41,171,226,0.55); }
+  .el[aria-selected="true"] { border-color: var(--accent); background: rgba(41,171,226,0.07); }
+  .el.off { opacity: .35; }
+  .el .h { position: absolute; width: 9px; height: 9px; background: var(--accent); border: 1px solid var(--ground); border-radius: 2px; display: none; }
+  .el[aria-selected="true"] .h { display: block; }
+  .h.nw { left: -5px; top: -5px; cursor: nwse-resize; }
+  .h.ne { right: -5px; top: -5px; cursor: nesw-resize; }
+  .h.sw { left: -5px; bottom: -5px; cursor: nesw-resize; }
+  .h.se { right: -5px; bottom: -5px; cursor: nwse-resize; }
+
+  .tabs { display: flex; gap: 4px; }
+  .tabs button { border: 1px solid transparent; background: none; color: var(--mut); font: inherit; font-size: 12.5px; padding: 6px 11px; border-radius: 7px; cursor: pointer; }
+  .tabs button[aria-selected="true"] { background: var(--sunk); border-color: var(--line); color: var(--ink); }
+  .panel { max-height: 230px; overflow: auto; }
+  pre.zpl { margin: 0; font-family: var(--mono); font-size: 12px; line-height: 1.65; color: var(--ink); white-space: pre-wrap; word-break: break-all; }
+  .fields { display: flex; flex-wrap: wrap; gap: 5px; }
+  .fields button { font-family: var(--mono); font-size: 11px; padding: 3px 8px; border-radius: 5px; border: 1px solid var(--line); background: var(--sunk); color: var(--accent); cursor: pointer; }
+  .fields button:hover { border-color: var(--accent); }
+  .props { display: flex; flex-direction: column; gap: 12px; }
+  .props .field { min-width: 0; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .saved { font-size: 12px; color: var(--mut); }
+  .saved.dirty { color: var(--signal); }
+  @media (max-width: 1200px) { .ed { grid-template-columns: 1fr; } .canvas-wrap { min-height: 420px; } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside id="shell-nav"></aside>
+
+  <main>
+    <header>
+      <a href="/studio/templates" class="btn sm" style="text-decoration: none;">Templates</a>
+      <h1 id="t-title">Template</h1>
+      <span class="sub mono" id="t-size"></span>
+      <span class="saved" id="saved">loading…</span>
+      <span class="spacer"></span>
+      <div class="actions">
+        <button class="btn sm" type="button" id="zoom-out" aria-label="Zoom out">–</button>
+        <span class="mono mut" id="zoom-label" style="font-size: 12px; min-width: 42px; text-align: center;"></span>
+        <button class="btn sm" type="button" id="zoom-in" aria-label="Zoom in">+</button>
+      </div>
+      <button class="btn pri" type="button" id="publish" style="height: 34px;">Publish</button>
+    </header>
+
+    <div class="ed">
+      <div class="rail">
+        <section class="card" aria-labelledby="h-add">
+          <div class="card-head"><h2 id="h-add" style="font-size: 13px;">Add element</h2></div>
+          <div class="palette" id="palette"></div>
+        </section>
+        <section class="card" aria-labelledby="h-layers">
+          <div class="card-head"><h2 id="h-layers" style="font-size: 13px;">Layers</h2>
+            <span class="spacer"></span><span class="mut mono" id="layer-count" style="font-size: 11px;"></span></div>
+          <div class="layers" id="layers" role="listbox" aria-label="Layers"></div>
+          <p class="mut" id="layers-empty" style="font-size: 12px;" hidden>Nothing on the label yet.</p>
+        </section>
+      </div>
+
+      <div class="stage">
+        <div class="card" style="padding: 10px 14px; flex-direction: row; align-items: center; gap: 12px;">
+          <span id="valid"></span>
+          <span class="spacer"></span>
+          <label for="pv-mode" class="mut" style="font-size: 12px;">Preview</label>
+          <select id="pv-mode" style="height: 30px; width: auto; font-size: 12.5px;">
+            <option value="columns">Column names</option>
+            <option value="row">A record from the query</option>
+          </select>
+        </div>
+
+        <div class="canvas-wrap">
+          <div class="canvas" id="canvas"></div>
+        </div>
+
+        <section class="card" style="padding: 12px 14px;">
+          <div class="tabs" role="tablist">
+            <button type="button" role="tab" data-tab="data" aria-selected="true">Sample data</button>
+            <button type="button" role="tab" data-tab="zpl" aria-selected="false">ZPL output</button>
+          </div>
+          <div class="panel" id="tab-data">
+            <div class="row" id="d-params" style="margin-bottom: 10px;"></div>
+            <div class="scroll"><table id="d-table"></table></div>
+            <p class="mut" id="d-note" style="font-size: 12px;"></p>
+          </div>
+          <div class="panel" id="tab-zpl" hidden><pre class="zpl" id="zpl"></pre></div>
+        </section>
+      </div>
+
+      <div class="rail">
+        <section class="card" aria-labelledby="h-props">
+          <div class="card-head">
+            <h2 id="h-props" style="font-size: 13px;">Properties</h2>
+            <span class="spacer"></span>
+            <span class="badge mono" id="p-kind"></span>
+          </div>
+          <div class="props" id="props"></div>
+        </section>
+        <div id="msg" hidden></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  renderShell('templates');
+
+  const id = new URLSearchParams(location.search).get('id');
+  const state = { tpl: null, sel: -1, zoom: 2.2, columns: [], params: {}, query: null,
+                  dirty: false, timer: null, mode: 'columns', objectUrl: null };
+
+  const KINDS = [
+    ['text', 'Text', 'text'], ['barcode', 'Barcode', 'barcode'], ['qr', 'QR / 2D', 'qr'],
+    ['image', 'Image', 'image'], ['line', 'Line', 'line'], ['box', 'Box', 'square'],
+  ];
+
+  const DEFAULTS = {
+    text: { value: 'Text', height_pt: 10, font: '0', align: 'left', multiline: false, width_pt: null },
+    barcode: { value: '', symbology: 'code128', module_dots: 2, human_readable: 'below',
+               check_digit: false, skip_if_blank: true },
+    qr: { value: '', model: 2, magnification: 5, error_correction: 'Q' },
+    image: { value: '', source: 'base64', dither: true, threshold: 128, on_missing: 'blank' },
+    line: { thickness_mm: 0.4 },
+    box: { thickness_mm: 0.4, fill: false },
+  };
+  const SIZES = { text: [40, 8], barcode: [50, 15], qr: [20, 20], image: [25, 20], line: [40, 0.4], box: [30, 20] };
+
+  /* Which controls each kind shows. [key, type, label, options] */
+  const SPEC = {
+    text: [['value', 'bind', 'Value'], ['height_pt', 'num', 'Height pt', { step: 0.5, min: 2 }],
+           ['width_pt', 'num', 'Width pt', { step: 0.5, min: 0, blank: true }],
+           ['font', 'sel', 'ZPL font', ['0', 'A', 'B', 'D', 'F', 'G']],
+           ['align', 'sel', 'Align', ['left', 'centre', 'right']],
+           ['multiline', 'chk', 'Wrap onto several lines']],
+    barcode: [['value', 'bind', 'Value'],
+              ['symbology', 'sel', 'Symbology', ['code128', 'gs1_128', 'code39', 'i2of5']],
+              ['module_dots', 'num', 'Narrow bar, dots', { step: 1, min: 1, max: 10 }],
+              ['human_readable', 'sel', 'Readable text', ['none', 'above', 'below']],
+              ['check_digit', 'chk', 'Add a check digit'],
+              ['skip_if_blank', 'chk', 'Skip the label if this is blank']],
+    qr: [['value', 'bind', 'Value'], ['magnification', 'num', 'Magnification', { step: 1, min: 1, max: 10 }],
+         ['error_correction', 'sel', 'Error correction', ['L', 'M', 'Q', 'H']],
+         ['model', 'sel', 'Model', [1, 2]]],
+    image: [['value', 'bind', 'Value'], ['source', 'sel', 'Source', ['base64', 'url', 'asset']],
+            ['dither', 'chk', 'Dither (Floyd–Steinberg)'],
+            ['threshold', 'num', 'Threshold when not dithering', { step: 1, min: 0, max: 255 }],
+            ['on_missing', 'sel', 'When the value is missing', ['blank', 'placeholder', 'fail']]],
+    line: [['thickness_mm', 'num', 'Thickness mm', { step: 0.1, min: 0.1 }]],
+    box: [['thickness_mm', 'num', 'Thickness mm', { step: 0.1, min: 0.1 }], ['fill', 'chk', 'Fill it in']],
+  };
+
+  const round5 = (v) => Math.round(v * 2) / 2;
+  const els = () => state.tpl.elements;
+
+  // ---------- loading
+  async function load() {
+    state.tpl = await api('GET', `/templates/${encodeURIComponent(id)}`);
+    $('t-title').textContent = state.tpl.name || state.tpl.id;
+    showSize();
+    document.title = `${state.tpl.name || state.tpl.id} — Platen Label Studio`;
+    fit();
+    await loadQuery();
+    renderAll();
+    await refresh();
+    setSaved('opened');
+  }
+
+  async function loadQuery() {
+    state.columns = []; state.query = null;
+    if (!state.tpl.query) return;
+    try {
+      state.query = await api('GET', `/queries/${encodeURIComponent(state.tpl.query)}`);
+      state.columns = (await api('GET', `/queries/${encodeURIComponent(state.tpl.query)}/columns`)).columns;
+    } catch (e) { showError($('msg'), `Its query: ${e.message}`); }
+    dataParams();
+  }
+
+  function fit() {
+    const avail = Math.max(260, document.querySelector('.canvas-wrap').clientHeight - 48);
+    state.zoom = Math.min(4, Math.max(1, avail / state.tpl.height_mm));
+    applyZoom();
+  }
+
+  function showSize() {
+    const t = state.tpl;
+    const dots = (mm) => Math.round((mm * t.dpi) / 25.4);
+    $('t-size').textContent =
+      `${t.width_mm} × ${t.height_mm} mm · ${t.dpi} dpi · ${dots(t.width_mm)} × ${dots(t.height_mm)} dots`;
+  }
+
+  function applyZoom() {
+    const c = $('canvas');
+    c.style.width = `${state.tpl.width_mm * state.zoom}px`;
+    c.style.height = `${state.tpl.height_mm * state.zoom}px`;
+    $('zoom-label').textContent = `${state.zoom.toFixed(1)} px/mm`;
+    layout();
+  }
+
+  // ---------- the canvas
+  function renderAll() { renderCanvas(); renderLayers(); renderProps(); }
+
+  function renderCanvas() {
+    const c = $('canvas');
+    [...c.querySelectorAll('.el')].forEach((n) => n.remove());
+    els().forEach((e, i) => {
+      const node = el('div', { class: `el${e.hidden ? ' off' : ''}`, 'data-i': i,
+                               'aria-selected': String(i === state.sel), title: e.name });
+      for (const h of ['nw', 'ne', 'sw', 'se']) node.append(el('div', { class: `h ${h}`, 'data-h': h }));
+      node.addEventListener('pointerdown', (ev) => startDrag(ev, i));
+      c.append(node);
+    });
+    layout();
+  }
+
+  function layout() {
+    const z = state.zoom;
+    for (const node of $('canvas').querySelectorAll('.el')) {
+      const b = els()[Number(node.dataset.i)].box;
+      node.style.left = `${b.x * z}px`;
+      node.style.top = `${b.y * z}px`;
+      node.style.width = `${Math.max(b.w, 0.4) * z}px`;
+      node.style.height = `${Math.max(b.h, 0.4) * z}px`;
+    }
+  }
+
+  function startDrag(ev, i) {
+    ev.preventDefault();
+    select(i);
+    const handle = ev.target.dataset.h;
+    const b = els()[i].box;
+    const start = { px: ev.clientX, py: ev.clientY, x: b.x, y: b.y, w: b.w, h: b.h };
+    const node = ev.currentTarget;
+    node.setPointerCapture(ev.pointerId);
+
+    const move = (m) => {
+      const dx = (m.clientX - start.px) / state.zoom;
+      const dy = (m.clientY - start.py) / state.zoom;
+      applyDelta(b, start, handle, dx, dy);
+      layout();
+      positionInputs();
+    };
+    const up = () => {
+      node.removeEventListener('pointermove', move);
+      node.removeEventListener('pointerup', up);
+      touch();
+    };
+    node.addEventListener('pointermove', move);
+    node.addEventListener('pointerup', up);
+  }
+
+  function applyDelta(b, start, handle, dx, dy) {
+    if (!handle) {
+      b.x = Math.max(0, round5(start.x + dx));
+      b.y = Math.max(0, round5(start.y + dy));
+      return;
+    }
+    const min = 0.5;
+    if (handle.includes('w')) {
+      const x = Math.min(round5(start.x + dx), start.x + start.w - min);
+      b.w = round5(start.w + (start.x - x));
+      b.x = Math.max(0, x);
+    }
+    if (handle.includes('e')) b.w = Math.max(min, round5(start.w + dx));
+    if (handle.includes('n')) {
+      const y = Math.min(round5(start.y + dy), start.y + start.h - min);
+      b.h = round5(start.h + (start.y - y));
+      b.y = Math.max(0, y);
+    }
+    if (handle.includes('s')) b.h = Math.max(min, round5(start.h + dy));
+  }
+
+  function select(i) {
+    state.sel = i;
+    for (const n of $('canvas').querySelectorAll('.el')) n.setAttribute('aria-selected', String(Number(n.dataset.i) === i));
+    for (const n of $('layers').children) n.setAttribute('aria-selected', String(Number(n.dataset.i) === i));
+    renderProps();
+  }
+
+  // ---------- layers
+  function renderLayers() {
+    const box = $('layers');
+    box.replaceChildren();
+    $('layers-empty').hidden = els().length > 0;
+    $('layer-count').textContent = els().length ? `${els().length}` : '';
+    // the label itself sits at the top of the stack, so its size, dpi and
+    // query stay reachable once elements cover the canvas
+    box.append(el('div', {
+      class: 'layer', role: 'option', 'data-i': -1, tabindex: '0',
+      'aria-selected': String(state.sel === -1), onclick: () => select(-1),
+      onkeydown: (ev) => { if (ev.key === 'Enter') select(-1); },
+    }, icon('square', 13), el('span', { class: 'nm', text: 'the label' })));
+    els().forEach((e, i) => {
+      box.append(el('div', {
+        class: `layer${e.hidden ? ' off' : ''}`, role: 'option', 'data-i': i, tabindex: '0',
+        'aria-selected': String(i === state.sel), onclick: () => select(i),
+        onkeydown: (ev) => { if (ev.key === 'Enter') select(i); },
+      },
+        icon(({ text: 'text', barcode: 'barcode', qr: 'qr', image: 'image', line: 'line', box: 'square' })[e.kind], 13),
+        el('span', { class: 'nm', text: e.name }),
+        el('button', { type: 'button', 'aria-label': `Move ${e.name} up`,
+                       onclick: (ev) => { ev.stopPropagation(); reorder(i, -1); } }, icon('up', 13)),
+        el('button', { type: 'button', 'aria-label': `Move ${e.name} down`,
+                       onclick: (ev) => { ev.stopPropagation(); reorder(i, 1); } }, icon('down', 13)),
+        el('button', { type: 'button', 'aria-label': `${e.hidden ? 'Show' : 'Hide'} ${e.name}`,
+                       onclick: (ev) => { ev.stopPropagation(); e.hidden = !e.hidden; touch(); renderAll(); } },
+           icon(e.hidden ? 'eyeoff' : 'eye', 13))));
+    });
+  }
+
+  function reorder(i, d) {
+    const j = i + d;
+    if (j < 0 || j >= els().length) return;
+    [els()[i], els()[j]] = [els()[j], els()[i]];
+    state.sel = j;
+    touch(); renderAll();
+  }
+
+  // ---------- adding and removing
+  function add(kind) {
+    const n = els().filter((e) => e.kind === kind).length + 1;
+    const [w, h] = SIZES[kind];
+    els().push({
+      kind, name: `${kind}_${n}`, hidden: false,
+      box: { x: 5, y: 5 + (els().length % 12) * 4, w, h, rotation: 0 },
+      ...structuredClone(DEFAULTS[kind]),
+    });
+    state.sel = els().length - 1;
+    touch(); renderAll();
+  }
+
+  function removeSelected() {
+    if (state.sel < 0) return;
+    els().splice(state.sel, 1);
+    state.sel = -1;
+    touch(); renderAll();
+  }
+
+  // ---------- properties
+  function control(obj, key, type, label, opts) {
+    const cid = `f-${key}`;
+    if (type === 'chk') {
+      const input = el('input', { type: 'checkbox', id: cid, style: 'width:auto;height:auto;accent-color:var(--accent)' });
+      input.checked = !!obj[key];
+      input.addEventListener('change', () => { obj[key] = input.checked; touch(); });
+      return el('label', { class: 'ask', style: 'display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--mut)' }, input, label);
+    }
+    let input;
+    if (type === 'sel') {
+      input = el('select', { id: cid }, ...opts.map((o) =>
+        el('option', { value: o, selected: String(obj[key]) === String(o), text: String(o) })));
+      input.addEventListener('change', () => {
+        obj[key] = typeof opts[0] === 'number' ? Number(input.value) : input.value;
+        touch();
+      });
+    } else if (type === 'num') {
+      input = el('input', { type: 'number', id: cid, class: 'mono', ...(opts || {}) });
+      input.value = obj[key] ?? '';
+      input.addEventListener('input', () => {
+        obj[key] = input.value === '' && opts?.blank ? null : Number(input.value);
+        if (key === 'x' || key === 'y' || key === 'w' || key === 'h') layout();
+        touch();
+      });
+    } else {
+      input = el('input', { type: 'text', id: cid, class: type === 'bind' ? 'mono' : '', spellcheck: 'false' });
+      input.value = obj[key] ?? '';
+      input.addEventListener('input', () => { obj[key] = input.value; touch(); });
+    }
+    const field = el('div', { class: 'field' }, el('label', { for: cid, text: label }), input);
+    if (type === 'bind' && state.columns.length) {
+      field.append(el('div', { class: 'fields' }, ...state.columns.map((c) =>
+        el('button', { type: 'button', title: `Insert {{ ${c} }}`, text: c, onclick: () => {
+          const at = input.selectionStart ?? input.value.length;
+          input.value = `${input.value.slice(0, at)}{{ ${c} }}${input.value.slice(input.selectionEnd ?? at)}`;
+          obj[key] = input.value;
+          input.focus();
+          touch();
+        } }))));
+    }
+    return field;
+  }
+
+  function renderProps() {
+    const box = $('props');
+    box.replaceChildren();
+    if (state.sel < 0 || !els()[state.sel]) { $('p-kind').textContent = 'template'; templateProps(box); return; }
+    const e = els()[state.sel];
+    $('p-kind').textContent = e.kind;
+    box.append(control(e, 'name', 'txt', 'Name'));
+    for (const [key, type, label, opts] of SPEC[e.kind]) box.append(control(e, key, type, label, opts));
+    box.append(el('div', { class: 'grid2' },
+      control(e.box, 'x', 'num', 'X mm', { step: 0.5, min: 0 }),
+      control(e.box, 'y', 'num', 'Y mm', { step: 0.5, min: 0 }),
+      control(e.box, 'w', 'num', 'Width mm', { step: 0.5, min: 0.5 }),
+      control(e.box, 'h', 'num', 'Height mm', { step: 0.5, min: 0.5 })));
+    box.append(control(e.box, 'rotation', 'sel', 'Rotation', [0, 90, 180, 270]));
+    box.append(control(e, 'hidden', 'chk', 'Hidden'));
+    box.append(el('div', { class: 'actions' },
+      el('button', { class: 'btn sm gold', type: 'button', onclick: removeSelected }, icon('trash', 13), 'Delete element')));
+  }
+
+  function templateProps(box) {
+    const t = state.tpl;
+    box.append(control(t, 'name', 'txt', 'Template name'));
+    box.append(el('div', { class: 'grid2' },
+      control(t, 'width_mm', 'num', 'Width mm', { step: 0.5, min: 5 }),
+      control(t, 'height_mm', 'num', 'Height mm', { step: 0.5, min: 5 })));
+    box.append(control(t, 'dpi', 'sel', 'Dots per inch', [203, 300, 600]));
+    box.append(control(t, 'darkness', 'num', 'Darkness (blank = leave the printer alone)',
+                       { step: 1, min: 0, max: 30, blank: true }));
+    const ds = el('select', { id: 'f-ds' }, el('option', { value: '', text: 'no data source' }));
+    const q = el('select', { id: 'f-q' }, el('option', { value: '', text: 'no query' }));
+    box.append(el('div', { class: 'field' }, el('label', { for: 'f-ds', text: 'Data source' }), ds));
+    box.append(el('div', { class: 'field' }, el('label', { for: 'f-q', text: 'Saved query' }), q));
+    box.append(el('p', { class: 'mut', style: 'font-size:12px', text: 'Changing the size or dpi moves every element, because millimetres are the truth here.' }));
+    api('GET', '/datasources').then((list) => {
+      for (const d of list) ds.append(el('option', { value: d.id, selected: d.id === t.datasource, text: d.name || d.id }));
+      return api('GET', '/queries');
+    }).then((list) => {
+      for (const s of list.filter((x) => !t.datasource || x.datasource_id === t.datasource)) {
+        q.append(el('option', { value: s.id, selected: s.id === t.query, text: s.name || s.id }));
+      }
+    }).catch(() => {});
+    ds.addEventListener('change', () => { t.datasource = ds.value || null; t.query = null; touch(); renderProps(); loadQuery().then(refresh); });
+    q.addEventListener('change', () => { t.query = q.value || null; touch(); loadQuery().then(refresh); });
+  }
+
+  function positionInputs() {
+    if (state.sel < 0) return;
+    const b = els()[state.sel].box;
+    for (const [k, v] of Object.entries({ x: b.x, y: b.y, w: b.w, h: b.h })) {
+      const node = $(`f-${k}`);
+      if (node) node.value = v;
+    }
+  }
+
+  // ---------- saving and rendering
+  function setSaved(text, dirty) {
+    $('saved').textContent = text;
+    $('saved').classList.toggle('dirty', !!dirty);
+  }
+
+  function touch() {
+    state.dirty = true;
+    setSaved('unsaved changes', true);
+    clearTimeout(state.timer);
+    state.timer = setTimeout(save, 600);
+  }
+
+  async function save() {
+    try {
+      await api('PUT', `/templates/${encodeURIComponent(id)}`, state.tpl);
+      state.dirty = false;
+      setSaved('draft saved');
+      showSize();
+      applyZoom();
+      renderLayers();
+      await refresh();
+    } catch (e) { setSaved('not saved', true); showError($('msg'), e.message); }
+  }
+
+  async function refresh() {
+    const body = { data: state.mode, params: state.params, record: 0 };
+    try {
+      const r = await fetch(`/templates/${encodeURIComponent(id)}/preview.png`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail);
+      if (state.objectUrl) URL.revokeObjectURL(state.objectUrl);
+      state.objectUrl = URL.createObjectURL(await r.blob());
+      $('canvas').style.backgroundImage = `url(${state.objectUrl})`;
+      clearError($('msg'));
+      const zpl = await api('POST', `/templates/${encodeURIComponent(id)}/preview.zpl`, body);
+      $('zpl').textContent = await zpl.text();
+      ok('Every binding resolves');
+    } catch (e) {
+      $('canvas').style.backgroundImage = 'none';
+      bad(e.message);
+    }
+  }
+
+  const ok = (m) => $('valid').replaceChildren(el('span', { class: 'ok' }, icon('check', 15), el('span', { text: m })));
+  const bad = (m) => $('valid').replaceChildren(
+    el('span', { class: 'ok', style: 'color:var(--signal)' }, icon('alert', 15), el('span', { text: m })));
+
+  async function publish() {
+    if (state.dirty) { clearTimeout(state.timer); await save(); }
+    try {
+      const r = await api('POST', `/templates/${encodeURIComponent(id)}/publish`);
+      setSaved(`published v${r.version}`);
+      clearError($('msg'));
+    } catch (e) { showError($('msg'), e.message); }
+  }
+
+  // ---------- sample data
+  function dataParams() {
+    const box = $('d-params');
+    box.replaceChildren();
+    const params = (state.query?.parameters || []).filter((p) => p.ask_at_print || p.default !== null);
+    for (const p of params) {
+      const cid = `dp-${p.name}`;
+      const type = { date: 'date', int: 'number' }[p.type] || 'text';
+      const input = el('input', { id: cid, name: p.name, type, class: type === 'text' ? '' : 'mono' });
+      input.value = state.params[p.name] ?? p.default ?? '';
+      box.append(el('div', { class: 'field' }, el('label', { for: cid, text: `:${p.name}` }), input));
+    }
+    if (state.query) {
+      box.append(el('div', { class: 'field narrow', style: 'align-self:flex-end' },
+        el('button', { class: 'btn', type: 'button', text: 'Run query', onclick: runData })));
+    } else {
+      $('d-note').textContent = 'This template has no query, so it prints one label from literal values.';
+    }
+  }
+
+  async function runData() {
+    const params = {};
+    for (const input of $('d-params').querySelectorAll('input')) {
+      if (input.value !== '') params[input.name] = input.type === 'number' ? Number(input.value) : input.value;
+    }
+    state.params = params;
+    try {
+      const r = await api('POST', `/queries/${encodeURIComponent(state.tpl.query)}/preview`, { params, limit: 5 });
+      $('d-note').textContent = `${r.count} row${r.count === 1 ? '' : 's'} · ${r.elapsed_ms} ms`;
+      $('d-table').replaceChildren(
+        el('thead', {}, el('tr', {}, ...r.fields.map((f) => el('th', { class: 'mono', text: f.name })))),
+        el('tbody', {}, ...r.rows.map((row) => el('tr', {}, ...r.fields.map((f) => {
+          const v = row[f.name];
+          if (v === null || v === undefined) return el('td', { class: 'mut mono', text: 'null' });
+          const text = String(v);
+          return el('td', { class: 'mono', text: text.length > 24 ? text.slice(0, 24) + '…' : text });
+        })))));
+      if (state.mode === 'row') await refresh();
+    } catch (e) { $('d-note').textContent = ''; showError($('msg'), e.message); }
+  }
+
+  // ---------- wiring
+  for (const [kind, label, ic] of KINDS) {
+    $('palette').append(el('button', { type: 'button', onclick: () => add(kind) }, icon(ic, 17), label));
+  }
+  for (const b of document.querySelectorAll('.tabs button')) {
+    b.addEventListener('click', () => {
+      for (const o of document.querySelectorAll('.tabs button')) o.setAttribute('aria-selected', String(o === b));
+      $('tab-data').hidden = b.dataset.tab !== 'data';
+      $('tab-zpl').hidden = b.dataset.tab !== 'zpl';
+    });
+  }
+  $('zoom-in').addEventListener('click', () => { state.zoom = Math.min(6, state.zoom * 1.25); applyZoom(); });
+  $('zoom-out').addEventListener('click', () => { state.zoom = Math.max(0.6, state.zoom / 1.25); applyZoom(); });
+  $('publish').addEventListener('click', publish);
+  $('pv-mode').addEventListener('change', () => { state.mode = $('pv-mode').value; refresh(); });
+  $('canvas').addEventListener('pointerdown', (e) => { if (e.target === $('canvas')) select(-1); });
+
+  document.addEventListener('keydown', (e) => {
+    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+    if (e.key === 'Escape') { select(-1); return; }
+    if (state.sel < 0 || !els()[state.sel]) return;
+    const b = els()[state.sel].box;
+    const step = e.shiftKey ? 5 : 0.5;
+    const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+    if (moves[e.key]) {
+      e.preventDefault();
+      b.x = Math.max(0, round5(b.x + moves[e.key][0]));
+      b.y = Math.max(0, round5(b.y + moves[e.key][1]));
+      layout(); positionInputs(); touch();
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault(); removeSelected();
+    }
+  });
+  window.addEventListener('beforeunload', (e) => { if (state.dirty) e.preventDefault(); });
+
+  if (!id) { showError($('msg'), 'Open a template from the library.'); setSaved(''); }
+  else load().catch((e) => { showError($('msg'), e.message); setSaved(''); });
+})();
+</script>
+</body>
+</html>

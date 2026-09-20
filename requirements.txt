@@ -11,3 +11,4 @@ httpx>=0.28
 Pillow>=11.0
 python-barcode>=0.15
 qrcode>=8.0
+alembic>=1.13

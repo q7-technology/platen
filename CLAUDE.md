@@ -17,16 +17,26 @@ printer. MIT licensed, built by Q7 Technology in Ballarat.
 
 ```
 app/            the service
+  settings.py     everything read from the environment, in one place
+  auth.py         users, roles, password hashing, sessions
   models.py       template + element schema (pydantic), mm↔dots
   binding.py      "{{ order.sku }}" → a value from a row
   datasources.py  connection registry, read-only query runner
   images.py       base64 → PIL → 1-bit → ^GFA
   zpl.py          element tree → ^XA … ^XZ
+  zplimport.py    ^XA … ^XZ → element tree, with a list of what it dropped
   preview.py      the same tree → PNG, for the browser
-  printers.py     raw 9100 / CUPS / local agent transports
+  printers.py     raw 9100 / CUPS / local agent transports, and network discovery
   jobs.py         redis queue worker, retries, cancel
   main.py         the HTTP surface
+db/             Platen's own storage: SQLAlchemy models, Alembic migrations
+tests/          pytest; SQLite and fakeredis, no Docker needed
 web/            the public landing page (static, single file)
+  studio/         the operator screens, served by the API under /studio
+                  studio.css and studio.js are shared; one page per screen,
+                  vanilla DOM, no build step. The editor auto-saves the draft
+                  and asks the server to re-render — the canvas background is
+                  a real preview, not a CSS impression of one
 docs/           the design canvas artboards and the walkthrough reel
 ```
 
@@ -39,15 +49,17 @@ uvicorn app.main:app --reload     # API
 rq worker platen                  # worker, second terminal
 ```
 
-Storage is deliberately thin — `TEMPLATES`, `PRINTERS` and `RUNS` are
-module-level dicts. Swapping them for real tables is a known job, not an
-oversight; don't "fix" it as a side effect of another change.
+Storage is Postgres through SQLAlchemy 2 (`db/models.py`) with Alembic
+migrations in `db/migrations/`. Add a migration for every schema change; the
+test suite runs the same models on SQLite, so keep column types portable.
 
 ## Invariants — do not break these quietly
 
 1. **A template can never execute anything.** Bindings are dotted lookups plus
-   a fixed list of named filters. No `eval`, no expression parser, no
-   attribute traversal into callables. Templates arrive from a browser.
+   a fixed list of named filters (`binding.FILTERS`). No `eval`, no expression
+   parser, no attribute traversal into callables. Templates arrive from a
+   browser. A filter handed the wrong sort of value raises `FilterError`
+   naming the filter and the value — never an unhandled exception.
 2. **Queries are read-only and parameterised.** Connections use a read-only
    role; every query runs as a prepared statement. Never interpolate an
    operator's input into SQL.
@@ -56,6 +68,33 @@ oversight; don't "fix" it as a side effect of another change.
 4. **Cancel is checked between labels**, not between batches.
 5. **A missing image degrades, it doesn't crash** — the element is skipped and
    a warning rides along with the run, unless `on_missing="fail"`.
+6. **A connection's password never reaches the browser.** Reads mask it; a URL
+   saved back unchanged keeps the stored one.
+7. **The preview is what the printer will do**, at the printer's dot pitch —
+   including dithering, and barcodes drawn at their real module width rather
+   than scaled to fit a box. `preview.render_png` and `zpl.render_run` fail
+   the same way, with the same message, on the same input.
+8. **Timestamps leave the API knowing their time zone.** Use `UtcDateTime`,
+   never a bare `DateTime` — SQLite drops the offset and a browser then reads
+   UTC as local.
+9. **An import says what it dropped.** `zplimport` collects a warning for
+   every command it doesn't carry over, and the screen shows them before the
+   label is opened. A silent importer is worse than none: the gap only turns
+   up on stock.
+10. **A retry resumes, it never restarts.** The worker sends only labels with
+    no `printed_at`. A second consignment barcode on a second carton is worse
+    than a missing one, so nothing that has come out of the printer is ever
+    sent again.
+11. **Every route names who may call it.** A route carries
+    `Depends(current_user)` or `Depends(admin)`, and a test walks the route
+    table to prove it. Adding an endpoint without one fails the suite, which
+    is the point: an auth check you forget is worse than none.
+12. **An operator never sees a credential.** Not a connection string, not the
+    SQL behind their query. `get_query` returns a smaller body for them.
+13. **Discovery stays on the site's own network.** `printers.scan` refuses
+    anything but a private, loopback or link-local range, caps a call at 1024
+    addresses, and opens one connection per address on the one port it was
+    given. It is how you find your own printers, not a port sweep.
 
 ## Code
 
