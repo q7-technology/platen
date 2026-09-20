@@ -7,8 +7,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import redis
-from rq import Queue
-from sqlalchemy import select
+from rq import Queue, Retry
+from rq.job import get_current_job
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from db import session as dbsession
@@ -37,9 +38,23 @@ def queue() -> Queue:
     return Queue("platen", connection=connection())
 
 
+# A printer that stopped answering usually starts again: someone closes the
+# head, reloads the roll, the switch comes back. Two tries, a minute apart,
+# covers most of that without a person. The run resumes, never restarts.
+RETRY = Retry(max=2, interval=[20, 60])
+
+
 def enqueue(run_id: str) -> None:
     """Call only after the run and all its labels are committed."""
-    queue().enqueue(print_run, run_id, job_timeout=3600, retry=None)
+    queue().enqueue(print_run, run_id, job_timeout=3600, retry=RETRY)
+
+
+def remaining(session: Session, run_id: str) -> int:
+    """Labels that have not come out of the printer yet."""
+    return session.scalar(
+        select(func.count()).select_from(RunLabel)
+        .where(RunLabel.run_id == run_id, RunLabel.printed_at.is_(None))
+    ) or 0
 
 
 def cancel(session: Session, run_id: str) -> PrintRun:
@@ -59,39 +74,56 @@ def _cancelled(session: Session, run_id: str) -> bool:
 
 
 def print_run(run_id: str) -> None:
-    """Runs in the worker process."""
+    """Runs in the worker process.
+
+    Only labels that have not printed are sent, so a second attempt picks up
+    where the first stopped. Reprinting a consignment barcode that already
+    went on a carton is worse than not printing it at all.
+    """
     dbsession.engine()
+    job = get_current_job()
     with dbsession.SessionLocal() as s:
         run = s.get(PrintRun, run_id)
         if run is None:
             raise KeyError(run_id)
         printer = printers.load(s, run.printer_id)
         if printer is None:
-            run.status, run.error = "failed", f"printer {run.printer_id!r} no longer exists"
+            run.status = "failed"
+            run.error = f"printer {run.printer_id!r} no longer exists"
             run.finished_at = datetime.now(timezone.utc)
             s.commit()
             return
 
-        run.status, run.started_at = "printing", datetime.now(timezone.utc)
+        run.status, run.started_at, run.error = "printing", datetime.now(timezone.utc), None
         s.commit()
+        printed = run.total - remaining(s, run_id)
         labels = s.scalars(
-            select(RunLabel).where(RunLabel.run_id == run_id).order_by(RunLabel.seq)
+            select(RunLabel).where(RunLabel.run_id == run_id, RunLabel.printed_at.is_(None))
+            .order_by(RunLabel.seq)
         ).all()
 
         try:
             for label in labels:
                 if _cancelled(s, run_id):
                     run.status = "cancelled"
+                    run.finished_at = datetime.now(timezone.utc)
+                    s.commit()
                     return
                 # one label per write: the printer buffers a few, and a mid-run
                 # failure then costs one label instead of the whole batch
                 printer.transport.send(label.zpl.encode("ascii") + b"\n")
                 label.printed_at = datetime.now(timezone.utc)
-                run.printed = label.seq
+                printed += 1
+                run.printed = printed
             run.status = "done"
-        except Exception as exc:                      # noqa: BLE001 — recorded, not swallowed
-            run.status = "failed"
+        except Exception as exc:                      # noqa: BLE001 — recorded, then re-raised
+            run.attempts += 1
+            run.printed = printed
             run.error = f"{type(exc).__name__}: {exc}"
-        finally:
-            run.finished_at = datetime.now(timezone.utc)
+            left = getattr(job, "retries_left", 0) or 0
+            run.status = "retrying" if left else "failed"
+            run.finished_at = None if left else datetime.now(timezone.utc)
             s.commit()
+            raise                                     # rq schedules the next attempt
+        run.finished_at = datetime.now(timezone.utc)
+        s.commit()

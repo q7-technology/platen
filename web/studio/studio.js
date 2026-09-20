@@ -54,6 +54,9 @@ const ICONS = {
   eyeoff: ['M10.7 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a18 18 0 0 1-2.6 3.5', 'M6.6 6.6A18 18 0 0 0 2 12s3.5 7 10 7a10 10 0 0 0 4-.8', 'M3 3l18 18'],
   up: ['m18 15-6-6-6 6'],
   down: ['m6 9 6 6 6-6'],
+  list: ['M8 6h13', 'M8 12h13', 'M8 18h13', 'M3 6h.01', 'M3 12h.01', 'M3 18h.01'],
+  redo: ['M21 12a9 9 0 1 1-2.6-6.4', 'M21 3v6h-6'],
+  stop: ['M6 6h12v12H6z'],
 };
 
 function icon(name, size = 16) {
@@ -76,6 +79,7 @@ const NAV = [
   { href: '/studio/templates', label: 'Templates', icon: 'layers', key: 'templates' },
   { href: '/studio/data', label: 'Data sources', icon: 'database', key: 'data' },
   { href: '/studio/printers', label: 'Printers', icon: 'printer', key: 'printers' },
+  { href: '/studio/jobs', label: 'Job history', icon: 'list', key: 'jobs' },
   { href: '/docs', label: 'API reference', icon: 'book', key: 'docs' },
 ];
 

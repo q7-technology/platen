@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job history — Platen Label Studio</title>
+<link rel="icon" href="/studio/static/q7-logo-128.png">
+<link rel="stylesheet" href="/studio/static/studio/studio.css">
+<script src="/studio/static/studio/studio.js"></script>
+<style>
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+  .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 3px; }
+  .tile b { font-size: 25px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+  .tile span { font-size: 12.5px; color: var(--mut); }
+  .tile.gold b { color: var(--signal); }
+  .st { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--mut); }
+  .dot.printing { background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
+  .dot.done { background: var(--mint); }
+  .dot.failed, .dot.retrying, .dot.cancelled { background: var(--signal); }
+  @keyframes pulse { 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) { .dot.printing { animation: none; } }
+  .bar { height: 5px; border-radius: 999px; background: rgba(41,171,226,0.14); overflow: hidden; width: 90px; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  .bar.gold i { background: var(--signal); }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; font-size: 13px; }
+  .kv dt { color: var(--mut); }
+  .kv dd { margin: 0; font-family: var(--mono); font-size: 12.5px; }
+  .wl { display: flex; flex-direction: column; gap: 5px; margin: 0; padding: 0; list-style: none; }
+  .wl li { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--signal); }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside id="shell-nav"></aside>
+
+  <main>
+    <header>
+      <h1>Job history</h1>
+      <span class="sub" id="sub">Every run, and what it did</span>
+      <span class="spacer"></span>
+      <label for="filter" class="mut" style="font-size: 12.5px;">Show</label>
+      <select id="filter" style="height: 34px; width: auto; font-size: 13px;">
+        <option value="">Everything</option>
+        <option value="queued,printing,retrying">Still going</option>
+        <option value="failed,cancelled,retrying">Needs attention</option>
+        <option value="done">Finished</option>
+      </select>
+      <button class="btn sm" type="button" id="refresh">Refresh</button>
+    </header>
+
+    <div class="work" style="display: block;">
+      <div class="col">
+
+        <div class="tiles" id="tiles"></div>
+
+        <section class="card" aria-labelledby="h-runs">
+          <div class="card-head">
+            <h2 id="h-runs">Runs</h2>
+            <span class="spacer"></span>
+            <span class="mut" id="live" style="font-size: 12px;"></span>
+          </div>
+          <div class="scroll">
+            <table>
+              <thead><tr>
+                <th>Job</th><th>Template</th><th>Labels</th><th>Printer</th><th>Status</th><th>When</th>
+              </tr></thead>
+              <tbody id="rows"></tbody>
+            </table>
+          </div>
+          <p class="mut" id="empty" hidden>Nothing has printed yet.</p>
+        </section>
+
+        <section class="card" id="detail" aria-labelledby="h-detail" hidden>
+          <div class="card-head">
+            <h2 id="h-detail">Run</h2>
+            <span class="badge mono" id="d-id"></span>
+            <span class="spacer"></span>
+            <span id="d-status"></span>
+          </div>
+          <dl class="kv" id="d-kv"></dl>
+          <div id="d-error" hidden></div>
+          <div id="d-warnings"></div>
+          <div class="actions">
+            <button class="btn" type="button" id="d-retry" hidden>Retry from where it stopped</button>
+            <button class="btn gold" type="button" id="d-cancel" hidden>Cancel</button>
+          </div>
+          <div id="d-msg" hidden></div>
+        </section>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  renderShell('jobs');
+
+  const state = { runs: [], sel: null, timer: null };
+  const ACTIVE = ['queued', 'printing', 'retrying'];
+  const WORDS = { queued: 'Queued', printing: 'Printing', done: 'Done',
+                  failed: 'Failed', cancelled: 'Cancelled', retrying: 'Retrying' };
+
+  const ago = (iso) => {
+    if (!iso) return '—';
+    const s = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (s < 90) return 'just now';
+    if (s < 5400) return `${Math.round(s / 60)} min ago`;
+    if (s < 172800) return `${Math.round(s / 3600)} h ago`;
+    return `${Math.round(s / 86400)} days ago`;
+  };
+
+  const status = (r) => el('span', { class: 'st' },
+    el('span', { class: `dot ${r.status}` }),
+    el('span', { text: WORDS[r.status] || r.status }));
+
+  async function load() {
+    const q = $('filter').value;
+    state.runs = await api('GET', `/runs?limit=50${q ? `&status=${q}` : ''}`);
+    tiles();
+    rows();
+    if (state.sel) {
+      const fresh = state.runs.find((r) => r.id === state.sel.id);
+      if (fresh) detail(fresh);
+    }
+    const busy = state.runs.some((r) => ACTIVE.includes(r.status));
+    $('live').textContent = busy ? 'refreshing while a job is running' : '';
+    clearTimeout(state.timer);
+    if (busy) state.timer = setTimeout(load, 2500);
+  }
+
+  function tiles() {
+    const all = state.runs;
+    const sum = (f) => all.filter(f).length;
+    const labels = all.filter((r) => r.status === 'done')
+      .reduce((n, r) => n + r.printed, 0);
+    const trouble = sum((r) => ['failed', 'retrying'].includes(r.status));
+    $('tiles').replaceChildren(
+      el('div', { class: 'tile' }, el('b', { text: String(labels) }),
+        el('span', { text: 'labels printed, in these runs' })),
+      el('div', { class: 'tile' }, el('b', { text: String(sum((r) => ACTIVE.includes(r.status))) }),
+        el('span', { text: 'queued or printing' })),
+      el('div', { class: `tile${trouble ? ' gold' : ''}` }, el('b', { text: String(trouble) }),
+        el('span', { text: 'failed or retrying' })),
+      el('div', { class: 'tile' }, el('b', { text: String(sum((r) => r.status === 'cancelled')) }),
+        el('span', { text: 'cancelled' })));
+    $('sub').textContent = all.length ? `${all.length} run${all.length === 1 ? '' : 's'}`
+                                      : 'Every run, and what it did';
+  }
+
+  function rows() {
+    const body = $('rows');
+    body.replaceChildren();
+    $('empty').hidden = state.runs.length > 0;
+    for (const r of state.runs) {
+      const pct = r.total ? (100 * r.printed) / r.total : 0;
+      const trouble = ['failed', 'cancelled', 'retrying'].includes(r.status);
+      body.append(el('tr', { class: 'clickable', tabindex: '0', onclick: () => detail(r),
+                             onkeydown: (e) => { if (e.key === 'Enter') detail(r); } },
+        el('td', { class: 'mono', text: r.id }),
+        el('td', {}, el('b', { text: r.template_name || r.template_id }),
+                     el('small', { class: 'mut mono', style: 'display:block',
+                                   text: `v${r.template_version}` })),
+        el('td', {}, el('span', { class: 'mono', text: `${r.printed} / ${r.total}` }),
+          el('div', { class: `bar${trouble ? ' gold' : ''}`, style: 'margin-top:5px' },
+             el('i', { style: `width:${pct}%` }))),
+        el('td', { class: 'mono', text: r.printer_id }),
+        el('td', {}, status(r)),
+        el('td', { class: 'mut', text: ago(r.created_at) })));
+    }
+  }
+
+  function detail(r) {
+    state.sel = r;
+    $('detail').hidden = false;
+    $('d-id').textContent = r.id;
+    $('d-status').replaceChildren(status(r));
+    const params = Object.entries(r.params || {});
+    $('d-kv').replaceChildren(
+      el('dt', { text: 'Template' }), el('dd', { text: `${r.template_id} v${r.template_version}` }),
+      el('dt', { text: 'Printer' }), el('dd', { text: r.printer_id }),
+      el('dt', { text: 'Labels' }), el('dd', { text: `${r.printed} of ${r.total}, ${r.copies} cop${r.copies === 1 ? 'y' : 'ies'} each` }),
+      el('dt', { text: 'Answers' }),
+      el('dd', { text: params.length ? params.map(([k, v]) => `${k} = ${v}`).join(', ') : 'none asked' }),
+      el('dt', { text: 'Attempts' }), el('dd', { text: String(r.attempts) }),
+      el('dt', { text: 'Started' }), el('dd', { text: r.started_at ? new Date(r.started_at).toLocaleString() : 'not yet' }),
+      el('dt', { text: 'Finished' }), el('dd', { text: r.finished_at ? new Date(r.finished_at).toLocaleString() : '—' }));
+
+    $('d-error').hidden = !r.error;
+    if (r.error) showError($('d-error'), r.error);
+
+    $('d-warnings').replaceChildren(r.warnings.length
+      ? el('div', { class: 'warn' }, icon('alert', 18),
+          el('span', { class: 'txt' },
+            el('b', { text: `${r.warnings.length} warning${r.warnings.length === 1 ? '' : 's'} on this run` }),
+            el('ul', { class: 'wl' }, ...r.warnings.map((w) => el('li', { text: w })))))
+      : el('p', { class: 'mut', style: 'font-size:12.5px', text: 'No warnings on this run.' }));
+
+    const left = r.total - r.printed;
+    const stopped = ['failed', 'cancelled', 'retrying'].includes(r.status);
+    $('d-retry').hidden = !(stopped && left > 0);
+    if (!$('d-retry').hidden) $('d-retry').textContent = `Retry the remaining ${left}`;
+    $('d-cancel').hidden = !ACTIVE.includes(r.status);
+    clearError($('d-msg'));
+  }
+
+  async function act(what) {
+    if (!state.sel) return;
+    try {
+      await api('POST', `/runs/${encodeURIComponent(state.sel.id)}/${what}`);
+      clearError($('d-msg'));
+      await load();
+    } catch (e) { showError($('d-msg'), e.message); }
+  }
+
+  $('d-retry').addEventListener('click', () => act('retry'));
+  $('d-cancel').addEventListener('click', () => act('cancel'));
+  $('refresh').addEventListener('click', load);
+  $('filter').addEventListener('change', load);
+
+  load().catch((e) => showError($('d-msg'), e.message));
+})();
+</script>
+</body>
+</html>

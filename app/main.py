@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from db import models as db
 from db.session import get_session
@@ -30,7 +30,7 @@ app.mount("/studio/static", StaticFiles(directory=WEB), name="static")
 
 
 SCREENS = {"print": "print.html", "data": "data.html", "printers": "printers.html",
-           "templates": "templates.html", "editor": "editor.html"}
+           "templates": "templates.html", "editor": "editor.html", "jobs": "jobs.html"}
 
 
 @app.get("/studio/{screen}", include_in_schema=False)
@@ -483,8 +483,11 @@ def check_run(body: RunSpec, s: Session = Depends(get_session)) -> dict[str, Any
 def _run_json(run: db.PrintRun) -> dict[str, Any]:
     return {
         "id": run.id, "status": run.status, "printed": run.printed, "total": run.total,
-        "error": run.error, "template_id": run.template_version.template_id,
+        "error": run.error, "attempts": run.attempts,
+        "template_id": run.template_version.template_id,
+        "template_name": run.template_version.definition.get("name"),
         "template_version": run.template_version.version, "printer_id": run.printer_id,
+        "params": run.params, "copies": run.copies,
         "warnings": [f"row {w.row_no}: {w.message}" if w.row_no else w.message
                      for w in run.warnings],
         "created_at": run.created_at, "started_at": run.started_at,
@@ -537,14 +540,42 @@ def _run_row(s: Session, run_id: str) -> db.PrintRun:
 
 
 @app.get("/runs")
-def list_runs(s: Session = Depends(get_session), limit: int = 50) -> list[dict[str, Any]]:
-    runs = s.scalars(select(db.PrintRun).order_by(db.PrintRun.created_at.desc()).limit(limit))
-    return [_run_json(r) for r in runs]
+def list_runs(s: Session = Depends(get_session), limit: int = 50,
+              status: str | None = None) -> list[dict[str, Any]]:
+    stmt = (
+        select(db.PrintRun)
+        # a dashboard that asks once per row falls over on a busy morning
+        .options(selectinload(db.PrintRun.template_version),
+                 selectinload(db.PrintRun.warnings))
+        .order_by(db.PrintRun.created_at.desc(), db.PrintRun.id.desc())
+        .limit(limit)
+    )
+    if status:
+        stmt = stmt.where(db.PrintRun.status.in_(status.split(",")))
+    return [_run_json(r) for r in s.scalars(stmt)]
 
 
 @app.get("/runs/{run_id}")
 def get_run(run_id: str, s: Session = Depends(get_session)) -> dict[str, Any]:
     return _run_json(_run_row(s, run_id))
+
+
+@app.post("/runs/{run_id}/retry", status_code=202)
+def retry_run(run_id: str, s: Session = Depends(get_session)) -> dict[str, Any]:
+    """Put a stopped run back on the queue. It resumes: labels that already
+    came out of the printer are not sent again."""
+    run = _run_row(s, run_id)
+    if run.status in ("done", "printing", "queued"):
+        raise HTTPException(409, f"{run_id} is {run.status}; there is nothing to retry")
+    left = jobs.remaining(s, run_id)
+    if not left:
+        raise HTTPException(409, f"every label in {run_id} has already printed")
+
+    run.status, run.cancel_requested, run.error, run.finished_at = "queued", False, None, None
+    audit(s, "retry", "run", run_id, remaining=left)
+    s.commit()
+    jobs.enqueue(run_id)
+    return {"id": run_id, "status": "queued", "remaining": left}
 
 
 @app.post("/runs/{run_id}/cancel", status_code=202)

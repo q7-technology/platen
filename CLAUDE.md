@@ -80,6 +80,10 @@ test suite runs the same models on SQLite, so keep column types portable.
    every command it doesn't carry over, and the screen shows them before the
    label is opened. A silent importer is worse than none: the gap only turns
    up on stock.
+10. **A retry resumes, it never restarts.** The worker sends only labels with
+    no `printed_at`. A second consignment barcode on a second carton is worse
+    than a missing one, so nothing that has come out of the printer is ever
+    sent again.
 
 ## Code
 

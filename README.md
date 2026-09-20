@@ -24,8 +24,10 @@ MIT licensed. Built by [Q7 Technology](https://q7technology.com.au) in Ballarat.
   sent as a `^GFA` graphic.
 - **Printers however they're wired.** Raw TCP on 9100, a small agent for USB,
   or an existing CUPS queue. No drivers on anyone's laptop.
-- **Jobs you can answer for.** Queued, retried, cancellable between labels, with
-  warnings attached to the run.
+- **Jobs you can answer for.** Queued, cancellable between labels, and retried
+  twice by the worker on its own. A retry resumes rather than restarts, so a
+  label that already came out is never printed twice. Warnings stay attached
+  to the run.
 
 ## Running it
 
@@ -39,8 +41,8 @@ docker compose up --build
 The API is on http://localhost:8000 and runs the migrations before it starts.
 The screens are at http://localhost:8000/studio/print (run a job),
 `/studio/templates` (the library and the editor), `/studio/data` (connections
-and saved queries) and `/studio/printers`. The API reference is at
-http://localhost:8000/docs.
+and saved queries), `/studio/printers` and `/studio/jobs`. The API reference is
+at http://localhost:8000/docs.
 
 On your own machine instead:
 
@@ -87,8 +89,8 @@ without touching the API. Templates, data sources, printers and runs live in
 Postgres (see `db/models.py`); publishing a template writes an immutable
 version and every print run records which version it rendered from.
 
-Not built yet: a job history screen and a printer network scan. Auth is left
-to whatever you already use.
+Not built yet: a printer network scan. Auth is left to whatever you already
+use.
 
 ## Contributing
 
