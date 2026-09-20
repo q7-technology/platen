@@ -178,3 +178,50 @@ def test_an_administrator_can_run_it_by_hand(seeded, client):
 def test_an_operator_cannot(operator):
     assert operator.post("/maintenance/prune").status_code == 403
     assert operator.put("/maintenance/retention", json={"labels_days": 1}).status_code == 403
+
+
+# ------------------------------------------------------------- the dry run
+
+def test_a_dry_run_says_what_would_go_and_takes_nothing(seeded):
+    run = _run(seeded, age_days=30)
+
+    with dbsession.SessionLocal() as s:
+        would = retention.would_remove(s)
+
+    assert would["labels"] == 12
+    assert _counts(run) == (12, 1, True), "a dry run deleted something"
+
+
+def test_the_dry_run_and_the_real_one_agree(seeded):
+    _run(seeded, age_days=30)
+    _run(seeded, age_days=400)
+
+    with dbsession.SessionLocal() as s:
+        would = retention.would_remove(s)
+        did = retention.prune(s)
+
+    assert would["runs"] == did["runs"]
+    assert would["labels"] == did["labels"]
+
+
+def test_a_dry_run_on_a_tidy_database_finds_nothing(seeded):
+    _run(seeded, age_days=1)
+
+    with dbsession.SessionLocal() as s:
+        assert not any(retention.would_remove(s).values())
+
+
+# ---------------------------------------------------------- doing it by itself
+
+def test_it_is_due_once_a_day_and_not_twice(seeded):
+    with dbsession.SessionLocal() as s:
+        assert retention.due(s) is True
+        assert retention.due(s) is False, "two processes would both have pruned"
+
+
+def test_it_comes_due_again_once_the_window_has_passed(seeded):
+    from datetime import timedelta
+
+    with dbsession.SessionLocal() as s:
+        retention.due(s)
+        assert retention.due(s, every=timedelta(seconds=0)) is True

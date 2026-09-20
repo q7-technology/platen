@@ -131,18 +131,26 @@ def _element(canvas: Image.Image, draw: ImageDraw.ImageDraw, template: Template,
         canvas.paste(img, (x, y))
 
     elif isinstance(el, ImageElement):
+        # every branch here mirrors zpl.ZplRenderer._image: a preview that
+        # draws something the printer will not is worse than no preview
         value = raw_value(el.value, row)
-        if value:
-            try:
-                g = images.to_graphic(value, w, h, dither=el.dither,
-                                      threshold=el.threshold)
-                bitmap = Image.frombytes(
-                    "1", (g.row_bytes * 8, g.height_dots), g.data
-                ).crop((0, 0, g.width_dots, g.height_dots))
-                # ^GFA is 1=black; PIL '1' is 0=black
-                canvas.paste(bitmap.point(lambda p: 0 if p else 255, "L"), (x, y))
-            except images.NotAnImage:
-                draw.rectangle([x, y, x + w, y + h], outline=128, width=2)
+        if value in (None, ""):
+            if el.on_missing == "fail":
+                raise RenderError(f"{el.name}: no image in this row")
+            if el.on_missing == "placeholder":
+                draw.rectangle([x, y, x + w, y + h], outline=0, width=2)
+            return
+        try:
+            g = images.to_graphic(value, w, h, dither=el.dither, threshold=el.threshold)
+        except images.NotAnImage as exc:
+            if el.on_missing == "fail":
+                raise RenderError(f"{el.name}: {exc}") from exc
+            return
+        bitmap = Image.frombytes(
+            "1", (g.row_bytes * 8, g.height_dots), g.data
+        ).crop((0, 0, g.width_dots, g.height_dots))
+        # ^GFA is 1=black; PIL '1' is 0=black
+        canvas.paste(bitmap.point(lambda p: 0 if p else 255, "L"), (x, y))
 
     elif isinstance(el, BoxShape):
         draw.rectangle([x, y, x + w, y + h], outline=0,
