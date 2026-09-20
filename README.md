@@ -99,6 +99,36 @@ Postgres (see `db/models.py`); publishing a template writes an immutable
 version and every print run records which version it rendered from.
 
 
+## Looking after it
+
+Platen holds your templates, so its own database is worth backing up. For the
+compose stack that is the `pgdata` volume:
+
+```bash
+docker compose exec -T db pg_dump -U platen platen | gzip > platen-$(date +%F).sql.gz
+```
+
+Migrations run when the API starts, so an upgrade is `docker compose pull &&
+docker compose up -d`. Take the dump first: migrations go forward on their own
+and back only by hand.
+
+**Things are thrown away on a schedule**, because they would otherwise not be.
+A five thousand label run writes about twenty megabytes of ZPL, and nobody
+reads last April's. The defaults:
+
+| What | Kept for |
+| --- | --- |
+| The ZPL of a finished run | 14 days |
+| The run itself, its counts and warnings | 365 days |
+| The audit log | 365 days |
+| Labels an agent has already printed | 7 days |
+
+The labels go first and the history stays, so job history still tells you what
+happened long after the ZPL is gone. Nothing unfinished is ever touched,
+however old it looks. Change the windows under **Settings** on the dashboard,
+or set one to zero to keep it forever. The API prunes once a day by itself;
+`python -m app.prune --dry-run` says what would go.
+
 ## Who can do what
 
 Two roles. An **administrator** wires up connections, printers and templates.

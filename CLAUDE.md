@@ -18,6 +18,7 @@ printer. MIT licensed, built by Q7 Technology in Ballarat.
 ```
 app/            the service
   settings.py     everything read from the environment, in one place
+  retention.py    what gets thrown away, and when
   auth.py         users, roles, password hashing, sessions
   models.py       template + element schema (pydantic), mm↔dots
   binding.py      "{{ order.sku }}" → a value from a row
@@ -111,7 +112,11 @@ test suite runs the same models on SQLite, so keep column types portable.
     remove their own rights, and the last one cannot be removed at all — not
     even by an admin key, which isn't a person and so slips past the
     don't-delete-yourself rule.
-16. **Discovery stays on the site's own network.** `printers.scan` refuses
+16. **Retention throws the labels away, not the story.** A finished run loses
+    its `run_label` rows first and the run, its counts and its warnings much
+    later, so job history still answers "what happened" long after the ZPL is
+    gone. A run that has not settled is never pruned, however old it looks.
+17. **Discovery stays on the site's own network.** `printers.scan` refuses
     anything but a private, loopback or link-local range, caps a call at 1024
     addresses, and opens one connection per address on the one port it was
     given. It is how you find your own printers, not a port sweep.

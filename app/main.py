@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import io
+import logging
+import threading
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -23,19 +25,39 @@ from sqlalchemy.orm import Session, selectinload
 
 from db import models as db
 from db.models import AppUser
-from db.session import get_session
+from db.session import SessionLocal, get_session
 
-from . import auth, binding, datasources, jobs, preview, printers, zplimport
+from . import auth, binding, datasources, jobs, preview, printers, retention, zplimport
 from .models import Template
 from .settings import settings
 from .zpl import RenderError, render_run, separator
+
+# Left to a cron job, nobody sets one up, and the labels pile up until
+# somebody notices the disk. Once a day, whichever process gets there first.
+HOUSEKEEPING_EVERY = 3600.0
+
+
+def _housekeeping(stop: threading.Event) -> None:
+    while not stop.wait(HOUSEKEEPING_EVERY):
+        try:
+            with SessionLocal() as s:
+                if retention.due(s):
+                    retention.prune(s)
+        except Exception:
+            log.exception("housekeeping failed; trying again in an hour")
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     auth.bootstrap()
+    stop = threading.Event()
+    threading.Thread(target=_housekeeping, args=(stop,), daemon=True,
+                     name="platen-housekeeping").start()
     yield
+    stop.set()
 
+
+log = logging.getLogger("platen.api")
 
 app = FastAPI(title="Platen", lifespan=lifespan)
 
@@ -989,6 +1011,39 @@ def delete_saved_run(saved_id: str, s: Session = Depends(get_session),
     audit(s, "delete", "saved_run", saved_id, actor=user)
     s.commit()
     return Response(status_code=204)
+
+
+# ------------------------------------------------------------- looking after it
+
+class RetentionBody(BaseModel):
+    labels_days: int | None = None
+    runs_days: int | None = None
+    audit_days: int | None = None
+    agent_jobs_days: int | None = None
+
+
+@app.get("/maintenance/retention", dependencies=[Depends(admin)])
+def get_retention(s: Session = Depends(get_session)) -> dict[str, Any]:
+    return retention.settings(s)
+
+
+@app.put("/maintenance/retention")
+def put_retention(body: RetentionBody, s: Session = Depends(get_session),
+                  user: AppUser = Depends(admin)) -> dict[str, Any]:
+    """Days to keep each thing. Zero keeps it, which somebody has to choose."""
+    kept = retention.set_settings(s, body.model_dump(exclude_none=True))
+    audit(s, "retention", "maintenance", "settings", actor=user, **kept)
+    s.commit()
+    return kept
+
+
+@app.post("/maintenance/prune")
+def run_prune(s: Session = Depends(get_session),
+              user: AppUser = Depends(admin)) -> dict[str, Any]:
+    removed = retention.prune(s)
+    audit(s, "prune", "maintenance", "all", actor=user, **removed)
+    s.commit()
+    return {"removed": removed, "ran_at": retention.now()}
 
 
 # ------------------------------------------------------------------ the front
