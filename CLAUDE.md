@@ -102,7 +102,12 @@ test suite runs the same models on SQLite, so keep column types portable.
     exactly the printers nobody is standing next to.
 14. **A key is shown once.** Only its hash is stored, like a session's. An
     agent key may reach its own agent's endpoints and nothing else.
-15. **Discovery stays on the site's own network.** `printers.scan` refuses
+15. **Taking access away works immediately.** A password reset, a switch-off
+    and a delete all end that person's sessions. An administrator can never
+    remove their own rights, and the last one cannot be removed at all — not
+    even by an admin key, which isn't a person and so slips past the
+    don't-delete-yourself rule.
+16. **Discovery stays on the site's own network.** `printers.scan` refuses
     anything but a private, loopback or link-local range, caps a call at 1024
     addresses, and opens one connection per address on the one port it was
     given. It is how you find your own printers, not a port sweep.

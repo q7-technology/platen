@@ -78,6 +78,7 @@ const ICONS = {
   stop: ['M6 6h12v12H6z'],
   exit: ['M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4', 'm16 17 5-5-5-5', 'M21 12H9'],
   lock: ['M5 11h14v10H5z', 'M8 11V7a4 4 0 0 1 8 0v4'],
+  people: ['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8', 'M22 21v-2a4 4 0 0 0-3-3.87', 'M16 3.13a4 4 0 0 1 0 7.75'],
 };
 
 function icon(name, size = 16) {
@@ -101,6 +102,7 @@ const NAV = [
   { href: '/studio/data', label: 'Data sources', icon: 'database', key: 'data', admin: true },
   { href: '/studio/printers', label: 'Printers', icon: 'printer', key: 'printers', admin: true },
   { href: '/studio/jobs', label: 'Job history', icon: 'list', key: 'jobs' },
+  { href: '/studio/people', label: 'People', icon: 'people', key: 'people', admin: true },
   { href: '/docs', label: 'API reference', icon: 'book', key: 'docs', admin: true },
 ];
 

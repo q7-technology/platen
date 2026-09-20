@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>People — Platen Label Studio</title>
+<link rel="icon" href="/studio/static/q7-logo-128.png">
+<link rel="stylesheet" href="/studio/static/studio/studio.css">
+<script src="/studio/static/studio/studio.js"></script>
+</head>
+<body>
+<div class="shell">
+  <aside id="shell-nav"></aside>
+
+  <main>
+    <header>
+      <h1>People</h1>
+      <span class="sub" id="sub">Who can reach Platen, and what they may do</span>
+      <span class="spacer"></span>
+      <button class="btn" type="button" id="add">Add someone</button>
+    </header>
+
+    <div class="work" style="display: block;">
+      <div class="col">
+
+        <section class="card" id="edit" aria-labelledby="h-edit" hidden>
+          <div class="card-head"><h2 id="h-edit">Person</h2>
+            <span class="badge mono" id="u-id"></span></div>
+          <div class="row">
+            <div class="field"><label for="u-name">Name</label><input id="u-name" type="text" placeholder="Dave Nguyen"></div>
+            <div class="field narrow"><label for="u-username">Username</label><input id="u-username" class="mono" type="text" autocapitalize="none" spellcheck="false"></div>
+            <div class="field narrow">
+              <label for="u-role">Role</label>
+              <select id="u-role">
+                <option value="operator">Operator</option>
+                <option value="admin">Administrator</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label for="u-password" id="u-password-label">Password</label>
+              <input id="u-password" type="password" autocomplete="new-password">
+            </div>
+            <div class="field narrow" style="align-self: flex-end;">
+              <label class="ask" style="display: flex; gap: 8px; align-items: center; height: 38px; font-size: 12.5px; color: var(--mut);">
+                <input id="u-disabled" type="checkbox" style="width: auto; height: auto; accent-color: var(--accent);">
+                Switched off
+              </label>
+            </div>
+          </div>
+          <p class="mut" style="font-size: 12px;">A password change signs that person out everywhere, which is the point of changing it.</p>
+          <div class="actions">
+            <button class="btn pri" type="button" id="u-save" style="height: 38px;">Save</button>
+            <button class="btn" type="button" id="u-signout" hidden>Sign them out everywhere</button>
+            <span class="spacer"></span>
+            <button class="btn gold" type="button" id="u-del" hidden>Delete</button>
+          </div>
+          <div id="u-msg" hidden></div>
+        </section>
+
+        <section class="card" aria-labelledby="h-people">
+          <div class="card-head"><h2 id="h-people">People</h2></div>
+          <div class="scroll">
+            <table>
+              <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Last signed in</th><th>Status</th></tr></thead>
+              <tbody id="rows"></tbody>
+            </table>
+          </div>
+          <div id="msg" hidden></div>
+        </section>
+
+        <section class="card" aria-labelledby="h-keys">
+          <div class="card-head"><h2 id="h-keys">Keys</h2>
+            <span class="spacer"></span>
+            <span class="mut" style="font-size: 12px;">For a script or a scheduled job, not a person</span></div>
+          <div class="scroll">
+            <table>
+              <thead><tr><th>Name</th><th>Role</th><th>Made by</th><th>Last used</th><th></th></tr></thead>
+              <tbody id="key-rows"></tbody>
+            </table>
+          </div>
+          <p class="mut" id="keys-empty" style="font-size: 12px;" hidden>No keys yet.</p>
+          <div class="row">
+            <div class="field"><label for="k-name">What it is for</label><input id="k-name" type="text" placeholder="nightly relabel"></div>
+            <div class="field narrow">
+              <label for="k-role">Role</label>
+              <select id="k-role">
+                <option value="operator">Operator</option>
+                <option value="admin">Administrator</option>
+              </select>
+            </div>
+            <div class="field narrow" style="align-self: flex-end;">
+              <button class="btn" type="button" id="k-add" style="height: 38px;">Make a key</button>
+            </div>
+          </div>
+          <div id="k-token"></div>
+          <div id="k-msg" hidden></div>
+        </section>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  renderShell('people');
+
+  const state = { people: [], current: null, me: null };
+
+  const when = (iso) => (iso ? new Date(iso).toLocaleString() : 'never');
+
+  async function load() {
+    state.me = await whoami();
+    state.people = await api('GET', '/users');
+    const body = $('rows');
+    body.replaceChildren();
+    $('sub').textContent = `${state.people.length} ${state.people.length === 1 ? 'person' : 'people'}`;
+    for (const u of state.people) {
+      body.append(el('tr', { class: 'clickable', tabindex: '0', onclick: () => pick(u),
+                             onkeydown: (e) => { if (e.key === 'Enter') pick(u); } },
+        el('td', {}, el('b', { text: u.name || u.username })),
+        el('td', { class: 'mono', text: u.username }),
+        el('td', { text: u.role === 'admin' ? 'Administrator' : 'Operator' }),
+        el('td', { class: 'mut', text: when(u.last_login_at) }),
+        el('td', {}, u.disabled
+          ? el('span', { class: 'badge gold', text: 'Switched off' })
+          : u.locked
+            ? el('span', { class: 'badge gold', text: 'Locked out' })
+            : el('span', { class: 'ok' }, icon('check', 14), el('span', { text: 'Active' })))));
+    }
+  }
+
+  function pick(u) {
+    state.current = u;
+    $('edit').hidden = false;
+    $('u-id').textContent = u.username;
+    $('u-name').value = u.name || '';
+    $('u-username').value = u.username;
+    $('u-username').disabled = true;
+    $('u-role').value = u.role;
+    $('u-disabled').checked = u.disabled;
+    $('u-password').value = '';
+    $('u-password-label').textContent = 'New password (leave blank to keep it)';
+    $('u-signout').hidden = false;
+    $('u-del').hidden = u.username === state.me.username;
+    clearError($('u-msg'));
+  }
+
+  function add() {
+    state.current = null;
+    $('edit').hidden = false;
+    $('u-id').textContent = 'new';
+    $('u-name').value = ''; $('u-username').value = ''; $('u-username').disabled = false;
+    $('u-role').value = 'operator'; $('u-disabled').checked = false; $('u-password').value = '';
+    $('u-password-label').textContent = 'Password';
+    $('u-signout').hidden = true; $('u-del').hidden = true;
+    clearError($('u-msg'));
+    $('u-name').focus();
+  }
+
+  async function save() {
+    const username = (state.current?.username || slug($('u-username').value || $('u-name').value));
+    if (!username) { showError($('u-msg'), 'Give them a username.'); return; }
+    const body = { name: $('u-name').value, role: $('u-role').value,
+                   disabled: $('u-disabled').checked };
+    if ($('u-password').value) body.password = $('u-password').value;
+    try {
+      await api('PUT', `/users/${encodeURIComponent(username)}`, body);
+      clearError($('u-msg'));
+      $('edit').hidden = true;
+      await load();
+    } catch (e) { showError($('u-msg'), e.message); }
+  }
+
+  async function act(path, confirmation) {
+    if (!state.current || (confirmation && !confirm(confirmation))) return;
+    try {
+      await api(path.method, path.url(state.current.username));
+      clearError($('u-msg'));
+      if (path.close) $('edit').hidden = true;
+      await load();
+    } catch (e) { showError($('u-msg'), e.message); }
+  }
+
+  // ---------- keys
+  async function loadKeys() {
+    const keys = await api('GET', '/keys');
+    const body = $('key-rows');
+    body.replaceChildren();
+    $('keys-empty').hidden = keys.length > 0;
+    for (const k of keys) {
+      body.append(el('tr', {},
+        el('td', {}, el('b', { text: k.name }),
+          k.agent_id ? el('small', { class: 'mut mono', style: 'display:block',
+                                     text: `for agent ${k.agent_id}` }) : null),
+        el('td', { text: k.role === 'agent' ? 'Agent' : k.role === 'admin' ? 'Administrator' : 'Operator' }),
+        el('td', { class: 'mut mono', text: k.created_by || '—' }),
+        el('td', { class: 'mut', text: when(k.last_used_at) }),
+        el('td', {}, el('button', { class: 'btn sm gold', type: 'button',
+                                    'aria-label': `Revoke ${k.name}`,
+                                    onclick: () => revoke(k) }, icon('trash', 13)))));
+    }
+  }
+
+  async function addKey() {
+    const name = $('k-name').value.trim();
+    if (!name) { showError($('k-msg'), 'Say what the key is for.'); return; }
+    try {
+      const made = await api('POST', '/keys', { name, role: $('k-role').value });
+      clearError($('k-msg'));
+      $('k-name').value = '';
+      $('k-token').replaceChildren(el('div', { class: 'warn' }, icon('alert', 18),
+        el('span', { class: 'txt' },
+          el('b', { text: `The key for ${made.name}. Copy it now — Platen keeps only its hash.` }),
+          el('span', { class: 'mono', style: 'word-break:break-all', text: made.token }),
+          el('span', { text: 'Send it as: Authorization: Bearer <the key>' }))));
+      await loadKeys();
+    } catch (e) { showError($('k-msg'), e.message); }
+  }
+
+  async function revoke(k) {
+    if (!confirm(`Revoke the key ${k.name}? Whatever uses it stops working.`)) return;
+    try { await api('DELETE', `/keys/${encodeURIComponent(k.id)}`); clearError($('k-msg')); await loadKeys(); }
+    catch (e) { showError($('k-msg'), e.message); }
+  }
+
+  $('add').addEventListener('click', add);
+  $('u-save').addEventListener('click', save);
+  $('u-signout').addEventListener('click', () => act(
+    { method: 'POST', url: (u) => `/users/${encodeURIComponent(u)}/sessions/end` },
+    'Sign them out of every browser they are signed in to?'));
+  $('u-del').addEventListener('click', () => act(
+    { method: 'DELETE', url: (u) => `/users/${encodeURIComponent(u)}`, close: true },
+    'Delete this person? They lose access immediately.'));
+  $('k-add').addEventListener('click', addKey);
+
+  load().catch((e) => showError($('msg'), e.message));
+  loadKeys().catch((e) => showError($('k-msg'), e.message));
+})();
+</script>
+</body>
+</html>

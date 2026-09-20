@@ -15,7 +15,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from db import models as db
@@ -137,7 +137,7 @@ def whoami(user: AppUser = Depends(current_user)) -> dict[str, Any]:
     return _me(user)
 
 
-SCREENS = {"print": "print.html", "login": "login.html", "data": "data.html", "printers": "printers.html",
+SCREENS = {"print": "print.html", "login": "login.html", "people": "people.html", "data": "data.html", "printers": "printers.html",
            "templates": "templates.html", "editor": "editor.html", "jobs": "jobs.html"}
 
 
@@ -809,6 +809,162 @@ def put_printer(printer_id: str, body: PrinterBody,
     audit(s, "save", "printer", row.id, transport=kind, actor=user)
     s.commit()
     return _printer_json(row, None)
+
+
+# ------------------------------------------------------------ people and keys
+
+class UserBody(BaseModel):
+    name: str = ""
+    role: Literal["admin", "operator"] = "operator"
+    disabled: bool = False
+    password: str | None = None    # required when there is no such user yet
+
+
+class PasswordBody(BaseModel):
+    password: str
+
+
+class KeyBody(BaseModel):
+    name: str
+    role: Literal["admin", "operator"] = "operator"
+
+
+def _user_json(row: AppUser) -> dict[str, Any]:
+    return {"username": row.username, "name": row.display_name, "role": row.role,
+            "disabled": row.disabled, "locked": bool(row.locked_until
+                                                     and row.locked_until > auth.now()),
+            "created_at": row.created_at, "last_login_at": row.last_login_at}
+
+
+def _user_row(s: Session, username: str) -> AppUser:
+    row = s.get(AppUser, username)
+    if row is None:
+        raise HTTPException(404, f"no user {username!r}")
+    return row
+
+
+def _other_admins(s: Session, username: str) -> int:
+    return s.scalar(
+        select(func.count()).select_from(AppUser)
+        .where(AppUser.role == "admin", AppUser.disabled.is_(False),
+               AppUser.username != username)
+    ) or 0
+
+
+@app.get("/users", dependencies=[Depends(admin)])
+def list_users(s: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    return [_user_json(u) for u in s.scalars(select(AppUser).order_by(AppUser.username))]
+
+
+@app.put("/users/{username}")
+def put_user(username: str, body: UserBody, s: Session = Depends(get_session),
+             user: AppUser = Depends(admin)) -> dict[str, Any]:
+    username = username.strip().lower()
+    row = s.get(AppUser, username)
+
+    # the one thing an administrator must not be able to do is shut the door
+    # on themselves and have nobody left holding a key
+    if row is not None and username == user.username:
+        if body.role != "admin" or body.disabled:
+            raise HTTPException(
+                409, "you can't take your own administrator rights away; "
+                     "ask another administrator to do it")
+    if row is not None and row.role == "admin" and (body.role != "admin" or body.disabled):
+        if not _other_admins(s, username):
+            raise HTTPException(409, f"{username} is the last administrator")
+
+    if row is None:
+        if not body.password:
+            raise HTTPException(422, "a new user needs a password")
+        try:
+            row = auth.create_user(s, username, body.password, role=body.role,
+                                   display_name=body.name)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+    else:
+        row.display_name = body.name or row.display_name
+        row.role, row.disabled = body.role, body.disabled
+        s.commit()
+        if body.disabled:
+            auth.end_all_sessions(s, username)
+        if body.password:
+            auth.set_password(s, row, body.password)
+
+    audit(s, "save", "user", username, actor=user, role=body.role, disabled=body.disabled)
+    s.commit()
+    return _user_json(row)
+
+
+@app.post("/users/{username}/password")
+def set_user_password(username: str, body: PasswordBody, s: Session = Depends(get_session),
+                      user: AppUser = Depends(admin)) -> dict[str, Any]:
+    row = _user_row(s, username)
+    try:
+        auth.set_password(s, row, body.password)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
+    audit(s, "password", "user", username, actor=user)
+    s.commit()
+    return {"username": username, "signed_out": True}
+
+
+@app.post("/users/{username}/sessions/end")
+def end_user_sessions(username: str, s: Session = Depends(get_session),
+                      user: AppUser = Depends(admin)) -> dict[str, Any]:
+    _user_row(s, username)
+    auth.end_all_sessions(s, username)
+    audit(s, "signout", "user", username, actor=user)
+    s.commit()
+    return {"username": username, "signed_out": True}
+
+
+@app.delete("/users/{username}", status_code=204)
+def delete_user(username: str, s: Session = Depends(get_session),
+                user: AppUser = Depends(admin)) -> Response:
+    row = _user_row(s, username)
+    if username == user.username:
+        raise HTTPException(409, "you can't delete yourself")
+    if row.role == "admin" and not _other_admins(s, username):
+        raise HTTPException(409, f"{username} is the last administrator")
+    auth.end_all_sessions(s, username)
+    s.delete(row)
+    audit(s, "delete", "user", username, actor=user)
+    s.commit()
+    return Response(status_code=204)
+
+
+@app.get("/keys", dependencies=[Depends(admin)])
+def list_keys(s: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    return [{"id": k.id[:12], "name": k.name, "role": k.role, "agent_id": k.agent_id,
+             "created_by": k.created_by, "created_at": k.created_at,
+             "last_used_at": k.last_used_at}
+            for k in s.scalars(select(db.ApiToken).order_by(db.ApiToken.created_at.desc()))]
+
+
+@app.post("/keys", status_code=201)
+def make_key(body: KeyBody, s: Session = Depends(get_session),
+             user: AppUser = Depends(admin)) -> dict[str, Any]:
+    """A key for something that isn't a person. Shown once, here."""
+    if body.role not in ("admin", "operator"):
+        raise HTTPException(422, "an agent key is made with the agent, not here")
+    token = auth.create_token(s, name=body.name, role=body.role, created_by=user.username)
+    audit(s, "create", "key", body.name, actor=user, role=body.role)
+    s.commit()
+    return {"id": auth.token_id(token)[:12], "name": body.name, "role": body.role,
+            "token": token}
+
+
+@app.delete("/keys/{key_id}", status_code=204)
+def revoke_key(key_id: str, s: Session = Depends(get_session),
+               user: AppUser = Depends(admin)) -> Response:
+    rows = [k for k in s.scalars(select(db.ApiToken)) if k.id.startswith(key_id)]
+    if not rows:
+        raise HTTPException(404, f"no key {key_id!r}")
+    for row in rows:
+        s.delete(row)
+    audit(s, "revoke", "key", key_id, actor=user)
+    s.commit()
+    return Response(status_code=204)
 
 
 # --------------------------------------------------------------------- agents

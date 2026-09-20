@@ -115,9 +115,13 @@ def create_user(session: Session, username: str, password: str, *,
 
 
 def set_password(session: Session, user: AppUser, password: str) -> None:
+    """Changing a password ends every session that was opened with the old
+    one. A reset you do because a password leaked is no use if the session
+    somebody already has keeps working."""
     user.password = hash_password(password)
     user.failed_logins, user.locked_until = 0, None
     session.commit()
+    end_all_sessions(session, user.username)
 
 
 def login(session: Session, username: str, password: str) -> AppUser:
@@ -144,7 +148,7 @@ def login(session: Session, username: str, password: str) -> AppUser:
 
 # ------------------------------------------------------------------- sessions
 
-def _token_id(token: str) -> str:
+def token_id(token: str) -> str:
     # the token is 256 bits of randomness, so a fast digest is enough here:
     # there is nothing to brute-force back
     return hashlib.sha256(token.encode()).hexdigest()
@@ -152,7 +156,7 @@ def _token_id(token: str) -> str:
 
 def start_session(session: Session, user: AppUser) -> str:
     token = secrets.token_urlsafe(32)
-    session.add(UserSession(id=_token_id(token), username=user.username,
+    session.add(UserSession(id=token_id(token), username=user.username,
                             created_at=now(), expires_at=now() + SESSION_LIFE,
                             last_seen_at=now()))
     session.commit()
@@ -160,7 +164,7 @@ def start_session(session: Session, user: AppUser) -> str:
 
 
 def user_for_token(session: Session, token: str) -> AppUser | None:
-    row = session.get(UserSession, _token_id(token))
+    row = session.get(UserSession, token_id(token))
     if row is None:
         return None
     if row.expires_at <= now() or row.created_at + SESSION_CAP <= now():
@@ -177,7 +181,7 @@ def user_for_token(session: Session, token: str) -> AppUser | None:
 
 
 def end_session(session: Session, token: str) -> None:
-    row = session.get(UserSession, _token_id(token))
+    row = session.get(UserSession, token_id(token))
     if row is not None:
         session.delete(row)
         session.commit()
@@ -198,14 +202,14 @@ def create_token(session: Session, *, name: str, role: str,
     if role not in TOKEN_ROLES:
         raise ValueError(f"role must be one of {', '.join(TOKEN_ROLES)}")
     token = TOKEN_PREFIX + secrets.token_urlsafe(32)
-    session.add(ApiToken(id=_token_id(token), name=name, role=role,
+    session.add(ApiToken(id=token_id(token), name=name, role=role,
                          agent_id=agent_id, created_by=created_by))
     session.commit()
     return token
 
 
 def token_principal(session: Session, token: str) -> ApiToken | None:
-    row = session.get(ApiToken, _token_id(token or ""))
+    row = session.get(ApiToken, token_id(token or ""))
     if row is None:
         return None
     row.last_used_at = now()

@@ -100,11 +100,17 @@ An **operator** picks a template, answers the question it asks and presses
 print — and is never shown a connection string or the SQL behind their query.
 
 The first administrator is made once at startup from `PLATEN_ADMIN_USERNAME`
-and `PLATEN_ADMIN_PASSWORD`. After that:
+and `PLATEN_ADMIN_PASSWORD`. After that, **People** is where you add someone,
+change a role, reset a password, switch an account off or delete it. There is
+also a command, for when nobody can get in:
 
 ```bash
 python -m app.adduser dave --role operator
 ```
+
+Resetting a password signs that person out everywhere, and so does switching
+them off. A reset you do because a password leaked is no use if the session
+somebody already has keeps working.
 
 With no users and nothing in the environment, nobody can sign in. That is the
 safe way round; the log says how to fix it.
@@ -115,9 +121,11 @@ stolen backup cannot be replayed as a login. The cookie is marked `Secure`
 when the request arrives over https; set `PLATEN_SECURE_COOKIES=true` if a
 proxy terminates TLS without passing the scheme through.
 
-Something other than a person signs in with a key instead of a password. A key
-is shown once, when it is made, and only its hash is kept. An agent's key is
-narrow: it can talk to its own agent and nothing else.
+Something other than a person signs in with a key instead of a password. Make
+one under **People → Keys**, send it as `Authorization: Bearer <key>`, and
+revoke it there when the script that used it is gone. A key is shown once,
+when it is made, and only its hash is kept. An agent's key is narrower still:
+it can talk to its own agent and nothing else.
 
 ## Printers on somebody's desk
 
