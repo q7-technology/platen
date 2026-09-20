@@ -14,15 +14,17 @@ MIT licensed. Built by [Q7 Technology](https://q7technology.com.au) in Ballarat.
 - **A canvas in millimetres.** Text, barcodes, QR, images and shapes at your
   printer's real dot pitch — 203, 300 or 600 dpi. Already have ZPL? Paste it
   in and carry on editing; the importer says what it couldn't carry over.
-- **Binds to what you already run.** Postgres, SQL Server, MySQL, SQLite or a
-  REST endpoint returning JSON. Read-only role and prepared statements for a
-  database, GET and nothing else for an endpoint, and parameters the operator
-  answers at print time.
+- **Binds to what you already run.** Postgres, MySQL, SQLite or a REST
+  endpoint returning JSON, all of them proved in CI against a real server.
+  SQL Server should work and nothing has confirmed it. Prepared statements
+  under a read-only role for a database, GET and nothing else for an endpoint,
+  and parameters the operator answers at print time.
 - **The symbologies that matter.** Code 128 with automatic subsets, GS1-128,
   Code 39, Interleaved 2 of 5, QR and Data Matrix.
-- **Images out of your data.** A base64 column — a compliance mark, a
-  signature, a photo — is decoded, scaled to the printer's dots, dithered and
-  sent as a `^GFA` graphic.
+- **Images out of your data.** A compliance mark, a signature, a photo — from
+  a `bytea` column directly or a base64 one, whichever your query already
+  returns — is decoded, scaled to the printer's dots, dithered and sent as a
+  `^GFA` graphic.
 - **Printers however they're wired.** Raw TCP on 9100, an existing CUPS queue,
   or a small agent for a printer plugged into somebody's machine. No drivers on
   anyone's laptop. Platen can find the ones already on your network, private

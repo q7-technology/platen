@@ -9,7 +9,8 @@ jobs:
   check:
     runs-on: ubuntu-latest
     services:
-      # Platen offers MySQL, so something has to actually connect to one
+      # Platen offers these as data sources, so something has to actually
+      # connect to them rather than only to SQLite
       mysql:
         image: mysql:8
         env:
@@ -19,8 +20,19 @@ jobs:
         options: >-
           --health-cmd "mysqladmin ping -uroot -proot"
           --health-interval 5s --health-timeout 3s --health-retries 20
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: platen
+          POSTGRES_PASSWORD: platen
+          POSTGRES_DB: wms
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U platen -d wms"
+          --health-interval 5s --health-timeout 3s --health-retries 10
     env:
       PLATEN_TEST_MYSQL_URL: mysql+pymysql://root:root@127.0.0.1:3306/wms
+      PLATEN_TEST_POSTGRES_URL: postgresql+psycopg://platen:platen@127.0.0.1:5432/wms
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
