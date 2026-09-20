@@ -51,6 +51,35 @@ class Base(DeclarativeBase):
     type_annotation_map = {dict[str, Any]: JSON, list[Any]: JSON}
 
 
+class AppUser(Base):
+    """Named app_user because `user` is reserved in Postgres."""
+
+    __tablename__ = "app_user"
+
+    username: Mapped[str] = mapped_column(String(64), primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(200), default="")
+    role: Mapped[str] = mapped_column(String(16), default="operator")
+    password: Mapped[str] = mapped_column(Text)        # scrypt$n$r$p$salt$hash
+    disabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    failed_logins: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
+    last_login_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+
+
+class UserSession(Base):
+    """One browser, signed in. The id is a hash of the token, so the database
+    never holds anything that could be replayed as a cookie."""
+
+    __tablename__ = "user_session"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    username: Mapped[str] = mapped_column(ForeignKey("app_user.username"), index=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
+    expires_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    last_seen_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
+
+
 class Template(Base):
     """The draft the editor works on. Publishing snapshots it into a version."""
 

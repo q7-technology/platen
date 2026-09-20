@@ -18,6 +18,7 @@ printer. MIT licensed, built by Q7 Technology in Ballarat.
 ```
 app/            the service
   settings.py     everything read from the environment, in one place
+  auth.py         users, roles, password hashing, sessions
   models.py       template + element schema (pydantic), mm↔dots
   binding.py      "{{ order.sku }}" → a value from a row
   datasources.py  connection registry, read-only query runner
@@ -84,7 +85,13 @@ test suite runs the same models on SQLite, so keep column types portable.
     no `printed_at`. A second consignment barcode on a second carton is worse
     than a missing one, so nothing that has come out of the printer is ever
     sent again.
-11. **Discovery stays on the site's own network.** `printers.scan` refuses
+11. **Every route names who may call it.** A route carries
+    `Depends(current_user)` or `Depends(admin)`, and a test walks the route
+    table to prove it. Adding an endpoint without one fails the suite, which
+    is the point: an auth check you forget is worse than none.
+12. **An operator never sees a credential.** Not a connection string, not the
+    SQL behind their query. `get_query` returns a smaller body for them.
+13. **Discovery stays on the site's own network.** `printers.scan` refuses
     anything but a private, loopback or link-local range, caps a call at 1024
     addresses, and opens one connection per address on the one port it was
     given. It is how you find your own printers, not a port sweep.

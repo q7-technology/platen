@@ -90,7 +90,31 @@ without touching the API. Templates, data sources, printers and runs live in
 Postgres (see `db/models.py`); publishing a template writes an immutable
 version and every print run records which version it rendered from.
 
-Auth is left to whatever you already use.
+
+## Who can do what
+
+Two roles. An **administrator** wires up connections, printers and templates.
+An **operator** picks a template, answers the question it asks and presses
+print — and is never shown a connection string or the SQL behind their query.
+
+The first administrator is made once at startup from `PLATEN_ADMIN_USERNAME`
+and `PLATEN_ADMIN_PASSWORD`. After that:
+
+```bash
+python -m app.adduser dave --role operator
+```
+
+With no users and nothing in the environment, nobody can sign in. That is the
+safe way round; the log says how to fix it.
+
+Passwords are hashed with scrypt at about 64 MB a go. A session is a random
+token in an http-only, same-site cookie, and only its hash is stored, so a
+stolen backup cannot be replayed as a login. The cookie is marked `Secure`
+when the request arrives over https; set `PLATEN_SECURE_COOKIES=true` if a
+proxy terminates TLS without passing the scheme through.
+
+There is no machine-to-machine token yet. Everything that reaches the API is
+a person with a session.
 
 ## Contributing
 

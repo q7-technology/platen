@@ -4,12 +4,30 @@
 
 const $ = (id) => document.getElementById(id);
 
+let ME = null;
+
+function toLogin() {
+  const next = encodeURIComponent(location.pathname + location.search);
+  location.href = `/studio/login?next=${next}`;
+}
+
+/* Who is at the keyboard. Every screen asks once; a 401 anywhere sends them
+   to sign in rather than leaving a page that quietly does nothing. */
+async function whoami() {
+  if (ME) return ME;
+  const r = await fetch('/auth/me');
+  if (r.status === 401) { toLogin(); return null; }
+  ME = await r.json();
+  return ME;
+}
+
 async function api(method, path, body) {
   const r = await fetch(path, {
     method,
     headers: body === undefined ? {} : { 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+  if (r.status === 401) { toLogin(); throw new Error('signed out'); }
   if (!r.ok) {
     let detail = r.statusText;
     try { detail = (await r.json()).detail || detail; } catch (e) { /* not json */ }
@@ -57,6 +75,8 @@ const ICONS = {
   list: ['M8 6h13', 'M8 12h13', 'M8 18h13', 'M3 6h.01', 'M3 12h.01', 'M3 18h.01'],
   redo: ['M21 12a9 9 0 1 1-2.6-6.4', 'M21 3v6h-6'],
   stop: ['M6 6h12v12H6z'],
+  exit: ['M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4', 'm16 17 5-5-5-5', 'M21 12H9'],
+  lock: ['M5 11h14v10H5z', 'M8 11V7a4 4 0 0 1 8 0v4'],
 };
 
 function icon(name, size = 16) {
@@ -76,16 +96,25 @@ function icon(name, size = 16) {
 
 const NAV = [
   { href: '/studio/print', label: 'Print run', icon: 'play', key: 'print' },
-  { href: '/studio/templates', label: 'Templates', icon: 'layers', key: 'templates' },
-  { href: '/studio/data', label: 'Data sources', icon: 'database', key: 'data' },
-  { href: '/studio/printers', label: 'Printers', icon: 'printer', key: 'printers' },
+  { href: '/studio/templates', label: 'Templates', icon: 'layers', key: 'templates', admin: true },
+  { href: '/studio/data', label: 'Data sources', icon: 'database', key: 'data', admin: true },
+  { href: '/studio/printers', label: 'Printers', icon: 'printer', key: 'printers', admin: true },
   { href: '/studio/jobs', label: 'Job history', icon: 'list', key: 'jobs' },
-  { href: '/docs', label: 'API reference', icon: 'book', key: 'docs' },
+  { href: '/docs', label: 'API reference', icon: 'book', key: 'docs', admin: true },
 ];
 
-function renderShell(current, footNote) {
+const initials = (name) => name.split(/[\s.]+/).filter(Boolean).slice(0, 2)
+  .map((w) => w[0].toUpperCase()).join('') || '?';
+
+async function signOut() {
+  try { await fetch('/auth/logout', { method: 'POST' }); } finally { toLogin(); }
+}
+
+async function renderShell(current, footNote) {
   const aside = $('shell-nav');
   if (!aside) return;
+  const me = await whoami();
+  if (!me) return;
   // replaceChildren stringifies a null, so the optional foot note is filtered
   // out rather than passed through as one
   aside.replaceChildren(...[
@@ -93,10 +122,18 @@ function renderShell(current, footNote) {
       el('img', { src: '/studio/static/q7-logo-128.png', alt: 'Q7Technology Logo',
                   width: 32, height: 28 }),
       el('span', {}, el('b', { text: 'PLATEN' }), el('small', { text: 'Label Studio' }))),
-    el('nav', { 'aria-label': 'Studio' }, ...NAV.map((n) =>
-      el('a', { href: n.href, 'aria-current': n.key === current ? 'page' : null },
-        icon(n.icon), el('span', { text: n.label })))),
+    el('nav', { 'aria-label': 'Studio' },
+      ...NAV.filter((n) => !n.admin || me.role === 'admin').map((n) =>
+        el('a', { href: n.href, 'aria-current': n.key === current ? 'page' : null },
+          icon(n.icon), el('span', { text: n.label })))),
     footNote ? el('p', { class: 'foot', text: footNote }) : null,
+    el('div', { class: 'whoami' },
+      el('span', { class: 'avatar', text: initials(me.name || me.username) }),
+      el('span', { class: 'who' },
+        el('b', { text: me.name || me.username }),
+        el('small', { text: me.role === 'admin' ? 'Administrator' : 'Operator' })),
+      el('button', { class: 'signout', type: 'button', 'aria-label': 'Sign out',
+                     title: 'Sign out', onclick: signOut }, icon('exit', 15))),
   ].filter(Boolean));
 }
 

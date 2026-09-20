@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
 from rq import Queue
 
-from app import jobs, printers
+from app import auth, jobs, printers
 from app.main import app
 from db import session as dbsession
 from db.models import Base
@@ -77,9 +77,36 @@ def db(tmp_path):
     engine.dispose()
 
 
+def _signed_in(who: str, password: str) -> TestClient:
+    c = TestClient(app)
+    assert c.post("/auth/login", json={"username": who, "password": password}).status_code == 200
+    return c
+
+
 @pytest.fixture
-def client(db, queue, transport) -> TestClient:
+def anon(db, queue, transport) -> TestClient:
+    """Nobody signed in."""
     return TestClient(app)
+
+
+@pytest.fixture
+def users(db) -> None:
+    """One of each role. Everything else builds on these."""
+    with dbsession.SessionLocal() as s:
+        auth.create_user(s, "admin", "admin-password", role="admin", display_name="L. Lauton")
+        auth.create_user(s, "dave", "dave-password", role="operator", display_name="Dave")
+
+
+@pytest.fixture
+def client(db, queue, transport, users) -> TestClient:
+    """Signed in as an administrator — what most of the suite needs."""
+    return _signed_in("admin", "admin-password")
+
+
+@pytest.fixture
+def operator(seeded, users) -> TestClient:
+    """Signed in as someone on the floor, with a template ready to print."""
+    return _signed_in("dave", "dave-password")
 
 
 @pytest.fixture

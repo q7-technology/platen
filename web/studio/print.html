@@ -164,7 +164,10 @@
     $('q-note').hidden = true; $('q-err').hidden = true;
     renderWarnings([]); showPreview(null); updateGo();
     state.query = t.query ? await api('GET', `/queries/${encodeURIComponent(t.query)}`) : null;
-    $('q-chip').textContent = state.query ? `${state.query.datasource_id} · ${state.query.id}` : 'no query · one label';
+    // an operator isn't told which connection it came from, so don't print a gap
+    $('q-chip').textContent = state.query
+      ? [state.query.datasource_id, state.query.id].filter(Boolean).join(' · ')
+      : 'no query · one label';
     renderParams();
   }
 
