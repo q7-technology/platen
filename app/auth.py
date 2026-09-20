@@ -24,12 +24,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from db import session as dbsession
-from db.models import AppUser, UserSession
+from db.models import ApiToken, AppUser, UserSession
 
 log = logging.getLogger("platen.auth")
 
 COOKIE = "platen_session"
 ROLES = ("admin", "operator")
+TOKEN_ROLES = ("admin", "operator", "agent")
+TOKEN_PREFIX = "plt_"
 
 # About 64 MB and a tenth of a second per hash: nothing to a person signing in
 # once a shift, a great deal to someone working through a stolen database.
@@ -185,6 +187,44 @@ def end_all_sessions(session: Session, username: str) -> None:
     for row in session.scalars(select(UserSession).where(UserSession.username == username)):
         session.delete(row)
     session.commit()
+
+
+# --------------------------------------------------------------- machine keys
+
+def create_token(session: Session, *, name: str, role: str,
+                 agent_id: str | None = None, created_by: str = "") -> str:
+    """Returns the token. It is never recoverable afterwards — only its hash
+    is kept, for the same reason a session's is."""
+    if role not in TOKEN_ROLES:
+        raise ValueError(f"role must be one of {', '.join(TOKEN_ROLES)}")
+    token = TOKEN_PREFIX + secrets.token_urlsafe(32)
+    session.add(ApiToken(id=_token_id(token), name=name, role=role,
+                         agent_id=agent_id, created_by=created_by))
+    session.commit()
+    return token
+
+
+def token_principal(session: Session, token: str) -> ApiToken | None:
+    row = session.get(ApiToken, _token_id(token or ""))
+    if row is None:
+        return None
+    row.last_used_at = now()
+    session.commit()
+    return row
+
+
+def revoke_tokens(session: Session, *, agent_id: str | None = None,
+                  name: str | None = None) -> int:
+    stmt = select(ApiToken)
+    if agent_id is not None:
+        stmt = stmt.where(ApiToken.agent_id == agent_id)
+    if name is not None:
+        stmt = stmt.where(ApiToken.name == name)
+    rows = list(session.scalars(stmt))
+    for row in rows:
+        session.delete(row)
+    session.commit()
+    return len(rows)
 
 
 # ------------------------------------------------------------------ first run

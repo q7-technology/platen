@@ -23,9 +23,10 @@ MIT licensed. Built by [Q7 Technology](https://q7technology.com.au) in Ballarat.
 - **Images out of your data.** A base64 column — a compliance mark, a
   signature, a photo — is decoded, scaled to the printer's dots, dithered and
   sent as a `^GFA` graphic.
-- **Printers however they're wired.** Raw TCP on 9100, a small agent for USB,
-  or an existing CUPS queue. No drivers on anyone's laptop. Platen can find
-  the ones already on your network, private ranges only.
+- **Printers however they're wired.** Raw TCP on 9100, an existing CUPS queue,
+  or a small agent for a printer plugged into somebody's machine. No drivers on
+  anyone's laptop. Platen can find the ones already on your network, private
+  ranges only.
 - **Jobs you can answer for.** Queued, cancellable between labels, and retried
   twice by the worker on its own. A retry resumes rather than restarts, so a
   label that already came out is never printed twice. Warnings stay attached
@@ -114,8 +115,29 @@ stolen backup cannot be replayed as a login. The cookie is marked `Secure`
 when the request arrives over https; set `PLATEN_SECURE_COOKIES=true` if a
 proxy terminates TLS without passing the scheme through.
 
-There is no machine-to-machine token yet. Everything that reaches the API is
-a person with a session.
+Something other than a person signs in with a key instead of a password. A key
+is shown once, when it is made, and only its hash is kept. An agent's key is
+narrow: it can talk to its own agent and nothing else.
+
+## Printers on somebody's desk
+
+A printer on a workstation's USB port needs an agent, because Platen cannot
+open a socket to it. Register the workstation under **Printers → Agents**,
+copy the key, and run this on that machine:
+
+```bash
+python platen_agent.py --server https://platen.example \
+    --agent wks-office-02 --token plt_... --cups zd621-office
+```
+
+`--device /dev/usb/lp0` works instead of `--cups` where there is no print
+server. The agent asks Platen for labels rather than Platen reaching in, so
+nothing has to be open inbound to that machine. It is one file and needs
+nothing but a Python interpreter.
+
+A label is only counted as printed once the agent says it came out, the same
+as a socket printer taking the bytes. If the agent is not running, the run
+fails after a minute and the retry resumes it.
 
 ## Contributing
 

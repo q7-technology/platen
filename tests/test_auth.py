@@ -126,7 +126,7 @@ def test_every_route_says_who_may_call_it(anon):
             for d in getattr(getattr(route, "dependant", None), "dependencies", [])
             if getattr(d, "call", None) is not None
         }
-        if not names & {"current_user", "admin"}:
+        if not names & {"current_user", "admin", "agent_token"}:
             unguarded.append(f"{sorted(getattr(route, 'methods', []))} {path}")
 
     assert not unguarded, f"routes with no one guarding them: {unguarded}"

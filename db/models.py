@@ -80,6 +80,49 @@ class UserSession(Base):
     last_seen_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
 
 
+class ApiToken(Base):
+    """A key something other than a person signs in with. Only its hash is
+    kept, so the plain token exists once, in the answer that created it."""
+
+    __tablename__ = "api_token"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    role: Mapped[str] = mapped_column(String(16))          # admin | operator | agent
+    agent_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
+    last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+
+
+class PrintAgent(Base):
+    """A workstation with a printer hanging off it. It asks Platen for work
+    rather than Platen reaching into the office network."""
+
+    __tablename__ = "print_agent"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    devices: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
+    last_seen_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+
+
+class AgentJob(Base):
+    """One label waiting for an agent to come and get it."""
+
+    __tablename__ = "agent_job"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("print_agent.id"), index=True)
+    device: Mapped[str] = mapped_column(String(200), default="")
+    zpl: Mapped[str] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
+    taken_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    done_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+
+
 class Template(Base):
     """The draft the editor works on. Publishing snapshots it into a version."""
 

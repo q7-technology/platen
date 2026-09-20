@@ -47,12 +47,40 @@ def audit(s: Session, action: str, entity: str, entity_id: str,
 
 # ------------------------------------------------------------------- who is it
 
+def _bearer(request: Request) -> str | None:
+    header = request.headers.get("authorization", "")
+    return header[7:].strip() if header[:7].lower() == "bearer " else None
+
+
 def current_user(request: Request, s: Session = Depends(get_session)) -> AppUser:
-    token = request.cookies.get(auth.COOKIE)
-    user = auth.user_for_token(s, token) if token else None
+    """A person with a session cookie, or a machine with a key. An agent key
+    is not either: it may only talk to its own agent."""
+    raw = _bearer(request)
+    if raw is not None:
+        token = auth.token_principal(s, raw)
+        if token is None:
+            raise HTTPException(401, "that key isn't one of ours")
+        if token.role == "agent":
+            raise HTTPException(403, "an agent key may only talk to its own agent")
+        return AppUser(username=f"key:{token.name}", display_name=token.name,
+                       role=token.role)
+
+    cookie = request.cookies.get(auth.COOKIE)
+    user = auth.user_for_token(s, cookie) if cookie else None
     if user is None:
         raise HTTPException(401, "sign in first")
     return user
+
+
+def agent_token(agent_id: str, request: Request,
+                s: Session = Depends(get_session)) -> db.ApiToken:
+    raw = _bearer(request)
+    token = auth.token_principal(s, raw) if raw else None
+    if token is None or token.role != "agent":
+        raise HTTPException(401, "that isn't an agent key")
+    if token.agent_id != agent_id:
+        raise HTTPException(403, f"that key belongs to {token.agent_id!r}, not {agent_id!r}")
+    return token
 
 
 def admin(user: AppUser = Depends(current_user)) -> AppUser:
@@ -702,7 +730,9 @@ def _printer_json(row: db.Printer, online: bool | None) -> dict[str, Any]:
             "online": online}
 
 
-def _probe(row: db.Printer) -> bool | None:
+def _probe(row: db.Printer, agents: dict[str, bool]) -> bool | None:
+    if row.transport_kind == "agent":
+        return agents.get((row.transport_config or {}).get("agent_id"), False)
     try:
         return printers.from_row(row).transport.probe()
     except Exception:                                 # noqa: BLE001 — unreachable is not online
@@ -717,8 +747,11 @@ def list_printers(probe: bool = True,
     rows = list(s.scalars(select(db.Printer).order_by(db.Printer.name)))
     if not probe:
         return [_printer_json(r, None) for r in rows]
+    # agents are a database read, so they are answered here rather than in a
+    # thread that would need a session of its own
+    agents = {a.id: _agent_online(a) for a in s.scalars(select(db.PrintAgent))}
     with ThreadPoolExecutor(max_workers=min(8, max(1, len(rows)))) as pool:
-        states = list(pool.map(_probe, rows))
+        states = list(pool.map(lambda r: _probe(r, agents), rows))
     return [_printer_json(r, online) for r, online in zip(rows, states)]
 
 
@@ -733,7 +766,10 @@ def _printer_row(s: Session, printer_id: str) -> db.Printer:
 def get_printer(printer_id: str, probe: bool = False,
                 s: Session = Depends(get_session)) -> dict[str, Any]:
     row = _printer_row(s, printer_id)
-    return _printer_json(row, _probe(row) if probe else None)
+    if not probe:
+        return _printer_json(row, None)
+    agents = {a.id: _agent_online(a) for a in s.scalars(select(db.PrintAgent))}
+    return _printer_json(row, _probe(row, agents))
 
 
 @app.delete("/printers/{printer_id}", status_code=204)
@@ -773,6 +809,133 @@ def put_printer(printer_id: str, body: PrinterBody,
     audit(s, "save", "printer", row.id, transport=kind, actor=user)
     s.commit()
     return _printer_json(row, None)
+
+
+# --------------------------------------------------------------------- agents
+
+class AgentBody(BaseModel):
+    name: str
+
+
+class PollBody(BaseModel):
+    devices: list[str] = []
+
+
+class DoneBody(BaseModel):
+    error: str | None = None
+
+
+def _agent_json(row: db.PrintAgent) -> dict[str, Any]:
+    return {"id": row.id, "name": row.name, "devices": row.devices,
+            "last_seen_at": row.last_seen_at, "created_at": row.created_at,
+            "online": _agent_online(row)}
+
+
+def _agent_online(row: db.PrintAgent) -> bool:
+    return bool(row.last_seen_at
+                and row.last_seen_at > auth.now() - printers.AGENT_ONLINE)
+
+
+def _agent_row(s: Session, agent_id: str) -> db.PrintAgent:
+    row = s.get(db.PrintAgent, agent_id)
+    if row is None:
+        raise HTTPException(404, f"no agent {agent_id!r}")
+    return row
+
+
+@app.get("/agents", dependencies=[Depends(admin)])
+def list_agents(s: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    return [_agent_json(a) for a in s.scalars(
+        select(db.PrintAgent).order_by(db.PrintAgent.name))]
+
+
+@app.get("/agents/{agent_id}", dependencies=[Depends(admin)])
+def get_agent(agent_id: str, s: Session = Depends(get_session)) -> dict[str, Any]:
+    return _agent_json(_agent_row(s, agent_id))
+
+
+@app.put("/agents/{agent_id}")
+def put_agent(agent_id: str, body: AgentBody, s: Session = Depends(get_session),
+              user: AppUser = Depends(admin)) -> dict[str, Any]:
+    """Making an agent hands back its key. That is the only time anyone sees
+    it; only its hash is kept."""
+    row = s.get(db.PrintAgent, agent_id)
+    fresh = row is None
+    row = row or db.PrintAgent(id=agent_id, devices=[])
+    row.name = body.name
+    s.add(row)
+    s.commit()
+    out = _agent_json(row)
+    if fresh:
+        out["token"] = auth.create_token(s, name=f"agent {agent_id}", role="agent",
+                                         agent_id=agent_id, created_by=user.username)
+    audit(s, "save", "agent", agent_id, actor=user)
+    s.commit()
+    return out
+
+
+@app.post("/agents/{agent_id}/token")
+def rotate_agent_token(agent_id: str, s: Session = Depends(get_session),
+                       user: AppUser = Depends(admin)) -> dict[str, Any]:
+    _agent_row(s, agent_id)
+    auth.revoke_tokens(s, agent_id=agent_id)
+    token = auth.create_token(s, name=f"agent {agent_id}", role="agent",
+                              agent_id=agent_id, created_by=user.username)
+    audit(s, "rotate", "agent", agent_id, actor=user)
+    s.commit()
+    return {"id": agent_id, "token": token}
+
+
+@app.delete("/agents/{agent_id}", status_code=204)
+def delete_agent(agent_id: str, s: Session = Depends(get_session),
+                 user: AppUser = Depends(admin)) -> Response:
+    row = _agent_row(s, agent_id)
+    used = s.scalars(select(db.Printer.id).where(
+        db.Printer.transport_kind == "agent")).all()
+    on_it = [p for p in used
+             if (s.get(db.Printer, p).transport_config or {}).get("agent_id") == agent_id]
+    if on_it:
+        raise HTTPException(409, f"printers still go through {agent_id!r}: {', '.join(on_it)}")
+    auth.revoke_tokens(s, agent_id=agent_id)
+    for job in s.scalars(select(db.AgentJob).where(db.AgentJob.agent_id == agent_id)):
+        s.delete(job)
+    s.delete(row)
+    audit(s, "delete", "agent", agent_id, actor=user)
+    s.commit()
+    return Response(status_code=204)
+
+
+@app.post("/agents/{agent_id}/poll")
+def agent_poll(agent_id: str, body: PollBody, s: Session = Depends(get_session),
+               token: db.ApiToken = Depends(agent_token)) -> dict[str, Any]:
+    """The agent asking for work. Also how it says it is still there."""
+    row = _agent_row(s, agent_id)
+    row.last_seen_at = auth.now()
+    if body.devices:
+        row.devices = body.devices
+
+    waiting = s.scalars(
+        select(db.AgentJob)
+        .where(db.AgentJob.agent_id == agent_id, db.AgentJob.taken_at.is_(None))
+        .order_by(db.AgentJob.created_at).limit(20)
+    ).all()
+    for job in waiting:
+        job.taken_at = auth.now()
+    s.commit()
+    return {"agent": agent_id,
+            "jobs": [{"id": j.id, "device": j.device, "zpl": j.zpl} for j in waiting]}
+
+
+@app.post("/agents/{agent_id}/jobs/{job_id}/done")
+def agent_done(agent_id: str, job_id: str, body: DoneBody,
+               s: Session = Depends(get_session),
+               token: db.ApiToken = Depends(agent_token)) -> dict[str, str]:
+    job = s.get(db.AgentJob, job_id)
+    if job is None or job.agent_id != agent_id:
+        raise HTTPException(404, f"no job {job_id!r} for {agent_id!r}")
+    job.done_at, job.error = auth.now(), body.error
+    s.commit()
+    return {"id": job_id, "status": "failed" if body.error else "printed"}
 
 
 class ScanRequest(BaseModel):

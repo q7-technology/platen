@@ -19,6 +19,7 @@
       <span class="spacer"></span>
       <button class="btn" type="button" id="recheck">Re-check status</button>
       <button class="btn" type="button" id="scan">Scan network</button>
+      <button class="btn" type="button" id="agents">Agents</button>
       <button class="btn" type="button" id="add">Add printer</button>
     </header>
 
@@ -61,6 +62,26 @@
           <div id="s-msg" hidden></div>
         </section>
 
+        <section class="card" id="agents-card" aria-labelledby="h-agents" hidden>
+          <div class="card-head"><h2 id="h-agents">Print agents</h2>
+            <span class="spacer"></span>
+            <span class="mut" style="font-size: 12px;">For a printer plugged into somebody's machine</span></div>
+          <div class="scroll"><table>
+            <thead><tr><th>Agent</th><th>Name</th><th>Devices it can see</th><th>Status</th><th></th></tr></thead>
+            <tbody id="agent-rows"></tbody>
+          </table></div>
+          <p class="mut" id="agents-empty" style="font-size: 12px;" hidden>No agents yet.</p>
+          <div class="row">
+            <div class="field"><label for="a-name">Name</label><input id="a-name" type="text" placeholder="Office workstation"></div>
+            <div class="field narrow" style="align-self: flex-end;">
+              <button class="btn" type="button" id="a-add" style="height: 38px;">Register an agent</button>
+            </div>
+          </div>
+          <p class="mut" style="font-size: 12px;">The agent asks Platen for labels, so nothing needs to be open inbound to that machine. Run it there with <span class="mono">python platen_agent.py</span>.</p>
+          <div id="a-token"></div>
+          <div id="a-msg" hidden></div>
+        </section>
+
         <section class="card" id="edit" aria-labelledby="h-edit" hidden>
           <div class="card-head">
             <h2 id="h-edit">Printer</h2>
@@ -99,14 +120,14 @@
             <div class="field"><label for="t-queue">Queue name</label><input id="t-queue" class="mono" type="text" placeholder="zd621-workshop"></div>
           </div>
 
-          <div id="t-agent" hidden style="display: flex; flex-direction: column; gap: 12px;">
-            <div class="row">
-              <div class="field"><label for="t-relay">Relay URL</label><input id="t-relay" class="mono" type="text" placeholder="https://relay.example/agents"></div>
-              <div class="field narrow"><label for="t-agent-id">Agent id</label><input id="t-agent-id" class="mono" type="text" placeholder="WKS-OFFICE-02"></div>
+          <div class="row" id="t-agent" hidden>
+            <div class="field">
+              <label for="t-agent-id">Agent</label>
+              <select id="t-agent-id"></select>
             </div>
-            <div class="row">
-              <div class="field"><label for="t-device">Device</label><input id="t-device" class="mono" type="text" placeholder="ZDesigner ZD621"></div>
-              <div class="field"><label for="t-token">Token</label><input id="t-token" class="mono" type="password" autocomplete="off"></div>
+            <div class="field">
+              <label for="t-device">Device on that machine</label>
+              <input id="t-device" class="mono" type="text" placeholder="zd621-office or /dev/usb/lp0">
             </div>
           </div>
 
@@ -129,12 +150,12 @@
   'use strict';
   renderShell('printers');
 
-  const state = { printers: [], current: null };
+  const state = { printers: [], current: null, agents: [] };
 
   const wire = (t) => {
     if (t.kind === 'tcp') return `tcp ${t.host}:${t.port ?? 9100}`;
     if (t.kind === 'cups') return `cups ${t.queue}`;
-    if (t.kind === 'agent') return `agent ${t.agent_id}`;
+    if (t.kind === 'agent') return `agent ${t.agent_id}${t.device ? ' · ' + t.device : ''}`;
     return t.kind;
   };
 
@@ -183,10 +204,8 @@
     $('t-host').value = t.host || '';
     $('t-port').value = t.port ?? 9100;
     $('t-queue').value = t.queue || '';
-    $('t-relay').value = t.relay_url || '';
-    $('t-agent-id').value = t.agent_id || '';
+    fillAgents(t.agent_id);
     $('t-device').value = t.device || '';
-    $('t-token').value = t.token || '';
   }
 
   async function pick(id) {
@@ -213,8 +232,7 @@
     const kind = [...document.getElementsByName('kind')].find((r) => r.checked).value;
     if (kind === 'tcp') return { kind, host: $('t-host').value.trim(), port: Number($('t-port').value) || 9100 };
     if (kind === 'cups') return { kind, queue: $('t-queue').value.trim() };
-    return { kind, relay_url: $('t-relay').value.trim(), agent_id: $('t-agent-id').value.trim(),
-             device: $('t-device').value.trim(), token: $('t-token').value };
+    return { kind, agent_id: $('t-agent-id').value, device: $('t-device').value.trim() };
   }
 
   async function save() {
@@ -253,6 +271,69 @@
       await load();
     } catch (e) { showError($('msg'), e.message); }
   }
+
+  // ---------- agents
+  function fillAgents(selected) {
+    const sel = $('t-agent-id');
+    sel.replaceChildren(...state.agents.map((a) =>
+      el('option', { value: a.id, selected: a.id === selected,
+                     text: `${a.name} (${a.id})${a.online ? '' : ' — not checked in'}` })));
+    if (!state.agents.length) sel.replaceChildren(el('option', { value: '', text: 'no agents registered yet' }));
+  }
+
+  async function loadAgents() {
+    state.agents = await api('GET', '/agents');
+    const body = $('agent-rows');
+    body.replaceChildren();
+    $('agents-empty').hidden = state.agents.length > 0;
+    for (const a of state.agents) {
+      body.append(el('tr', {},
+        el('td', { class: 'mono', text: a.id }),
+        el('td', { text: a.name }),
+        el('td', { class: 'mono mut', text: (a.devices || []).join(', ') || '—' }),
+        el('td', {}, a.online
+          ? el('span', { class: 'ok' }, icon('check', 14), el('span', { text: 'Checked in' }))
+          : el('span', { class: 'badge gold', text: 'Not checked in' })),
+        el('td', {}, el('button', { class: 'btn sm', type: 'button', text: 'New key',
+                                    onclick: () => rotate(a) }))));
+    }
+    fillAgents($('t-agent-id').value);
+  }
+
+  /* The key is shown here and nowhere else, ever again. */
+  function showToken(id, token) {
+    $('a-token').replaceChildren(el('div', { class: 'warn' }, icon('alert', 18),
+      el('span', { class: 'txt' },
+        el('b', { text: `The key for ${id}. Copy it now — Platen keeps only its hash.` }),
+        el('span', { class: 'mono', style: 'word-break:break-all', text: token }),
+        el('span', { text: `python platen_agent.py --server <this server> --agent ${id} --token <the key> --cups <queue>` }))));
+  }
+
+  async function addAgent() {
+    const name = $('a-name').value.trim();
+    const id = slug(name);
+    if (!id) { showError($('a-msg'), 'Give the workstation a name.'); return; }
+    try {
+      const made = await api('PUT', `/agents/${encodeURIComponent(id)}`, { name });
+      clearError($('a-msg'));
+      $('a-name').value = '';
+      if (made.token) showToken(id, made.token);
+      await loadAgents();
+    } catch (e) { showError($('a-msg'), e.message); }
+  }
+
+  async function rotate(a) {
+    if (!confirm(`Give ${a.id} a new key? The one it has now stops working.`)) return;
+    try {
+      showToken(a.id, (await api('POST', `/agents/${encodeURIComponent(a.id)}/token`)).token);
+      clearError($('a-msg'));
+    } catch (e) { showError($('a-msg'), e.message); }
+  }
+
+  $('agents').addEventListener('click', () => {
+    $('agents-card').hidden = false; clearError($('a-msg')); loadAgents().catch(() => {});
+  });
+  $('a-add').addEventListener('click', addAgent);
 
   for (const r of document.getElementsByName('kind')) {
     r.addEventListener('change', () => showKind(r.value));
@@ -307,6 +388,7 @@
   $('del').addEventListener('click', remove);
   $('recheck').addEventListener('click', () => load(true, state.current?.id));
 
+  loadAgents().catch(() => {});
   load().catch((e) => showError($('msg'), e.message));
 })();
 </script>

@@ -29,6 +29,8 @@ app/            the service
   printers.py     raw 9100 / CUPS / local agent transports, and network discovery
   jobs.py         redis queue worker, retries, cancel
   main.py         the HTTP surface
+agent/          the print agent, for a USB printer on a workstation. Standard
+                library only, on purpose: it installs on a warehouse PC
 db/             Platen's own storage: SQLAlchemy models, Alembic migrations
 tests/          pytest; SQLite and fakeredis, no Docker needed
 web/            the public landing page (static, single file)
@@ -93,7 +95,14 @@ test suite runs the same models on SQLite, so keep column types portable.
     is the point: an auth check you forget is worse than none.
 12. **An operator never sees a credential.** Not a connection string, not the
     SQL behind their query. `get_query` returns a smaller body for them.
-13. **Discovery stays on the site's own network.** `printers.scan` refuses
+13. **A label is printed when it has come out, not when it was handed on.**
+    `RawTcp.send` returns when the printer took the bytes; `Agent.send` waits
+    for the agent to say the same. If "printed" meant "queued" for one
+    transport and "printed" for another, `printed / total` would be a lie on
+    exactly the printers nobody is standing next to.
+14. **A key is shown once.** Only its hash is stored, like a session's. An
+    agent key may reach its own agent's endpoints and nothing else.
+15. **Discovery stays on the site's own network.** `printers.scan` refuses
     anything but a private, loopback or link-local range, caps a call at 1024
     addresses, and opens one connection per address on the one port it was
     given. It is how you find your own printers, not a port sweep.

@@ -6,13 +6,17 @@ import ipaddress
 import re
 import socket
 import subprocess
+import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Protocol
 
-import httpx
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from db.models import AgentJob, PrintAgent
 from db.models import Printer as PrinterRow
 
 
@@ -59,40 +63,84 @@ class Cups:
     queue: str
 
     def send(self, data: bytes) -> None:
-        subprocess.run(
-            ["lp", "-d", self.queue, "-o", "raw", "-"],
-            input=data, check=True, capture_output=True,
-        )
+        try:
+            subprocess.run(
+                ["lp", "-d", self.queue, "-o", "raw", "-"],
+                input=data, check=True, capture_output=True,
+            )
+        except FileNotFoundError:
+            raise RuntimeError(
+                "lp isn't on this machine, so Platen can't reach a CUPS queue. "
+                "Install cups-client, or point this printer at a socket instead."
+            ) from None
+        except subprocess.CalledProcessError as exc:
+            detail = exc.stderr.decode("utf-8", "replace").strip() or f"exit {exc.returncode}"
+            raise RuntimeError(f"lp refused the job for {self.queue!r}: {detail}") from None
 
     def probe(self) -> bool:
-        r = subprocess.run(["lpstat", "-p", self.queue], capture_output=True)
-        return r.returncode == 0
+        try:
+            return subprocess.run(["lpstat", "-p", self.queue],
+                                  capture_output=True).returncode == 0
+        except FileNotFoundError:
+            return False
+
+
+# How long after its last check-in an agent still counts as there, and how
+# long a label will wait for one before the run gives up and retries.
+AGENT_ONLINE = timedelta(seconds=90)
+AGENT_TIMEOUT = 60.0
 
 
 @dataclass
 class Agent:
-    """A USB printer on someone's desk. A small agent on that machine holds a
-    connection open to us and forwards whatever we post to it."""
+    """A USB printer on someone's desk.
 
-    relay_url: str
+    The agent on that workstation asks Platen for work; Platen never reaches
+    into the office network, so nothing has to be open inbound. `send` waits
+    for the agent to say the label came out, because on a socket printer a
+    returning `send` means the printer took the bytes, and "printed" should
+    mean the same thing here.
+    """
+
     agent_id: str
     device: str
-    token: str
+    session: Session | None = field(default=None, repr=False)
 
     def send(self, data: bytes) -> None:
-        r = httpx.post(
-            f"{self.relay_url}/agents/{self.agent_id}/print",
-            params={"device": self.device},
-            content=data,
-            headers={"authorization": f"Bearer {self.token}",
-                     "content-type": "application/octet-stream"},
-            timeout=20.0,
+        if self.session is None:
+            raise RuntimeError(
+                f"{self.agent_id}: an agent printer can only be used where Platen "
+                "has its database to hand"
+            )
+        job = AgentJob(id=uuid.uuid4().hex, agent_id=self.agent_id, device=self.device,
+                       zpl=data.decode("ascii", "replace"))
+        self.session.add(job)
+        self.session.commit()
+
+        deadline = time.monotonic() + AGENT_TIMEOUT
+        while time.monotonic() < deadline:
+            # commit first so the next read starts a fresh transaction: the
+            # agent acks from another process
+            self.session.commit()
+            done_at, error = self.session.execute(
+                select(AgentJob.done_at, AgentJob.error).where(AgentJob.id == job.id)
+            ).one()
+            if done_at is not None:
+                if error:
+                    raise RuntimeError(f"{self.agent_id}: {error}")
+                return
+            time.sleep(0.05)
+        raise TimeoutError(
+            f"{self.agent_id} didn't collect that label within "
+            f"{AGENT_TIMEOUT:.0f} seconds; is the agent running?"
         )
-        r.raise_for_status()
 
     def probe(self) -> bool:
-        r = httpx.get(f"{self.relay_url}/agents/{self.agent_id}", timeout=5.0)
-        return r.status_code == 200 and r.json().get("online", False)
+        if self.session is None:
+            return False
+        row = self.session.get(PrintAgent, self.agent_id)
+        return bool(row and row.last_seen_at
+                    and row.last_seen_at > datetime.now(timezone.utc) - AGENT_ONLINE)
 
 
 @dataclass
@@ -106,31 +154,31 @@ class Printer:
 
 # kind -> constructor. A dict rather than an if-chain so a deployment (or a
 # test) can register a transport without editing this file.
-TRANSPORTS: dict[str, Callable[[dict], Transport]] = {
-    "tcp": lambda c: RawTcp(c["host"], c.get("port", 9100)),
-    "cups": lambda c: Cups(c["queue"]),
-    "agent": lambda c: Agent(c["relay_url"], c["agent_id"], c["device"], c["token"]),
+TRANSPORTS: dict[str, Callable[..., Transport]] = {
+    "tcp": lambda c, s=None: RawTcp(c["host"], c.get("port", 9100)),
+    "cups": lambda c, s=None: Cups(c["queue"]),
+    "agent": lambda c, s=None: Agent(c["agent_id"], c.get("device", ""), s),
 }
 
 
-def build(kind: str, config: dict) -> Transport:
+def build(kind: str, config: dict, session: Session | None = None) -> Transport:
     try:
         factory = TRANSPORTS[kind]
     except KeyError:
         raise ValueError(
             f"unknown transport {kind!r}; one of {', '.join(sorted(TRANSPORTS))}"
         ) from None
-    return factory(config)
+    return factory(config, session)
 
 
-def from_row(row: PrinterRow) -> Printer:
+def from_row(row: PrinterRow, session: Session | None = None) -> Printer:
     return Printer(id=row.id, name=row.name, model=row.model, dpi=row.dpi,
-                   transport=build(row.transport_kind, row.transport_config))
+                   transport=build(row.transport_kind, row.transport_config, session))
 
 
 def load(session: Session, printer_id: str) -> Printer | None:
     row = session.get(PrinterRow, printer_id)
-    return from_row(row) if row else None
+    return from_row(row, session) if row else None
 
 
 # ------------------------------------------------------------------ discovery
