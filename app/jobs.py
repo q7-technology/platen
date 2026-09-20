@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from db import session as dbsession
-from db.models import PrintRun, RunLabel
+from db.models import PrintRun, RunLabel, Setting
 
 from . import printers
 
@@ -66,6 +66,24 @@ def cancel(session: Session, run_id: str) -> PrintRun:
     return run
 
 
+PAUSED = "queue.paused"
+
+
+def paused(session: Session) -> bool:
+    """Commit first, like the cancel check: the flag is set from the API, in
+    another process, and a stale read would keep printing."""
+    session.commit()
+    value = session.scalar(select(Setting.value).where(Setting.key == PAUSED))
+    return bool(value and value.get("on"))
+
+
+def set_paused(session: Session, on: bool) -> None:
+    row = session.get(Setting, PAUSED) or Setting(key=PAUSED, value={})
+    row.value = {"on": on}
+    session.add(row)
+    session.commit()
+
+
 def _cancelled(session: Session, run_id: str) -> bool:
     # commit first so progress lands and the next read starts a fresh
     # transaction: the API sets this flag from another process
@@ -94,6 +112,12 @@ def print_run(run_id: str) -> None:
             s.commit()
             return
 
+        # nothing new starts while the queue is held; resuming puts it back
+        if paused(s):
+            run.status = "paused"
+            s.commit()
+            return
+
         run.status, run.started_at, run.error = "printing", datetime.now(UTC), None
         s.commit()
         printed = run.total - remaining(s, run_id)
@@ -107,6 +131,13 @@ def print_run(run_id: str) -> None:
                 if _cancelled(s, run_id):
                     run.status = "cancelled"
                     run.finished_at = datetime.now(UTC)
+                    s.commit()
+                    return
+                if paused(s):
+                    # between labels, like cancel: holding halfway through one
+                    # would leave it under the print head
+                    run.status = "paused"
+                    run.printed = printed
                     s.commit()
                     return
                 # one label per write: the printer buffers a few, and a mid-run

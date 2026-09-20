@@ -80,6 +80,18 @@ class UserSession(Base):
     last_seen_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
 
 
+class Setting(Base):
+    """A handful of things that are true of the whole instance, like whether
+    the queue is paused. Kept in the database so the API and the worker see
+    the same answer."""
+
+    __tablename__ = "app_setting"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    changed_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now, onupdate=now)
+
+
 class ApiToken(Base):
     """A key something other than a person signs in with. Only its hash is
     kept, so the plain token exists once, in the answer that created it."""

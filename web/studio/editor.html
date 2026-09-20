@@ -142,7 +142,7 @@
 
   const KINDS = [
     ['text', 'Text', 'text'], ['barcode', 'Barcode', 'barcode'], ['qr', 'QR code', 'qr'],
-    ['datamatrix', 'Data Matrix', 'grid'], ['image', 'Image', 'image'],
+    ['datamatrix', 'Data Matrix', 'grid2'], ['image', 'Image', 'image'],
     ['line', 'Line', 'line'], ['box', 'Box', 'square'],
   ];
 
@@ -332,7 +332,7 @@
         'aria-selected': String(i === state.sel), onclick: () => select(i),
         onkeydown: (ev) => { if (ev.key === 'Enter') select(i); },
       },
-        icon(({ text: 'text', barcode: 'barcode', qr: 'qr', datamatrix: 'grid',
+        icon(({ text: 'text', barcode: 'barcode', qr: 'qr', datamatrix: 'grid2',
                 image: 'image', line: 'line', box: 'square' })[e.kind], 13),
         el('span', { class: 'nm', text: e.name }),
         el('button', { type: 'button', 'aria-label': `Move ${e.name} up`,

@@ -69,7 +69,9 @@ test suite runs the same models on SQLite, so keep column types portable.
    statement or a URL.
 3. **Every label in a run renders before the first one prints.** A render
    failure must surface as a message, not as half a roll of ruined stock.
-4. **Cancel is checked between labels**, not between batches.
+4. **Cancel is checked between labels**, not between batches. So is the queue
+   hold, for the same reason: stopping halfway through one would leave it
+   under the print head.
 5. **A missing image degrades, it doesn't crash** — the element is skipped and
    a warning rides along with the run, unless `on_missing="fail"`.
 6. **A connection's password never reaches the browser.** Reads mask it; a URL

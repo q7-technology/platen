@@ -50,7 +50,7 @@
 <script>
 (function () {
   'use strict';
-  const next = new URLSearchParams(location.search).get('next') || '/studio/print';
+  const next = new URLSearchParams(location.search).get('next') || '';
 
   $('form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -68,9 +68,11 @@
       }
       // an operator has no business on an administrator's screen
       const me = await r.json();
-      const allowed = ['/studio/print', '/studio/jobs'];
+      const home = me.role === 'admin' ? '/studio/dashboard' : '/studio/print';
+      const allowed = ['/studio/print', '/studio/jobs', '/studio/dashboard'];
+      if (!next) { location.href = home; return; }
       location.href = me.role === 'admin' || allowed.some((p) => next.startsWith(p))
-        ? next : '/studio/print';
+        ? next : home;
     } catch (err) {
       showError($('msg'), err.message);
       $('password').value = '';

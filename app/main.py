@@ -144,7 +144,7 @@ def whoami(user: AppUser = Depends(current_user)) -> dict[str, Any]:
 SCREENS = {
     "print": "print.html", "login": "login.html", "people": "people.html",
     "data": "data.html", "printers": "printers.html", "templates": "templates.html",
-    "editor": "editor.html", "jobs": "jobs.html",
+    "editor": "editor.html", "jobs": "jobs.html", "dashboard": "dashboard.html",
 }
 
 
@@ -898,6 +898,84 @@ def put_printer(printer_id: str, body: PrinterBody,
     audit(s, "save", "printer", row.id, transport=kind, actor=user)
     s.commit()
     return _printer_json(row, None)
+
+
+# ------------------------------------------------------------------ the front
+
+ACTIVE = ("queued", "printing", "retrying")
+
+
+@app.get("/dashboard", dependencies=[Depends(current_user)])
+def dashboard(s: Session = Depends(get_session)) -> dict[str, Any]:
+    """The few numbers worth seeing on the way past, and what is on the queue."""
+    since = auth.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    printed_today = s.scalar(
+        select(func.count()).select_from(db.RunLabel)
+        .where(db.RunLabel.printed_at >= since)) or 0
+    queued = s.scalar(
+        select(func.count()).select_from(db.PrintRun)
+        .where(db.PrintRun.status.in_(ACTIVE))) or 0
+    failed_today = s.scalar(
+        select(func.count()).select_from(db.PrintRun)
+        .where(db.PrintRun.status == "failed", db.PrintRun.created_at >= since)) or 0
+
+    printer_rows = list(s.scalars(select(db.Printer)))
+    agents = {a.id: _agent_online(a) for a in s.scalars(select(db.PrintAgent))}
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(printer_rows)))) as pool:
+        states = list(pool.map(lambda r: _probe(r, agents), printer_rows))
+
+    runs = list(s.scalars(
+        select(db.PrintRun)
+        .options(selectinload(db.PrintRun.template_version),
+                 selectinload(db.PrintRun.warnings))
+        .order_by(db.PrintRun.created_at.desc()).limit(8)))
+
+    templates = list(s.scalars(
+        select(db.Template).order_by(db.Template.updated_at.desc()).limit(5)))
+
+    return {
+        "printed_today": printed_today,
+        "queued": queued,
+        "failed_today": failed_today,
+        "paused": jobs.paused(s),
+        "printers": {"total": len(printer_rows), "online": sum(1 for x in states if x)},
+        "runs": [_run_json(r) for r in runs],
+        "templates": [
+            {"id": t.id, "name": t.name, "dpi": t.dpi, "size_mm": [t.width_mm, t.height_mm],
+             "version": t.versions[-1].version if t.versions else 0,
+             "updated_at": t.updated_at}
+            for t in templates
+        ],
+        "datasources": [{"id": d.id, "name": d.name, "kind": d.kind}
+                        for d in s.scalars(select(db.DataSource).order_by(db.DataSource.name))],
+    }
+
+
+@app.post("/queue/pause")
+def pause_queue(s: Session = Depends(get_session),
+                user: AppUser = Depends(admin)) -> dict[str, Any]:
+    """Hold everything. A run already printing stops between labels."""
+    jobs.set_paused(s, True)
+    audit(s, "pause", "queue", "all", actor=user)
+    s.commit()
+    return {"paused": True}
+
+
+@app.post("/queue/resume")
+def resume_queue(s: Session = Depends(get_session),
+                 user: AppUser = Depends(admin)) -> dict[str, Any]:
+    """Let it go again, and put every held run back on the queue. They resume
+    where they stopped, the same as a retry."""
+    jobs.set_paused(s, False)
+    held = list(s.scalars(select(db.PrintRun).where(db.PrintRun.status == "paused")))
+    for run in held:
+        run.status = "queued"
+    audit(s, "resume", "queue", "all", actor=user, resumed=len(held))
+    s.commit()
+    for run in held:
+        jobs.enqueue(run.id)
+    return {"paused": False, "resumed": len(held)}
 
 
 # ------------------------------------------------------------ people and keys

@@ -27,7 +27,9 @@ MIT licensed. Built by [Q7 Technology](https://q7technology.com.au) in Ballarat.
   or a small agent for a printer plugged into somebody's machine. No drivers on
   anyone's laptop. Platen can find the ones already on your network, private
   ranges only.
-- **Jobs you can answer for.** Choose which records go on the roll, put a
+- **Jobs you can answer for.** Hold the whole queue and let it go again; a run
+  that was printing stops between labels and resumes where it stopped. Choose
+  which records go on the roll, put a
   separator in front of the job, take the whole run as a PDF before you commit
   stock to it. Queued, cancellable between labels, and retried twice by the
   worker on its own. A retry resumes rather than restarts, so a
@@ -44,7 +46,8 @@ docker compose up --build
 ```
 
 The API is on http://localhost:8000 and runs the migrations before it starts.
-The screens are at http://localhost:8000/studio/print (run a job),
+The screens are at http://localhost:8000/studio/dashboard (what is going on),
+`/studio/print` (run a job),
 `/studio/templates` (the library and the editor), `/studio/data` (connections
 and saved queries), `/studio/printers` and `/studio/jobs`. The API reference is
 at http://localhost:8000/docs.
