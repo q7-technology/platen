@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard — Platen Label Studio</title>
+<link rel="icon" href="/studio/static/q7-logo-128.png">
+<link rel="stylesheet" href="/studio/static/studio/studio.css">
+<script src="/studio/static/studio/studio.js"></script>
+<style>
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+  .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 15px 17px; display: flex; flex-direction: column; gap: 3px; }
+  .tile b { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+  .tile span { font-size: 12.5px; color: var(--mut); }
+  .tile small { font-size: 11.5px; color: var(--mut); }
+  .tile.gold b { color: var(--signal); }
+  .two { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 1100px) { .two { grid-template-columns: 1fr; } }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--mut); display: inline-block; }
+  .dot.printing { background: var(--accent); }
+  .dot.done { background: var(--mint); }
+  .dot.failed, .dot.paused, .dot.cancelled, .dot.retrying { background: var(--signal); }
+  .mini { display: flex; flex-direction: column; gap: 2px; }
+  .mini a { display: flex; align-items: baseline; gap: 10px; padding: 7px 9px; border-radius: 7px; text-decoration: none; color: var(--ink); font-size: 13px; }
+  .mini a:hover { background: var(--sunk); }
+  .mini small { margin-left: auto; color: var(--mut); font-family: var(--mono); font-size: 11.5px; }
+  .held { border: 1px solid var(--signal-line); background: var(--signal-fill); border-radius: 10px; padding: 12px 15px; display: flex; align-items: center; gap: 11px; color: var(--signal); }
+  .held .txt { flex: 1; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside id="shell-nav"></aside>
+
+  <main>
+    <header>
+      <h1>Dashboard</h1>
+      <span class="sub" id="today"></span>
+      <span class="spacer"></span>
+      <button class="btn sm" type="button" id="hold" hidden></button>
+      <a class="btn pri" href="/studio/print" style="height: 34px; text-decoration: none;">New print run</a>
+    </header>
+
+    <div class="work" style="display: block;">
+      <div class="col">
+        <div id="paused-note"></div>
+        <div class="tiles" id="tiles"></div>
+
+        <div class="two">
+          <section class="card" aria-labelledby="h-queue">
+            <div class="card-head">
+              <h2 id="h-queue">Print queue</h2>
+              <span class="spacer"></span>
+              <span class="mut" id="live" style="font-size: 12px;"></span>
+              <a href="/studio/jobs" style="font-size: 12.5px;">Job history</a>
+            </div>
+            <div class="scroll">
+              <table>
+                <thead><tr><th>Job</th><th>Template</th><th>Labels</th><th>Printer</th><th>Status</th></tr></thead>
+                <tbody id="rows"></tbody>
+              </table>
+            </div>
+            <p class="mut" id="empty" style="font-size: 12.5px;" hidden>Nothing has printed yet.</p>
+          </section>
+
+          <div class="col">
+            <section class="card" aria-labelledby="h-templates">
+              <div class="card-head"><h2 id="h-templates">Recently edited</h2>
+                <span class="spacer"></span><a href="/studio/templates" style="font-size: 12.5px;">Library</a></div>
+              <div class="mini" id="templates"></div>
+              <p class="mut" id="no-templates" style="font-size: 12.5px;" hidden>No templates yet.</p>
+            </section>
+
+            <section class="card" aria-labelledby="h-sources" id="sources-card">
+              <div class="card-head"><h2 id="h-sources">Data sources</h2>
+                <span class="spacer"></span><a href="/studio/data" style="font-size: 12.5px;">Configure</a></div>
+              <div class="mini" id="sources"></div>
+              <p class="mut" id="no-sources" style="font-size: 12.5px;" hidden>Nothing connected yet.</p>
+            </section>
+          </div>
+        </div>
+
+        <div id="msg" hidden></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  renderShell('dashboard');
+
+  const state = { me: null, timer: null };
+  const ACTIVE = ['queued', 'printing', 'retrying'];
+  const WORDS = { queued: 'Queued', printing: 'Printing', done: 'Done', failed: 'Failed',
+                  cancelled: 'Cancelled', retrying: 'Retrying', paused: 'Held' };
+
+  $('today').textContent = new Date().toLocaleDateString(undefined,
+    { weekday: 'long', day: 'numeric', month: 'long' });
+
+  async function load() {
+    state.me = state.me || await whoami();
+    const d = await api('GET', '/dashboard');
+
+    $('tiles').replaceChildren(
+      el('div', { class: 'tile' }, el('b', { text: String(d.printed_today) }),
+        el('span', { text: 'labels printed today' })),
+      el('div', { class: 'tile' }, el('b', { text: String(d.queued) }),
+        el('span', { text: 'queued or printing' })),
+      el('div', { class: 'tile' },
+        el('b', { text: `${d.printers.online} / ${d.printers.total}` }),
+        el('span', { text: 'printers answering' })),
+      el('div', { class: `tile${d.failed_today ? ' gold' : ''}` },
+        el('b', { text: String(d.failed_today) }),
+        el('span', { text: 'failed today' })));
+
+    $('paused-note').replaceChildren(d.paused
+      ? el('div', { class: 'held' }, icon('alert', 18),
+          el('span', { class: 'txt', text: 'The queue is held. Nothing starts, and a run that was printing stopped between labels.' }))
+      : '');
+
+    if (state.me.role === 'admin') {
+      $('hold').hidden = false;
+      $('hold').textContent = d.paused ? 'Let the queue go' : 'Hold the queue';
+      $('hold').classList.toggle('gold', !d.paused);
+    }
+
+    const body = $('rows');
+    body.replaceChildren();
+    $('empty').hidden = d.runs.length > 0;
+    for (const r of d.runs) {
+      const open = () => { location.href = '/studio/jobs'; };
+      body.append(el('tr', { class: 'clickable', tabindex: '0', onclick: open,
+                             onkeydown: (e) => { if (e.key === 'Enter') open(); } },
+        el('td', { class: 'mono', text: r.id }),
+        el('td', { text: r.template_name || r.template_id }),
+        el('td', { class: 'mono', text: `${r.printed} / ${r.total}` }),
+        el('td', { class: 'mono', text: r.printer_id }),
+        el('td', {}, el('span', { class: `dot ${r.status}` }),
+          el('span', { style: 'margin-left:7px', text: WORDS[r.status] || r.status }))));
+    }
+
+    $('templates').replaceChildren(...d.templates.map((t) =>
+      el('a', { href: `/studio/editor?id=${encodeURIComponent(t.id)}` },
+        el('span', { text: t.name || t.id }),
+        el('small', { text: t.version ? `v${t.version}` : 'draft' }))));
+    $('no-templates').hidden = d.templates.length > 0;
+
+    $('sources').replaceChildren(...d.datasources.map((x) =>
+      el('a', { href: '/studio/data' },
+        el('span', { text: x.name || x.id }),
+        el('small', { text: x.kind === 'rest' ? 'REST' : 'SQL' }))));
+    $('no-sources').hidden = d.datasources.length > 0;
+    $('sources-card').hidden = state.me.role !== 'admin';
+
+    const busy = d.runs.some((r) => ACTIVE.includes(r.status));
+    $('live').textContent = busy ? 'refreshing while a job is running' : '';
+    clearTimeout(state.timer);
+    if (busy) state.timer = setTimeout(load, 3000);
+  }
+
+  $('hold').addEventListener('click', async () => {
+    const holding = $('hold').textContent.startsWith('Hold');
+    $('hold').disabled = true;
+    try {
+      await api('POST', holding ? '/queue/pause' : '/queue/resume');
+      clearError($('msg'));
+      await load();
+    } catch (e) { showError($('msg'), e.message); }
+    finally { $('hold').disabled = false; }
+  });
+
+  load().catch((e) => showError($('msg'), e.message));
+})();
+</script>
+</body>
+</html>

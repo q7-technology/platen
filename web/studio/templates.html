@@ -17,6 +17,10 @@
       <h1>Templates</h1>
       <span class="sub" id="sub">What a label looks like, and where its values come from</span>
       <span class="spacer"></span>
+      <div class="field" style="flex: none; width: 240px;">
+        <label for="search" class="sr-only">Search templates</label>
+        <input id="search" type="search" placeholder="Search templates…" style="height: 34px;">
+      </div>
       <button class="btn" type="button" id="import">Import ZPL</button>
       <button class="btn" type="button" id="new">New template</button>
     </header>
@@ -68,11 +72,13 @@
         </section>
 
         <section class="card" aria-labelledby="h-list">
-          <div class="card-head"><h2 id="h-list">Template library</h2></div>
+          <div class="card-head"><h2 id="h-list">Template library</h2>
+            <span class="spacer"></span>
+            <div class="chips" id="folders" role="group" aria-label="Folders"></div></div>
           <div class="scroll">
             <table>
               <thead><tr>
-                <th>Name</th><th>Size</th><th>Data</th><th>Published</th><th>Edited</th><th></th>
+                <th>Name</th><th>Size</th><th>Data</th><th>Folder</th><th>Published</th><th>Edited</th><th></th>
               </tr></thead>
               <tbody id="rows"></tbody>
             </table>
@@ -99,8 +105,18 @@
     return `${Math.round(s / 86400)} days ago`;
   };
 
+  let folder = null;      // null means every folder
+  let search = '';
+
   async function load() {
-    const templates = await api('GET', '/templates');
+    const query = new URLSearchParams();
+    if (search.trim()) query.set('q', search.trim());
+    if (folder !== null) query.set('folder', folder);
+    const [templates, groups] = await Promise.all([
+      api('GET', `/templates?${query}`),
+      api('GET', '/templates/folders'),
+    ]);
+    renderFolders(groups);
     const body = $('rows');
     body.replaceChildren();
     $('empty').hidden = templates.length > 0;
@@ -115,6 +131,9 @@
                      el('small', { class: 'mut mono', style: 'display:block', text: t.id })),
         el('td', { class: 'mono', text: `${t.size_mm[0]} × ${t.size_mm[1]} mm · ${t.dpi} dpi` }),
         el('td', { class: 'mono', text: t.query ? `${t.datasource || '?'} · ${t.query}` : 'no query' }),
+        el('td', {}, t.folder
+          ? el('span', { class: 'badge', text: t.folder })
+          : el('span', { class: 'mut', style: 'font-size:12px', text: 'unfiled' })),
         el('td', {}, t.version
           ? el('span', { class: 'badge', text: `v${t.version}` })
           : el('span', { class: 'badge gold', text: 'draft only' })),
@@ -124,6 +143,17 @@
           onclick: (e) => { e.stopPropagation(); remove(t); },
         }, icon('trash', 13)))));
     }
+  }
+
+  function renderFolders(groups) {
+    const chip = (label, value, count) => el('button', {
+      type: 'button', class: 'chip-btn', 'aria-pressed': String(folder === value),
+      onclick: () => { folder = value; load(); },
+    }, label, el('small', { text: String(count) }));
+    $('folders').replaceChildren(
+      chip('All', null, groups.total),
+      ...groups.folders.map((f) => chip(f.name, f.name, f.count)),
+      ...(groups.unfiled ? [chip('Unfiled', '', groups.unfiled)] : []));
   }
 
   async function remove(t) {
@@ -174,6 +204,11 @@
   $('i-cancel').addEventListener('click', () => { $('import-card').hidden = true; });
   $('i-go').addEventListener('click', runImport);
 
+  let typing = null;
+  $('search').addEventListener('input', () => {
+    clearTimeout(typing);
+    typing = setTimeout(() => { search = $('search').value; load(); }, 200);
+  });
   $('new').addEventListener('click', () => {
     $('new-card').hidden = false; clearError($('n-msg')); $('n-name').focus();
   });

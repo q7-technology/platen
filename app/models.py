@@ -3,7 +3,7 @@ that JSON is what the editor in the browser reads and writes."""
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -58,6 +58,16 @@ class QrElement(_Element):
     error_correction: Literal["L", "M", "Q", "H"] = "Q"
 
 
+class DataMatrixElement(_Element):
+    """^BX. The print head does the ECC200 encoding; we hand it the data."""
+
+    kind: Literal["datamatrix"] = "datamatrix"
+    value: str
+    module_dots: int = 6           # the side of one square module
+    quality: Literal[0, 50, 80, 100, 140, 200] = 200   # 200 is ECC200
+    skip_if_blank: bool = True
+
+
 class ImageElement(_Element):
     """An image that comes from the data, not from the template.
 
@@ -85,7 +95,8 @@ class LineShape(_Element):
 
 
 Element = Annotated[
-    Union[TextElement, BarcodeElement, QrElement, ImageElement, BoxShape, LineShape],
+    TextElement | BarcodeElement | QrElement | DataMatrixElement
+    | ImageElement | BoxShape | LineShape,
     Field(discriminator="kind"),
 ]
 
@@ -98,6 +109,7 @@ class Template(BaseModel):
     height_mm: float
     dpi: Literal[203, 300, 600] = 203
     darkness: int | None = None    # None = leave the printer's own setting alone
+    folder: str = ""               # how the library groups it; "" is unfiled
     datasource: str | None = None  # name in the datasource registry
     query: str | None = None       # name of a saved query on that datasource
     elements: list[Element] = Field(default_factory=list)

@@ -66,6 +66,7 @@ const ICONS = {
   text: ['M4 6V4h16v2', 'M12 4v16', 'M9 20h6'],
   barcode: ['M3 4v16', 'M6 4v16', 'M10 4v10', 'M14 4v16', 'M18 4v16', 'M21 4v16'],
   qr: ['M3 3h7v7H3z', 'M14 3h7v7h-7z', 'M3 14h7v7H3z', 'M14 14h3v3h-3z', 'M19 19h2v2h-2z'],
+  grid2: ['M3 3v18h18', 'M7 3v4h4V3', 'M15 7h4v4h-4z', 'M7 11h4v4H7z', 'M15 15h4v4h-4z'],
   line: ['M3 12h18'],
   square: ['M3 3h18v18H3z'],
   eye: ['M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7', 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6'],
@@ -77,6 +78,8 @@ const ICONS = {
   stop: ['M6 6h12v12H6z'],
   exit: ['M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4', 'm16 17 5-5-5-5', 'M21 12H9'],
   lock: ['M5 11h14v10H5z', 'M8 11V7a4 4 0 0 1 8 0v4'],
+  grid: ['M3 3h7v7H3z', 'M14 3h7v7h-7z', 'M3 14h7v7H3z', 'M14 14h7v7h-7z'],
+  people: ['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8', 'M22 21v-2a4 4 0 0 0-3-3.87', 'M16 3.13a4 4 0 0 1 0 7.75'],
 };
 
 function icon(name, size = 16) {
@@ -95,11 +98,13 @@ function icon(name, size = 16) {
 }
 
 const NAV = [
+  { href: '/studio/dashboard', label: 'Dashboard', icon: 'grid', key: 'dashboard' },
   { href: '/studio/print', label: 'Print run', icon: 'play', key: 'print' },
   { href: '/studio/templates', label: 'Templates', icon: 'layers', key: 'templates', admin: true },
   { href: '/studio/data', label: 'Data sources', icon: 'database', key: 'data', admin: true },
   { href: '/studio/printers', label: 'Printers', icon: 'printer', key: 'printers', admin: true },
   { href: '/studio/jobs', label: 'Job history', icon: 'list', key: 'jobs' },
+  { href: '/studio/people', label: 'People', icon: 'people', key: 'people', admin: true },
   { href: '/docs', label: 'API reference', icon: 'book', key: 'docs', admin: true },
 ];
 

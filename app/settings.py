@@ -28,7 +28,7 @@ class Settings:
     secure_cookies: bool | None
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         return cls(
             database_url=os.environ.get(
                 "DATABASE_URL", "postgresql+psycopg://platen:platen@localhost:5432/platen"

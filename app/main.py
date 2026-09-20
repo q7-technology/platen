@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import io
+import logging
+import threading
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -13,25 +16,48 @@ from typing import Any, Literal
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse
+from fastapi.responses import Response as RawResponse
 from fastapi.staticfiles import StaticFiles
+from PIL import Image
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from db import models as db
 from db.models import AppUser
-from db.session import get_session
+from db.session import SessionLocal, get_session
 
-from . import auth, binding, datasources, jobs, preview, printers, zplimport
+from . import auth, binding, datasources, jobs, preview, printers, retention, zplimport
 from .models import Template
 from .settings import settings
-from .zpl import RenderError, render_run
+from .zpl import RenderError, render_run, separator
+
+# Left to a cron job, nobody sets one up, and the labels pile up until
+# somebody notices the disk. Once a day, whichever process gets there first.
+HOUSEKEEPING_EVERY = 3600.0
+
+
+def _housekeeping(stop: threading.Event) -> None:
+    while not stop.wait(HOUSEKEEPING_EVERY):
+        try:
+            with SessionLocal() as s:
+                if retention.due(s):
+                    retention.prune(s)
+        except Exception:
+            log.exception("housekeeping failed; trying again in an hour")
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     auth.bootstrap()
+    stop = threading.Event()
+    threading.Thread(target=_housekeeping, args=(stop,), daemon=True,
+                     name="platen-housekeeping").start()
     yield
+    stop.set()
 
+
+log = logging.getLogger("platen.api")
 
 app = FastAPI(title="Platen", lifespan=lifespan)
 
@@ -47,12 +73,40 @@ def audit(s: Session, action: str, entity: str, entity_id: str,
 
 # ------------------------------------------------------------------- who is it
 
+def _bearer(request: Request) -> str | None:
+    header = request.headers.get("authorization", "")
+    return header[7:].strip() if header[:7].lower() == "bearer " else None
+
+
 def current_user(request: Request, s: Session = Depends(get_session)) -> AppUser:
-    token = request.cookies.get(auth.COOKIE)
-    user = auth.user_for_token(s, token) if token else None
+    """A person with a session cookie, or a machine with a key. An agent key
+    is not either: it may only talk to its own agent."""
+    raw = _bearer(request)
+    if raw is not None:
+        token = auth.token_principal(s, raw)
+        if token is None:
+            raise HTTPException(401, "that key isn't one of ours")
+        if token.role == "agent":
+            raise HTTPException(403, "an agent key may only talk to its own agent")
+        return AppUser(username=f"key:{token.name}", display_name=token.name,
+                       role=token.role)
+
+    cookie = request.cookies.get(auth.COOKIE)
+    user = auth.user_for_token(s, cookie) if cookie else None
     if user is None:
         raise HTTPException(401, "sign in first")
     return user
+
+
+def agent_token(agent_id: str, request: Request,
+                s: Session = Depends(get_session)) -> db.ApiToken:
+    raw = _bearer(request)
+    token = auth.token_principal(s, raw) if raw else None
+    if token is None or token.role != "agent":
+        raise HTTPException(401, "that isn't an agent key")
+    if token.agent_id != agent_id:
+        raise HTTPException(403, f"that key belongs to {token.agent_id!r}, not {agent_id!r}")
+    return token
 
 
 def admin(user: AppUser = Depends(current_user)) -> AppUser:
@@ -109,8 +163,11 @@ def whoami(user: AppUser = Depends(current_user)) -> dict[str, Any]:
     return _me(user)
 
 
-SCREENS = {"print": "print.html", "login": "login.html", "data": "data.html", "printers": "printers.html",
-           "templates": "templates.html", "editor": "editor.html", "jobs": "jobs.html"}
+SCREENS = {
+    "print": "print.html", "login": "login.html", "people": "people.html",
+    "data": "data.html", "printers": "printers.html", "templates": "templates.html",
+    "editor": "editor.html", "jobs": "jobs.html", "dashboard": "dashboard.html",
+}
 
 
 @app.get("/studio/{screen}", include_in_schema=False)
@@ -131,7 +188,8 @@ def _as_template(row: db.Template) -> Template:
     return Template(
         id=row.id, name=row.name, version=latest.version if latest else 0,
         width_mm=row.width_mm, height_mm=row.height_mm, dpi=row.dpi,
-        darkness=row.darkness, datasource=row.datasource_id, query=row.query_id,
+        darkness=row.darkness, folder=row.folder,
+        datasource=row.datasource_id, query=row.query_id,
         elements=row.elements,
     )
 
@@ -144,13 +202,35 @@ def _template_row(s: Session, template_id: str) -> db.Template:
 
 
 @app.get("/templates", dependencies=[Depends(current_user)])
-def list_templates(s: Session = Depends(get_session)) -> list[dict[str, Any]]:
+def list_templates(q: str = "", folder: str | None = None,
+                   s: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    stmt = select(db.Template).order_by(db.Template.name)
+    if folder is not None:
+        stmt = stmt.where(db.Template.folder == folder)
+    if q.strip():
+        like = f"%{q.strip().lower()}%"
+        stmt = stmt.where(func.lower(db.Template.name).like(like)
+                          | func.lower(db.Template.id).like(like))
     return [
         {"id": t.id, "name": t.name, "version": v.version if (v := _latest_version(t)) else 0,
          "size_mm": [t.width_mm, t.height_mm], "dpi": t.dpi, "datasource": t.datasource_id,
-         "query": t.query_id, "updated_at": t.updated_at}
-        for t in s.scalars(select(db.Template).order_by(db.Template.name))
+         "query": t.query_id, "folder": t.folder, "updated_at": t.updated_at}
+        for t in s.scalars(stmt)
     ]
+
+
+@app.get("/templates/folders", dependencies=[Depends(current_user)])
+def list_folders(s: Session = Depends(get_session)) -> dict[str, Any]:
+    """What the library groups by, and how many are in each."""
+    rows = s.execute(
+        select(db.Template.folder, func.count()).group_by(db.Template.folder)
+    ).all()
+    named = sorted(((f, n) for f, n in rows if f), key=lambda r: r[0].lower())
+    return {
+        "total": sum(n for _, n in rows),
+        "unfiled": sum(n for f, n in rows if not f),
+        "folders": [{"name": f, "count": n} for f, n in named],
+    }
 
 
 class ImportZpl(BaseModel):
@@ -172,7 +252,7 @@ def import_zpl(body: ImportZpl, s: Session = Depends(get_session),
         result = zplimport.parse(body.zpl, id=body.id, name=body.name, dpi=body.dpi)
     except zplimport.NotZpl as exc:
         raise HTTPException(422, str(exc)) from None
-    except Exception as exc:                          # noqa: BLE001 — arbitrary input
+    except Exception as exc:
         raise HTTPException(422, f"this label could not be read: {exc}") from None
 
     put_template(body.id, result.template, s)
@@ -196,6 +276,7 @@ def put_template(template_id: str, template: Template,
     row.name = template.name
     row.width_mm, row.height_mm, row.dpi = template.width_mm, template.height_mm, template.dpi
     row.darkness = template.darkness
+    row.folder = template.folder
     row.datasource_id, row.query_id = template.datasource, template.query
     row.elements = [e.model_dump(mode="json") for e in template.elements]
     s.add(row)
@@ -250,7 +331,9 @@ def list_versions(template_id: str, s: Session = Depends(get_session)) -> list[d
 class DataSourceBody(BaseModel):
     name: str
     label: str = ""
+    kind: Literal["sql", "rest"] = "sql"
     url: str
+    headers: dict[str, str] = {}   # rest only; a value of *** keeps the stored one
     pool_size: int = 5
 
 
@@ -265,7 +348,8 @@ class ParameterBody(BaseModel):
 class QueryBody(BaseModel):
     datasource_id: str
     name: str
-    sql: str
+    sql: str                       # or a request path, when the source is rest
+    row_path: str = ""             # rest only: where the records sit in the response
     parameters: list[ParameterBody] = []
 
 
@@ -279,9 +363,10 @@ def _datasource_json(s: Session, row: db.DataSource) -> dict[str, Any]:
         select(db.SavedQuery.id).where(db.SavedQuery.datasource_id == row.id)
         .order_by(db.SavedQuery.id)
     ).all()
-    return {"id": row.id, "name": row.name, "label": row.label,
-            "url": datasources.masked(row.url), "pool_size": row.pool_size,
-            "queries": list(queries)}
+    return {"id": row.id, "name": row.name, "label": row.label, "kind": row.kind,
+            "url": datasources.masked(row.url),
+            "headers": datasources.masked_headers(row.headers),
+            "pool_size": row.pool_size, "queries": list(queries)}
 
 
 @app.get("/datasources", dependencies=[Depends(admin)])
@@ -315,8 +400,10 @@ def put_datasource(datasource_id: str, body: DataSourceBody,
                  user: AppUser = Depends(admin)) -> dict[str, Any]:
     row = s.get(db.DataSource, datasource_id)
     url = datasources.unmasked(body.url, row.url if row else None)
+    headers = datasources.unmasked_headers(body.headers, row.headers if row else None)
     row = row or db.DataSource(id=datasource_id)
     row.name, row.label, row.url, row.pool_size = body.name, body.label, url, body.pool_size
+    row.kind, row.headers = body.kind, headers
     s.add(row)
     audit(s, "save", "datasource", row.id, actor=user)
     s.commit()
@@ -347,7 +434,7 @@ def test_datasource(datasource_id: str, s: Session = Depends(get_session)) -> di
         raise HTTPException(404, f"no data source {datasource_id!r}")
     try:
         return ds.probe()
-    except Exception as exc:                          # noqa: BLE001
+    except Exception as exc:
         return {"ok": False, "error": str(exc)}
 
 
@@ -368,6 +455,7 @@ def put_query(query_id: str, body: QueryBody, s: Session = Depends(get_session))
         raise HTTPException(422, f"no data source {body.datasource_id!r}")
     row = s.get(db.SavedQuery, query_id) or db.SavedQuery(id=query_id)
     row.datasource_id, row.name, row.sql = body.datasource_id, body.name, body.sql
+    row.row_path = body.row_path
 
     # the old parameters go first and are flushed before the new ones arrive:
     # a name reused across a save would otherwise collide with itself, because
@@ -400,7 +488,8 @@ def get_query(query_id: str, s: Session = Depends(get_session),
                        for p in row.parameters],
     }
     if user.role == "admin":
-        body |= {"datasource_id": row.datasource_id, "sql": row.sql}
+        body |= {"datasource_id": row.datasource_id, "sql": row.sql,
+                 "row_path": row.row_path}
     return body
 
 
@@ -411,7 +500,7 @@ def query_columns(query_id: str, s: Session = Depends(get_session)) -> dict[str,
         return {"columns": datasources.columns(s, _query(s, query_id))}
     except HTTPException:
         raise
-    except Exception as exc:                          # noqa: BLE001 — the operator wrote the SQL
+    except Exception as exc:
         raise HTTPException(422, f"{query_id}: {exc}") from None
 
 
@@ -447,7 +536,7 @@ def preview_query(query_id: str, body: PreviewQuery,
         rows = datasources.run(s, _query(s, query_id), body.params, limit=body.limit)
     except HTTPException:
         raise
-    except Exception as exc:                          # noqa: BLE001 — the operator wrote the SQL
+    except Exception as exc:
         raise HTTPException(422, f"{query_id}: {exc}") from None
     return {"rows": jsonable_encoder(rows), "fields": datasources.describe(rows),
             "count": len(rows),
@@ -471,7 +560,8 @@ def _preview_template(s: Session, template_id: str, published: bool) -> Template
         return _as_template(row)
     version = _latest_version(row)
     if version is None:
-        raise HTTPException(422, f"template {template_id!r} has no published version; publish it first")
+        raise HTTPException(
+            422, f"template {template_id!r} has no published version; publish it first")
     return Template.model_validate(version.definition)
 
 
@@ -509,7 +599,7 @@ def _one_row(s: Session, t: Template, body: RenderPreview) -> dict[str, Any]:
         rows = datasources.run(s, query, body.params, limit=body.record + 1)
     except HTTPException:
         raise
-    except Exception as exc:                          # noqa: BLE001 — the operator wrote the SQL
+    except Exception as exc:
         raise HTTPException(422, f"{t.query}: {exc}") from None
     if not rows:
         raise HTTPException(422, "the query returned no rows")
@@ -524,6 +614,12 @@ class RunSpec(BaseModel):
     copies: int = 1
     start_at: int = 1
     skip_rows: list[int] = []      # 1-based record numbers, as the operator sees them
+    separator: bool = False        # a divider label in front of the job
+    pause_between: bool = False    # stop after each label, for hand-fed stock
+
+
+MAX_RECORDS = 200                  # what the check will describe back
+MAX_PDF_PAGES = 50
 
 
 class NewRun(RunSpec):
@@ -533,9 +629,11 @@ class NewRun(RunSpec):
 class Prepared(BaseModel):
     version_id: int
     version: int
-    records: int
+    records: list[dict[str, Any]]   # every record in range, skipped ones marked
+    printing: int                   # how many of them will actually print
     labels: list[str]
     warnings: list[str]
+    template: Template
 
 
 def _prepare(s: Session, body: RunSpec) -> Prepared:
@@ -543,19 +641,48 @@ def _prepare(s: Session, body: RunSpec) -> Prepared:
     real one so the operator's check and the print never disagree."""
     version = _latest_version(_template_row(s, body.template_id))
     if version is None:
-        raise HTTPException(422, f"template {body.template_id!r} has no published version; publish it first")
+        raise HTTPException(
+            422, f"template {body.template_id!r} has no published version; publish it first")
     t = Template.model_validate(version.definition)
 
     rows = datasources.run(s, _query(s, t.query), body.params) if t.query else [{}]
     skip = set(body.skip_rows)
-    rows = [r for i, r in enumerate(rows, start=1) if i >= body.start_at and i not in skip]
+    in_range = [(i, r) for i, r in enumerate(rows, start=1) if i >= body.start_at]
+    printing = [(i, r) for i, r in in_range if i not in skip]
 
     try:
-        labels, warnings = render_run(t, rows, copies=body.copies)
+        labels, warnings = render_run(t, [r for _, r in printing], copies=body.copies)
     except RenderError as exc:
         raise HTTPException(422, str(exc)) from None
-    return Prepared(version_id=version.id, version=version.version, records=len(rows),
-                    labels=labels, warnings=warnings)
+    # every record in range comes back, skipped ones marked: a list that drops
+    # what you untick makes unticking a one-way door
+    return Prepared(
+        version_id=version.id, version=version.version,
+        records=[{"n": n, "summary": _summarise(r), "included": n not in skip}
+                 for n, r in in_range],
+        printing=len(printing), labels=labels, warnings=warnings, template=t,
+    )
+
+
+def _summarise(row: dict[str, Any]) -> str:
+    """Enough of a record for someone to recognise it in a list. Image columns
+    are four kilobytes of nothing anyone can read, so they are left out."""
+    bits = []
+    for value in row.values():
+        if value is None or isinstance(value, (bytes, memoryview)):
+            continue
+        text = str(value)
+        if len(text) > 64:                            # a base64 image, or prose
+            continue
+        bits.append(text)
+        if len(bits) == 3:
+            break
+    return " · ".join(bits)[:180]
+
+
+def _with_separator(p: Prepared, run_id: str) -> list[str]:
+    when = auth.now().strftime("%d %b %Y %H:%M")
+    return [separator(p.template, run_id, len(p.labels), when), *p.labels]
 
 
 @app.post("/runs/check", dependencies=[Depends(current_user)])
@@ -563,9 +690,52 @@ def check_run(body: RunSpec, s: Session = Depends(get_session)) -> dict[str, Any
     """Everything a run would do short of writing it down or queueing it."""
     started = time.perf_counter()
     p = _prepare(s, body)
-    return {"records": p.records, "labels": len(p.labels), "warnings": p.warnings,
-            "template_version": p.version,
-            "elapsed_ms": round((time.perf_counter() - started) * 1000)}
+    return {
+        "records": p.printing,
+        "record_list": p.records[:MAX_RECORDS],
+        "records_capped": len(p.records) > MAX_RECORDS,
+        "labels": len(p.labels) + (1 if body.separator else 0),
+        "warnings": p.warnings,
+        "template_version": p.version,
+        "elapsed_ms": round((time.perf_counter() - started) * 1000),
+    }
+
+
+@app.post("/runs/preview.pdf", dependencies=[Depends(current_user)])
+def run_pdf(body: RunSpec, s: Session = Depends(get_session)) -> RawResponse:
+    """The run as a PDF, to look at before committing a roll of stock to it."""
+    p = _prepare(s, body)
+    rows = (datasources.run(s, _query(s, p.template.query), body.params)
+            if p.template.query else [{}])
+    skip = set(body.skip_rows)
+    chosen = [r for i, r in enumerate(rows, start=1)
+              if i >= body.start_at and i not in skip]
+
+    pages: list[Image.Image] = []
+    for row in chosen:
+        if len(pages) >= MAX_PDF_PAGES:
+            break
+        for _ in range(body.copies):
+            if len(pages) >= MAX_PDF_PAGES:
+                break
+            try:
+                pages.append(Image.open(io.BytesIO(preview.render_png(p.template, row))))
+            except preview.RenderError as exc:
+                raise HTTPException(422, str(exc)) from None
+    if not pages:
+        raise HTTPException(422, "there is nothing to draw")
+
+    out = io.BytesIO()
+    pages[0].convert("L").save(out, "PDF", save_all=True,
+                               append_images=[page.convert("L") for page in pages[1:]],
+                               resolution=p.template.dpi)
+    name = f"{body.template_id}-{auth.now():%Y%m%d-%H%M}.pdf"
+    return RawResponse(
+        out.getvalue(), media_type="application/pdf",
+        headers={"content-disposition": f'attachment; filename="{name}"',
+                 "x-platen-pages": str(len(pages)),
+                 "x-platen-labels": str(len(p.labels))},
+    )
 
 
 def _run_json(run: db.PrintRun) -> dict[str, Any]:
@@ -575,7 +745,7 @@ def _run_json(run: db.PrintRun) -> dict[str, Any]:
         "template_id": run.template_version.template_id,
         "template_name": run.template_version.definition.get("name"),
         "template_version": run.template_version.version, "printer_id": run.printer_id,
-        "params": run.params, "copies": run.copies,
+        "params": run.params, "copies": run.copies, "pause_between": run.pause_between,
         "warnings": [f"row {w.row_no}: {w.message}" if w.row_no else w.message
                      for w in run.warnings],
         "created_at": run.created_at, "started_at": run.started_at,
@@ -592,20 +762,23 @@ def create_run(body: NewRun, s: Session = Depends(get_session),
     # every label renders here, before a run row exists, let alone a job
     p = _prepare(s, body)
 
+    run_id = f"JOB-{uuid.uuid4().hex[:6].upper()}"
+    labels = _with_separator(p, run_id) if body.separator else p.labels
     run = db.PrintRun(
-        id=f"JOB-{uuid.uuid4().hex[:6].upper()}", template_version_id=p.version_id,
-        printer_id=body.printer_id, params=body.params, copies=body.copies, total=len(p.labels),
-        labels=[db.RunLabel(seq=i, zpl=z) for i, z in enumerate(p.labels, start=1)],
+        id=run_id, template_version_id=p.version_id,
+        printer_id=body.printer_id, params=body.params, copies=body.copies,
+        pause_between=body.pause_between, total=len(labels),
+        labels=[db.RunLabel(seq=i, zpl=z) for i, z in enumerate(labels, start=1)],
         warnings=[_warning(w) for w in p.warnings],
     )
     s.add(run)
     audit(s, "create", "run", run.id, template_id=body.template_id, template_version=p.version,
-          printer_id=body.printer_id, labels=len(p.labels), skip_rows=body.skip_rows, actor=user)
+          printer_id=body.printer_id, labels=len(labels), skip_rows=body.skip_rows, actor=user)
     s.commit()
 
     try:
         jobs.enqueue(run.id)
-    except Exception as exc:                          # noqa: BLE001
+    except Exception as exc:
         run.status, run.error = "failed", f"could not queue: {type(exc).__name__}: {exc}"
         s.commit()
         raise HTTPException(503, run.error) from None
@@ -668,6 +841,20 @@ def retry_run(run_id: str, s: Session = Depends(get_session),
     return {"id": run_id, "status": "queued", "remaining": left}
 
 
+@app.post("/runs/{run_id}/continue", status_code=202)
+def continue_run(run_id: str, s: Session = Depends(get_session),
+                 user: AppUser = Depends(current_user)) -> dict[str, Any]:
+    """The next label of a hand-fed job."""
+    run = _run_row(s, run_id)
+    if run.status != "waiting":
+        raise HTTPException(409, f"{run_id} is {run.status}; it is not waiting on anyone")
+    run.status = "queued"
+    audit(s, "continue", "run", run_id, actor=user)
+    s.commit()
+    jobs.enqueue(run_id)
+    return {"id": run_id, "status": "queued", "remaining": jobs.remaining(s, run_id)}
+
+
 @app.post("/runs/{run_id}/cancel", status_code=202)
 def cancel_run(run_id: str, s: Session = Depends(get_session),
                  user: AppUser = Depends(current_user)) -> dict[str, str]:
@@ -694,10 +881,12 @@ def _printer_json(row: db.Printer, online: bool | None) -> dict[str, Any]:
             "online": online}
 
 
-def _probe(row: db.Printer) -> bool | None:
+def _probe(row: db.Printer, agents: dict[str, bool]) -> bool | None:
+    if row.transport_kind == "agent":
+        return agents.get((row.transport_config or {}).get("agent_id"), False)
     try:
         return printers.from_row(row).transport.probe()
-    except Exception:                                 # noqa: BLE001 — unreachable is not online
+    except Exception:
         return False
 
 
@@ -709,9 +898,12 @@ def list_printers(probe: bool = True,
     rows = list(s.scalars(select(db.Printer).order_by(db.Printer.name)))
     if not probe:
         return [_printer_json(r, None) for r in rows]
+    # agents are a database read, so they are answered here rather than in a
+    # thread that would need a session of its own
+    agents = {a.id: _agent_online(a) for a in s.scalars(select(db.PrintAgent))}
     with ThreadPoolExecutor(max_workers=min(8, max(1, len(rows)))) as pool:
-        states = list(pool.map(_probe, rows))
-    return [_printer_json(r, online) for r, online in zip(rows, states)]
+        states = list(pool.map(lambda r: _probe(r, agents), rows))
+    return [_printer_json(r, online) for r, online in zip(rows, states, strict=True)]
 
 
 def _printer_row(s: Session, printer_id: str) -> db.Printer:
@@ -725,7 +917,10 @@ def _printer_row(s: Session, printer_id: str) -> db.Printer:
 def get_printer(printer_id: str, probe: bool = False,
                 s: Session = Depends(get_session)) -> dict[str, Any]:
     row = _printer_row(s, printer_id)
-    return _printer_json(row, _probe(row) if probe else None)
+    if not probe:
+        return _printer_json(row, None)
+    agents = {a.id: _agent_online(a) for a in s.scalars(select(db.PrintAgent))}
+    return _printer_json(row, _probe(row, agents))
 
 
 @app.delete("/printers/{printer_id}", status_code=204)
@@ -767,6 +962,451 @@ def put_printer(printer_id: str, body: PrinterBody,
     return _printer_json(row, None)
 
 
+# ----------------------------------------------------------------- saved runs
+
+class SavedRunBody(BaseModel):
+    name: str
+    template_id: str
+    printer_id: str | None = None
+    params: dict[str, Any] = {}
+    copies: int = 1
+    separator: bool = False
+    pause_between: bool = False
+
+
+def _saved_run_json(row: db.SavedRun) -> dict[str, Any]:
+    return {"id": row.id, "name": row.name, "template_id": row.template_id,
+            "printer_id": row.printer_id, "params": row.params, "copies": row.copies,
+            "separator": row.separator, "pause_between": row.pause_between,
+            "created_by": row.created_by, "updated_at": row.updated_at}
+
+
+@app.get("/saved-runs", dependencies=[Depends(current_user)])
+def list_saved_runs(s: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    return [_saved_run_json(r) for r in s.scalars(
+        select(db.SavedRun).order_by(db.SavedRun.name))]
+
+
+@app.put("/saved-runs/{saved_id}")
+def put_saved_run(saved_id: str, body: SavedRunBody, s: Session = Depends(get_session),
+                  user: AppUser = Depends(current_user)) -> dict[str, Any]:
+    if s.get(db.Template, body.template_id) is None:
+        raise HTTPException(422, f"no template {body.template_id!r} to save a run for")
+    row = s.get(db.SavedRun, saved_id) or db.SavedRun(id=saved_id, created_by=user.username)
+    row.name, row.template_id, row.printer_id = body.name, body.template_id, body.printer_id
+    row.params, row.copies = body.params, body.copies
+    row.separator, row.pause_between = body.separator, body.pause_between
+    s.add(row)
+    s.commit()
+    return _saved_run_json(row)
+
+
+@app.delete("/saved-runs/{saved_id}", status_code=204)
+def delete_saved_run(saved_id: str, s: Session = Depends(get_session),
+                     user: AppUser = Depends(current_user)) -> Response:
+    row = s.get(db.SavedRun, saved_id)
+    if row is None:
+        raise HTTPException(404, f"no saved run {saved_id!r}")
+    s.delete(row)
+    audit(s, "delete", "saved_run", saved_id, actor=user)
+    s.commit()
+    return Response(status_code=204)
+
+
+# ------------------------------------------------------------- looking after it
+
+class RetentionBody(BaseModel):
+    labels_days: int | None = None
+    runs_days: int | None = None
+    audit_days: int | None = None
+    agent_jobs_days: int | None = None
+
+
+@app.get("/maintenance/retention", dependencies=[Depends(admin)])
+def get_retention(s: Session = Depends(get_session)) -> dict[str, Any]:
+    return retention.settings(s)
+
+
+@app.put("/maintenance/retention")
+def put_retention(body: RetentionBody, s: Session = Depends(get_session),
+                  user: AppUser = Depends(admin)) -> dict[str, Any]:
+    """Days to keep each thing. Zero keeps it, which somebody has to choose."""
+    kept = retention.set_settings(s, body.model_dump(exclude_none=True))
+    audit(s, "retention", "maintenance", "settings", actor=user, **kept)
+    s.commit()
+    return kept
+
+
+@app.post("/maintenance/prune")
+def run_prune(s: Session = Depends(get_session),
+              user: AppUser = Depends(admin)) -> dict[str, Any]:
+    removed = retention.prune(s)
+    audit(s, "prune", "maintenance", "all", actor=user, **removed)
+    s.commit()
+    return {"removed": removed, "ran_at": retention.now()}
+
+
+# ------------------------------------------------------------------ the front
+
+ACTIVE = ("queued", "printing", "retrying")
+
+
+@app.get("/dashboard", dependencies=[Depends(current_user)])
+def dashboard(s: Session = Depends(get_session)) -> dict[str, Any]:
+    """The few numbers worth seeing on the way past, and what is on the queue."""
+    since = auth.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    printed_today = s.scalar(
+        select(func.count()).select_from(db.RunLabel)
+        .where(db.RunLabel.printed_at >= since)) or 0
+    queued = s.scalar(
+        select(func.count()).select_from(db.PrintRun)
+        .where(db.PrintRun.status.in_(ACTIVE))) or 0
+    failed_today = s.scalar(
+        select(func.count()).select_from(db.PrintRun)
+        .where(db.PrintRun.status == "failed", db.PrintRun.created_at >= since)) or 0
+
+    printer_rows = list(s.scalars(select(db.Printer)))
+    agents = {a.id: _agent_online(a) for a in s.scalars(select(db.PrintAgent))}
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(printer_rows)))) as pool:
+        states = list(pool.map(lambda r: _probe(r, agents), printer_rows))
+
+    runs = list(s.scalars(
+        select(db.PrintRun)
+        .options(selectinload(db.PrintRun.template_version),
+                 selectinload(db.PrintRun.warnings))
+        .order_by(db.PrintRun.created_at.desc()).limit(8)))
+
+    templates = list(s.scalars(
+        select(db.Template).order_by(db.Template.updated_at.desc()).limit(5)))
+
+    return {
+        "printed_today": printed_today,
+        "queued": queued,
+        "failed_today": failed_today,
+        "paused": jobs.paused(s),
+        "printers": {"total": len(printer_rows), "online": sum(1 for x in states if x)},
+        "runs": [_run_json(r) for r in runs],
+        "templates": [
+            {"id": t.id, "name": t.name, "dpi": t.dpi, "size_mm": [t.width_mm, t.height_mm],
+             "version": t.versions[-1].version if t.versions else 0,
+             "updated_at": t.updated_at}
+            for t in templates
+        ],
+        "datasources": [{"id": d.id, "name": d.name, "kind": d.kind}
+                        for d in s.scalars(select(db.DataSource).order_by(db.DataSource.name))],
+    }
+
+
+@app.post("/queue/pause")
+def pause_queue(s: Session = Depends(get_session),
+                user: AppUser = Depends(admin)) -> dict[str, Any]:
+    """Hold everything. A run already printing stops between labels."""
+    jobs.set_paused(s, True)
+    audit(s, "pause", "queue", "all", actor=user)
+    s.commit()
+    return {"paused": True}
+
+
+@app.post("/queue/resume")
+def resume_queue(s: Session = Depends(get_session),
+                 user: AppUser = Depends(admin)) -> dict[str, Any]:
+    """Let it go again, and put every held run back on the queue. They resume
+    where they stopped, the same as a retry."""
+    jobs.set_paused(s, False)
+    held = list(s.scalars(select(db.PrintRun).where(db.PrintRun.status == "paused")))
+    for run in held:
+        run.status = "queued"
+    audit(s, "resume", "queue", "all", actor=user, resumed=len(held))
+    s.commit()
+    for run in held:
+        jobs.enqueue(run.id)
+    return {"paused": False, "resumed": len(held)}
+
+
+# ------------------------------------------------------------ people and keys
+
+class UserBody(BaseModel):
+    name: str = ""
+    role: Literal["admin", "operator"] = "operator"
+    disabled: bool = False
+    password: str | None = None    # required when there is no such user yet
+
+
+class PasswordBody(BaseModel):
+    password: str
+
+
+class KeyBody(BaseModel):
+    name: str
+    role: Literal["admin", "operator"] = "operator"
+
+
+def _user_json(row: AppUser) -> dict[str, Any]:
+    return {"username": row.username, "name": row.display_name, "role": row.role,
+            "disabled": row.disabled, "locked": bool(row.locked_until
+                                                     and row.locked_until > auth.now()),
+            "created_at": row.created_at, "last_login_at": row.last_login_at}
+
+
+def _user_row(s: Session, username: str) -> AppUser:
+    row = s.get(AppUser, username)
+    if row is None:
+        raise HTTPException(404, f"no user {username!r}")
+    return row
+
+
+def _other_admins(s: Session, username: str) -> int:
+    return s.scalar(
+        select(func.count()).select_from(AppUser)
+        .where(AppUser.role == "admin", AppUser.disabled.is_(False),
+               AppUser.username != username)
+    ) or 0
+
+
+@app.get("/users", dependencies=[Depends(admin)])
+def list_users(s: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    return [_user_json(u) for u in s.scalars(select(AppUser).order_by(AppUser.username))]
+
+
+@app.put("/users/{username}")
+def put_user(username: str, body: UserBody, s: Session = Depends(get_session),
+             user: AppUser = Depends(admin)) -> dict[str, Any]:
+    username = username.strip().lower()
+    row = s.get(AppUser, username)
+
+    # the one thing an administrator must not be able to do is shut the door
+    # on themselves and have nobody left holding a key
+    losing_rights = body.role != "admin" or body.disabled
+    if row is not None and username == user.username and losing_rights:
+        raise HTTPException(
+            409, "you can't take your own administrator rights away; "
+                 "ask another administrator to do it")
+    if (row is not None and row.role == "admin" and losing_rights
+            and not _other_admins(s, username)):
+        raise HTTPException(409, f"{username} is the last administrator")
+
+    if row is None:
+        if not body.password:
+            raise HTTPException(422, "a new user needs a password")
+        try:
+            row = auth.create_user(s, username, body.password, role=body.role,
+                                   display_name=body.name)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+    else:
+        row.display_name = body.name or row.display_name
+        row.role, row.disabled = body.role, body.disabled
+        s.commit()
+        if body.disabled:
+            auth.end_all_sessions(s, username)
+        if body.password:
+            auth.set_password(s, row, body.password)
+
+    audit(s, "save", "user", username, actor=user, role=body.role, disabled=body.disabled)
+    s.commit()
+    return _user_json(row)
+
+
+@app.post("/users/{username}/password")
+def set_user_password(username: str, body: PasswordBody, s: Session = Depends(get_session),
+                      user: AppUser = Depends(admin)) -> dict[str, Any]:
+    row = _user_row(s, username)
+    try:
+        auth.set_password(s, row, body.password)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
+    audit(s, "password", "user", username, actor=user)
+    s.commit()
+    return {"username": username, "signed_out": True}
+
+
+@app.post("/users/{username}/sessions/end")
+def end_user_sessions(username: str, s: Session = Depends(get_session),
+                      user: AppUser = Depends(admin)) -> dict[str, Any]:
+    _user_row(s, username)
+    auth.end_all_sessions(s, username)
+    audit(s, "signout", "user", username, actor=user)
+    s.commit()
+    return {"username": username, "signed_out": True}
+
+
+@app.delete("/users/{username}", status_code=204)
+def delete_user(username: str, s: Session = Depends(get_session),
+                user: AppUser = Depends(admin)) -> Response:
+    row = _user_row(s, username)
+    if username == user.username:
+        raise HTTPException(409, "you can't delete yourself")
+    if row.role == "admin" and not _other_admins(s, username):
+        raise HTTPException(409, f"{username} is the last administrator")
+    auth.end_all_sessions(s, username)
+    s.delete(row)
+    audit(s, "delete", "user", username, actor=user)
+    s.commit()
+    return Response(status_code=204)
+
+
+@app.get("/keys", dependencies=[Depends(admin)])
+def list_keys(s: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    return [{"id": k.id[:12], "name": k.name, "role": k.role, "agent_id": k.agent_id,
+             "created_by": k.created_by, "created_at": k.created_at,
+             "last_used_at": k.last_used_at}
+            for k in s.scalars(select(db.ApiToken).order_by(db.ApiToken.created_at.desc()))]
+
+
+@app.post("/keys", status_code=201)
+def make_key(body: KeyBody, s: Session = Depends(get_session),
+             user: AppUser = Depends(admin)) -> dict[str, Any]:
+    """A key for something that isn't a person. Shown once, here."""
+    if body.role not in ("admin", "operator"):
+        raise HTTPException(422, "an agent key is made with the agent, not here")
+    token = auth.create_token(s, name=body.name, role=body.role, created_by=user.username)
+    audit(s, "create", "key", body.name, actor=user, role=body.role)
+    s.commit()
+    return {"id": auth.token_id(token)[:12], "name": body.name, "role": body.role,
+            "token": token}
+
+
+@app.delete("/keys/{key_id}", status_code=204)
+def revoke_key(key_id: str, s: Session = Depends(get_session),
+               user: AppUser = Depends(admin)) -> Response:
+    rows = [k for k in s.scalars(select(db.ApiToken)) if k.id.startswith(key_id)]
+    if not rows:
+        raise HTTPException(404, f"no key {key_id!r}")
+    for row in rows:
+        s.delete(row)
+    audit(s, "revoke", "key", key_id, actor=user)
+    s.commit()
+    return Response(status_code=204)
+
+
+# --------------------------------------------------------------------- agents
+
+class AgentBody(BaseModel):
+    name: str
+
+
+class PollBody(BaseModel):
+    devices: list[str] = []
+
+
+class DoneBody(BaseModel):
+    error: str | None = None
+
+
+def _agent_json(row: db.PrintAgent) -> dict[str, Any]:
+    return {"id": row.id, "name": row.name, "devices": row.devices,
+            "last_seen_at": row.last_seen_at, "created_at": row.created_at,
+            "online": _agent_online(row)}
+
+
+def _agent_online(row: db.PrintAgent) -> bool:
+    return bool(row.last_seen_at
+                and row.last_seen_at > auth.now() - printers.AGENT_ONLINE)
+
+
+def _agent_row(s: Session, agent_id: str) -> db.PrintAgent:
+    row = s.get(db.PrintAgent, agent_id)
+    if row is None:
+        raise HTTPException(404, f"no agent {agent_id!r}")
+    return row
+
+
+@app.get("/agents", dependencies=[Depends(admin)])
+def list_agents(s: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    return [_agent_json(a) for a in s.scalars(
+        select(db.PrintAgent).order_by(db.PrintAgent.name))]
+
+
+@app.get("/agents/{agent_id}", dependencies=[Depends(admin)])
+def get_agent(agent_id: str, s: Session = Depends(get_session)) -> dict[str, Any]:
+    return _agent_json(_agent_row(s, agent_id))
+
+
+@app.put("/agents/{agent_id}")
+def put_agent(agent_id: str, body: AgentBody, s: Session = Depends(get_session),
+              user: AppUser = Depends(admin)) -> dict[str, Any]:
+    """Making an agent hands back its key. That is the only time anyone sees
+    it; only its hash is kept."""
+    row = s.get(db.PrintAgent, agent_id)
+    fresh = row is None
+    row = row or db.PrintAgent(id=agent_id, devices=[])
+    row.name = body.name
+    s.add(row)
+    s.commit()
+    out = _agent_json(row)
+    if fresh:
+        out["token"] = auth.create_token(s, name=f"agent {agent_id}", role="agent",
+                                         agent_id=agent_id, created_by=user.username)
+    audit(s, "save", "agent", agent_id, actor=user)
+    s.commit()
+    return out
+
+
+@app.post("/agents/{agent_id}/token")
+def rotate_agent_token(agent_id: str, s: Session = Depends(get_session),
+                       user: AppUser = Depends(admin)) -> dict[str, Any]:
+    _agent_row(s, agent_id)
+    auth.revoke_tokens(s, agent_id=agent_id)
+    token = auth.create_token(s, name=f"agent {agent_id}", role="agent",
+                              agent_id=agent_id, created_by=user.username)
+    audit(s, "rotate", "agent", agent_id, actor=user)
+    s.commit()
+    return {"id": agent_id, "token": token}
+
+
+@app.delete("/agents/{agent_id}", status_code=204)
+def delete_agent(agent_id: str, s: Session = Depends(get_session),
+                 user: AppUser = Depends(admin)) -> Response:
+    row = _agent_row(s, agent_id)
+    used = s.scalars(select(db.Printer.id).where(
+        db.Printer.transport_kind == "agent")).all()
+    on_it = [p for p in used
+             if (s.get(db.Printer, p).transport_config or {}).get("agent_id") == agent_id]
+    if on_it:
+        raise HTTPException(409, f"printers still go through {agent_id!r}: {', '.join(on_it)}")
+    auth.revoke_tokens(s, agent_id=agent_id)
+    for job in s.scalars(select(db.AgentJob).where(db.AgentJob.agent_id == agent_id)):
+        s.delete(job)
+    s.delete(row)
+    audit(s, "delete", "agent", agent_id, actor=user)
+    s.commit()
+    return Response(status_code=204)
+
+
+@app.post("/agents/{agent_id}/poll")
+def agent_poll(agent_id: str, body: PollBody, s: Session = Depends(get_session),
+               token: db.ApiToken = Depends(agent_token)) -> dict[str, Any]:
+    """The agent asking for work. Also how it says it is still there."""
+    row = _agent_row(s, agent_id)
+    row.last_seen_at = auth.now()
+    if body.devices:
+        row.devices = body.devices
+
+    waiting = s.scalars(
+        select(db.AgentJob)
+        .where(db.AgentJob.agent_id == agent_id, db.AgentJob.taken_at.is_(None))
+        .order_by(db.AgentJob.created_at).limit(20)
+    ).all()
+    for job in waiting:
+        job.taken_at = auth.now()
+    s.commit()
+    return {"agent": agent_id,
+            "jobs": [{"id": j.id, "device": j.device, "zpl": j.zpl} for j in waiting]}
+
+
+@app.post("/agents/{agent_id}/jobs/{job_id}/done")
+def agent_done(agent_id: str, job_id: str, body: DoneBody,
+               s: Session = Depends(get_session),
+               token: db.ApiToken = Depends(agent_token)) -> dict[str, str]:
+    job = s.get(db.AgentJob, job_id)
+    if job is None or job.agent_id != agent_id:
+        raise HTTPException(404, f"no job {job_id!r} for {agent_id!r}")
+    job.done_at, job.error = auth.now(), body.error
+    s.commit()
+    return {"id": job_id, "status": "failed" if body.error else "printed"}
+
+
 class ScanRequest(BaseModel):
     network: str
     port: int = 9100
@@ -804,6 +1444,6 @@ def test_printer(printer_id: str, s: Session = Depends(get_session)) -> dict[str
         raise HTTPException(404, f"no printer {printer_id!r}")
     try:
         p.transport.send(printers.TEST_LABEL)
-    except Exception as exc:                          # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(502, f"{printer_id}: {type(exc).__name__}: {exc}") from None
     return {"id": printer_id, "sent": "test label"}

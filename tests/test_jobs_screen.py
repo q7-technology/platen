@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+
 from sqlalchemy import event
 
 from db import session as dbsession
@@ -20,7 +22,7 @@ class _Counter:
     def __init__(self) -> None:
         self.n = 0
 
-    def __enter__(self) -> "_Counter":
+    def __enter__(self) -> _Counter:
         self.engine = dbsession.engine()
         event.listen(self.engine, "before_cursor_execute", self._hit)
         return self
@@ -66,10 +68,8 @@ def test_the_list_can_be_narrowed_to_what_went_wrong(seeded, transport):
     good = _make_runs(seeded, 1)[0]
     bad = _make_runs(seeded, 1)[0]
     transport.after_send = lambda n: (_ for _ in ()).throw(OSError("media out"))
-    try:
+    with contextlib.suppress(OSError):
         jobs.print_run(bad)
-    except OSError:
-        pass
 
     failed = [r["id"] for r in seeded.get("/runs", params={"status": "failed"}).json()]
 

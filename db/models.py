@@ -3,7 +3,7 @@ in production and on SQLite in the test suite."""
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -21,7 +21,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class UtcDateTime(TypeDecorator):
@@ -38,12 +38,12 @@ class UtcDateTime(TypeDecorator):
 
     def process_bind_param(self, value: datetime | None, dialect) -> datetime | None:
         if value is not None and value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
+            return value.replace(tzinfo=UTC)
         return value
 
     def process_result_value(self, value: datetime | None, dialect) -> datetime | None:
         if value is not None and value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
+            return value.replace(tzinfo=UTC)
         return value
 
 
@@ -80,6 +80,61 @@ class UserSession(Base):
     last_seen_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
 
 
+class Setting(Base):
+    """A handful of things that are true of the whole instance, like whether
+    the queue is paused. Kept in the database so the API and the worker see
+    the same answer."""
+
+    __tablename__ = "app_setting"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    changed_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now, onupdate=now)
+
+
+class ApiToken(Base):
+    """A key something other than a person signs in with. Only its hash is
+    kept, so the plain token exists once, in the answer that created it."""
+
+    __tablename__ = "api_token"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    role: Mapped[str] = mapped_column(String(16))          # admin | operator | agent
+    agent_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
+    last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+
+
+class PrintAgent(Base):
+    """A workstation with a printer hanging off it. It asks Platen for work
+    rather than Platen reaching into the office network."""
+
+    __tablename__ = "print_agent"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    devices: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
+    last_seen_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+
+
+class AgentJob(Base):
+    """One label waiting for an agent to come and get it."""
+
+    __tablename__ = "agent_job"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("print_agent.id"), index=True)
+    device: Mapped[str] = mapped_column(String(200), default="")
+    zpl: Mapped[str] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
+    taken_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    done_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+
+
 class Template(Base):
     """The draft the editor works on. Publishing snapshots it into a version."""
 
@@ -91,13 +146,14 @@ class Template(Base):
     height_mm: Mapped[float]
     dpi: Mapped[int] = mapped_column(Integer, default=203)
     darkness: Mapped[int | None]
+    folder: Mapped[str] = mapped_column(String(100), default="")
     datasource_id: Mapped[str | None] = mapped_column(String(64))
     query_id: Mapped[str | None] = mapped_column(String(64))
     elements: Mapped[list[Any]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now, onupdate=now)
 
-    versions: Mapped[list["TemplateVersion"]] = relationship(
+    versions: Mapped[list[TemplateVersion]] = relationship(
         back_populates="template", order_by="TemplateVersion.version",
         cascade="all, delete-orphan",
     )
@@ -125,7 +181,9 @@ class DataSource(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
     label: Mapped[str] = mapped_column(String(200), default="")
+    kind: Mapped[str] = mapped_column(String(8), default="sql")     # sql | rest
     url: Mapped[str] = mapped_column(Text)
+    headers: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)   # rest only
     pool_size: Mapped[int] = mapped_column(Integer, default=5)
 
 
@@ -135,9 +193,10 @@ class SavedQuery(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     datasource_id: Mapped[str] = mapped_column(ForeignKey("datasource.id"))
     name: Mapped[str] = mapped_column(String(200))
-    sql: Mapped[str] = mapped_column(Text)
+    sql: Mapped[str] = mapped_column(Text)          # or a request path, for rest
+    row_path: Mapped[str] = mapped_column(String(200), default="")
 
-    parameters: Mapped[list["QueryParameter"]] = relationship(
+    parameters: Mapped[list[QueryParameter]] = relationship(
         back_populates="query", order_by="QueryParameter.position",
         cascade="all, delete-orphan",
     )
@@ -178,6 +237,7 @@ class PrintRun(Base):
     printer_id: Mapped[str] = mapped_column(ForeignKey("printer.id"))
     params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     copies: Mapped[int] = mapped_column(Integer, default=1)
+    pause_between: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(16), default="queued")
     printed: Mapped[int] = mapped_column(Integer, default=0)
     total: Mapped[int] = mapped_column(Integer, default=0)
@@ -189,10 +249,10 @@ class PrintRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
     template_version: Mapped[TemplateVersion] = relationship()
-    labels: Mapped[list["RunLabel"]] = relationship(
+    labels: Mapped[list[RunLabel]] = relationship(
         back_populates="run", order_by="RunLabel.seq", cascade="all, delete-orphan"
     )
-    warnings: Mapped[list["RunWarning"]] = relationship(
+    warnings: Mapped[list[RunWarning]] = relationship(
         back_populates="run", order_by="RunWarning.id", cascade="all, delete-orphan"
     )
 
@@ -221,6 +281,23 @@ class RunWarning(Base):
     message: Mapped[str] = mapped_column(Text)
 
     run: Mapped[PrintRun] = relationship(back_populates="warnings")
+
+
+class SavedRun(Base):
+    """A run somebody does every morning, kept so they do not set it up again."""
+
+    __tablename__ = "saved_run"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    template_id: Mapped[str] = mapped_column(ForeignKey("template.id"))
+    printer_id: Mapped[str | None] = mapped_column(String(64))
+    params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    copies: Mapped[int] = mapped_column(Integer, default=1)
+    separator: Mapped[bool] = mapped_column(Boolean, default=False)
+    pause_between: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now, onupdate=now)
 
 
 class AuditLog(Base):

@@ -8,18 +8,21 @@ by when they see it on paper.
 from __future__ import annotations
 
 import io
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 import barcode
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
+from ppf.datamatrix import DataMatrix
 
 from . import images
 from .binding import BindingError, MissingField, raw_value, render_value
 from .models import (
     BarcodeElement,
-    Element,
     BoxShape,
+    DataMatrixElement,
+    Element,
     ImageElement,
     LineShape,
     QrElement,
@@ -76,7 +79,6 @@ def _barcode(draw: ImageDraw.ImageDraw, el: BarcodeElement, value: str,
 
 
 def render_png(template: Template, row: Mapping[str, Any]) -> bytes:
-    d = template.dots
     canvas = Image.new("L", (template.width_dots, template.height_dots), 255)
     draw = ImageDraw.Draw(canvas)
 
@@ -111,24 +113,44 @@ def _element(canvas: Image.Image, draw: ImageDraw.ImageDraw, template: Template,
         if value:
             _barcode(draw, el, value, x, y, h)
 
+    elif isinstance(el, DataMatrixElement):
+        value = render_value(el.value, row).strip()
+        if value:
+            # the printer encodes ECC200 from the same data, so the preview
+            # encodes it too rather than drawing a plausible-looking square
+            for r, line in enumerate(DataMatrix(value).matrix):
+                for c, on in enumerate(line):
+                    if on:
+                        draw.rectangle([x + c * el.module_dots, y + r * el.module_dots,
+                                        x + (c + 1) * el.module_dots - 1,
+                                        y + (r + 1) * el.module_dots - 1], fill=0)
+
     elif isinstance(el, QrElement):
         value = render_value(el.value, row)
         img = qrcode.make(value, border=1).convert("L").resize((w, w))
         canvas.paste(img, (x, y))
 
     elif isinstance(el, ImageElement):
+        # every branch here mirrors zpl.ZplRenderer._image: a preview that
+        # draws something the printer will not is worse than no preview
         value = raw_value(el.value, row)
-        if value:
-            try:
-                g = images.to_graphic(value, w, h, dither=el.dither,
-                                      threshold=el.threshold)
-                bitmap = Image.frombytes(
-                    "1", (g.row_bytes * 8, g.height_dots), g.data
-                ).crop((0, 0, g.width_dots, g.height_dots))
-                # ^GFA is 1=black; PIL '1' is 0=black
-                canvas.paste(bitmap.point(lambda p: 0 if p else 255, "L"), (x, y))
-            except images.NotAnImage:
-                draw.rectangle([x, y, x + w, y + h], outline=128, width=2)
+        if value in (None, ""):
+            if el.on_missing == "fail":
+                raise RenderError(f"{el.name}: no image in this row")
+            if el.on_missing == "placeholder":
+                draw.rectangle([x, y, x + w, y + h], outline=0, width=2)
+            return
+        try:
+            g = images.to_graphic(value, w, h, dither=el.dither, threshold=el.threshold)
+        except images.NotAnImage as exc:
+            if el.on_missing == "fail":
+                raise RenderError(f"{el.name}: {exc}") from exc
+            return
+        bitmap = Image.frombytes(
+            "1", (g.row_bytes * 8, g.height_dots), g.data
+        ).crop((0, 0, g.width_dots, g.height_dots))
+        # ^GFA is 1=black; PIL '1' is 0=black
+        canvas.paste(bitmap.point(lambda p: 0 if p else 255, "L"), (x, y))
 
     elif isinstance(el, BoxShape):
         draw.rectangle([x, y, x + w, y + h], outline=0,

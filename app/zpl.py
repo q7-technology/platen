@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any
 
 from . import images
 from .binding import BindingError, MissingField, raw_value, render_value
 from .models import (
     BarcodeElement,
     BoxShape,
+    DataMatrixElement,
     ImageElement,
     LineShape,
     QrElement,
@@ -108,6 +110,16 @@ class ZplRenderer:
                 f"^FD{prefix}{_esc(data)}^FS"
             )
 
+        if isinstance(el, DataMatrixElement):
+            data = render_value(el.value, row).strip()
+            if not data:
+                if el.skip_if_blank:
+                    warnings.append(f"{el.name} is blank — label skipped")
+                    return None
+                warnings.append(f"{el.name} is blank")
+                return ""
+            return f"^FO{x},{y}^BX{o},{el.module_dots},{el.quality}^FD{_esc(data)}^FS"
+
         if isinstance(el, QrElement):
             data = _esc(render_value(el.value, row))
             return (
@@ -147,6 +159,24 @@ class ZplRenderer:
             warnings.append(f"{el.name}: {exc}")
             return ""
         return f"^FO{x},{y}{g.zpl}^FS"
+
+
+def separator(template: Template, run_id: str, labels: int, when: str) -> str:
+    """A divider so a despatch bench can tell where one job stopped and the
+    next began. Built, not bound, so it cannot fail a render."""
+    d = template.dots
+    margin = d(6)
+    size = d(9)
+    return "\n".join([
+        f"^XA^PW{template.width_dots}^LL{template.height_dots}^LH0,0^LT0",
+        f"^FO{margin},{d(12)}^GB{template.width_dots - margin * 2},{d(0.8)},{d(0.8)}^FS",
+        f"^FO{margin},{d(18)}^A0N,{size * 2},0^FD{_esc(run_id)}^FS",
+        f"^FO{margin},{d(34)}^A0N,{size},0^FD{labels} labels^FS",
+        f"^FO{margin},{d(44)}^A0N,{size},0^FD{_esc(when)}^FS",
+        f"^FO{margin},{d(56)}^A0N,{size},0^FDEND OF JOB^FS",
+        f"^FO{margin},{d(66)}^GB{template.width_dots - margin * 2},{d(0.8)},{d(0.8)}^FS",
+        "^XZ",
+    ])
 
 
 def render_run(template: Template, rows: list[Mapping[str, Any]], copies: int = 1):

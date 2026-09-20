@@ -15,18 +15,25 @@ MIT licensed. Built by [Q7 Technology](https://q7technology.com.au) in Ballarat.
   printer's real dot pitch — 203, 300 or 600 dpi. Already have ZPL? Paste it
   in and carry on editing; the importer says what it couldn't carry over.
 - **Binds to what you already run.** Postgres, SQL Server, MySQL, SQLite or a
-  REST endpoint. Read-only role, prepared statements, parameters the operator
+  REST endpoint returning JSON. Read-only role and prepared statements for a
+  database, GET and nothing else for an endpoint, and parameters the operator
   answers at print time.
 - **The symbologies that matter.** Code 128 with automatic subsets, GS1-128,
   Code 39, Interleaved 2 of 5, QR and Data Matrix.
 - **Images out of your data.** A base64 column — a compliance mark, a
   signature, a photo — is decoded, scaled to the printer's dots, dithered and
   sent as a `^GFA` graphic.
-- **Printers however they're wired.** Raw TCP on 9100, a small agent for USB,
-  or an existing CUPS queue. No drivers on anyone's laptop. Platen can find
-  the ones already on your network, private ranges only.
-- **Jobs you can answer for.** Queued, cancellable between labels, and retried
-  twice by the worker on its own. A retry resumes rather than restarts, so a
+- **Printers however they're wired.** Raw TCP on 9100, an existing CUPS queue,
+  or a small agent for a printer plugged into somebody's machine. No drivers on
+  anyone's laptop. Platen can find the ones already on your network, private
+  ranges only.
+- **Jobs you can answer for.** Keep a run you do every morning and load it
+  back. Hold the whole queue and let it go again; a run that was printing stops
+  between labels and resumes where it stopped. Wait after each label when
+  somebody is feeding the stock by hand. Choose which records go on the roll, put a
+  separator in front of the job, take the whole run as a PDF before you commit
+  stock to it. Queued, cancellable between labels, and retried twice by the
+  worker on its own. A retry resumes rather than restarts, so a
   label that already came out is never printed twice. Warnings stay attached
   to the run.
 
@@ -40,7 +47,8 @@ docker compose up --build
 ```
 
 The API is on http://localhost:8000 and runs the migrations before it starts.
-The screens are at http://localhost:8000/studio/print (run a job),
+The screens are at http://localhost:8000/studio/dashboard (what is going on),
+`/studio/print` (run a job),
 `/studio/templates` (the library and the editor), `/studio/data` (connections
 and saved queries), `/studio/printers` and `/studio/jobs`. The API reference is
 at http://localhost:8000/docs.
@@ -91,6 +99,50 @@ Postgres (see `db/models.py`); publishing a template writes an immutable
 version and every print run records which version it rendered from.
 
 
+## Looking after it
+
+Platen holds your templates, so its own database is worth backing up. For the
+compose stack that is the `pgdata` volume:
+
+```bash
+docker compose exec -T db pg_dump -U platen platen | gzip > platen-$(date +%F).sql.gz
+```
+
+Migrations run when the API starts, so an upgrade is `docker compose pull &&
+docker compose up -d`. Take the dump first: migrations go forward on their own
+and back only by hand.
+
+**It says what it is doing.** The API and the worker log to stderr, so compose
+and journalctl pick them up without any setup:
+
+```
+platen.jobs  run started: run=JOB-2DFF05 printer=despatch printed=0 total=12 attempt=1
+platen.jobs  run done: run=JOB-2DFF05 printer=despatch printed=12
+platen.auth  sign-in refused: user=dave known=True
+```
+
+Refused sign-ins, lockouts, failed queries and every run that starts, finishes,
+fails, is held or is waiting on somebody. `PLATEN_LOG_LEVEL=debug` for more.
+No password, key or connection string is ever written to it, so the log is one
+you can ship off the box.
+
+**Things are thrown away on a schedule**, because they would otherwise not be.
+A five thousand label run writes about twenty megabytes of ZPL, and nobody
+reads last April's. The defaults:
+
+| What | Kept for |
+| --- | --- |
+| The ZPL of a finished run | 14 days |
+| The run itself, its counts and warnings | 365 days |
+| The audit log | 365 days |
+| Labels an agent has already printed | 7 days |
+
+The labels go first and the history stays, so job history still tells you what
+happened long after the ZPL is gone. Nothing unfinished is ever touched,
+however old it looks. Change the windows under **Settings** on the dashboard,
+or set one to zero to keep it forever. The API prunes once a day by itself;
+`python -m app.prune --dry-run` says what would go.
+
 ## Who can do what
 
 Two roles. An **administrator** wires up connections, printers and templates.
@@ -98,11 +150,17 @@ An **operator** picks a template, answers the question it asks and presses
 print — and is never shown a connection string or the SQL behind their query.
 
 The first administrator is made once at startup from `PLATEN_ADMIN_USERNAME`
-and `PLATEN_ADMIN_PASSWORD`. After that:
+and `PLATEN_ADMIN_PASSWORD`. After that, **People** is where you add someone,
+change a role, reset a password, switch an account off or delete it. There is
+also a command, for when nobody can get in:
 
 ```bash
 python -m app.adduser dave --role operator
 ```
+
+Resetting a password signs that person out everywhere, and so does switching
+them off. A reset you do because a password leaked is no use if the session
+somebody already has keeps working.
 
 With no users and nothing in the environment, nobody can sign in. That is the
 safe way round; the log says how to fix it.
@@ -113,8 +171,31 @@ stolen backup cannot be replayed as a login. The cookie is marked `Secure`
 when the request arrives over https; set `PLATEN_SECURE_COOKIES=true` if a
 proxy terminates TLS without passing the scheme through.
 
-There is no machine-to-machine token yet. Everything that reaches the API is
-a person with a session.
+Something other than a person signs in with a key instead of a password. Make
+one under **People → Keys**, send it as `Authorization: Bearer <key>`, and
+revoke it there when the script that used it is gone. A key is shown once,
+when it is made, and only its hash is kept. An agent's key is narrower still:
+it can talk to its own agent and nothing else.
+
+## Printers on somebody's desk
+
+A printer on a workstation's USB port needs an agent, because Platen cannot
+open a socket to it. Register the workstation under **Printers → Agents**,
+copy the key, and run this on that machine:
+
+```bash
+python platen_agent.py --server https://platen.example \
+    --agent wks-office-02 --token plt_... --cups zd621-office
+```
+
+`--device /dev/usb/lp0` works instead of `--cups` where there is no print
+server. The agent asks Platen for labels rather than Platen reaching in, so
+nothing has to be open inbound to that machine. It is one file and needs
+nothing but a Python interpreter.
+
+A label is only counted as printed once the agent says it came out, the same
+as a socket printer taking the bytes. If the agent is not running, the run
+fails after a minute and the retry resumes it.
 
 ## Contributing
 

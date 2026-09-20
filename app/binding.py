@@ -8,9 +8,11 @@ Formatting happens through a small named-filter list instead.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any, Mapping
+from types import ModuleType
+from typing import Any
 
 BINDING = re.compile(r"\{\{\s*([a-zA-Z_][\w.]*)((?:\s*\|\s*\w+(?::[^|}]+)?)*)\s*\}\}")
 
@@ -35,19 +37,39 @@ class Placeholder(str):
     """
 
 
+_MISSING = object()
+
+
+def _attribute(node: Any, part: str, path: str) -> Any:
+    """One step into an object, and only ever into data.
+
+    An attribute step is the one place a binding could walk out of the row and
+    into Python itself. A name starting with an underscore is refused, which
+    stops every dunder in one rule; so is anything that comes back callable,
+    because reaching a callable is a step away from calling it; and so is a
+    module or a class, which is never something a query returned.
+    """
+    if part.startswith("_") or isinstance(node, (ModuleType, type)):
+        raise MissingField(path)
+    value = getattr(node, part, _MISSING)
+    if value is _MISSING or callable(value) or isinstance(value, ModuleType):
+        raise MissingField(path)
+    return value
+
+
 def _lookup(path: str, row: Mapping[str, Any]) -> Any:
     node: Any = row
     for part in path.split("."):
-        if isinstance(node, Mapping) and part in node:
-            node = node[part]
-        elif isinstance(node, Mapping):
+        if isinstance(node, Mapping):
+            if part in node:
+                node = node[part]
+                continue
             # rows come back flat, so "shipment.sku" also matches the column "sku"
             leaf = path.split(".")[-1]
             if leaf in node:
                 return node[leaf]
             raise MissingField(path)
-        else:
-            node = getattr(node, part, None)
+        node = _attribute(node, part, path)
     return node
 
 

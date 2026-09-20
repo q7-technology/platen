@@ -4,3 +4,23 @@ filterwarnings = [
     "ignore:Using `httpx` with `starlette.testclient` is deprecated",
     "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["db/migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "PERF", "C4"]
+ignore = [
+    # FastAPI's whole idiom is Depends() in a default argument
+    "B008",
+    # SQLAlchemy and pydantic both want mutable class-level defaults
+    "RUF012",
+    # the prose in this codebase uses real typography: Floyd–Steinberg, 100 × 150
+    "RUF001", "RUF002", "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# tests say what they mean; a long assertion beats a wrapped one
+"tests/*" = ["E501"]

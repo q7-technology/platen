@@ -18,10 +18,12 @@ printer. MIT licensed, built by Q7 Technology in Ballarat.
 ```
 app/            the service
   settings.py     everything read from the environment, in one place
+  retention.py    what gets thrown away, and when
+  logs.py         one place that decides what Platen says about itself
   auth.py         users, roles, password hashing, sessions
   models.py       template + element schema (pydantic), mm↔dots
   binding.py      "{{ order.sku }}" → a value from a row
-  datasources.py  connection registry, read-only query runner
+  datasources.py  connections (SQL or REST), read-only query runner
   images.py       base64 → PIL → 1-bit → ^GFA
   zpl.py          element tree → ^XA … ^XZ
   zplimport.py    ^XA … ^XZ → element tree, with a list of what it dropped
@@ -29,6 +31,8 @@ app/            the service
   printers.py     raw 9100 / CUPS / local agent transports, and network discovery
   jobs.py         redis queue worker, retries, cancel
   main.py         the HTTP surface
+agent/          the print agent, for a USB printer on a workstation. Standard
+                library only, on purpose: it installs on a warehouse PC
 db/             Platen's own storage: SQLAlchemy models, Alembic migrations
 tests/          pytest; SQLite and fakeredis, no Docker needed
 web/            the public landing page (static, single file)
@@ -60,12 +64,18 @@ test suite runs the same models on SQLite, so keep column types portable.
    parser, no attribute traversal into callables. Templates arrive from a
    browser. A filter handed the wrong sort of value raises `FilterError`
    naming the filter and the value — never an unhandled exception.
-2. **Queries are read-only and parameterised.** Connections use a read-only
-   role; every query runs as a prepared statement. Never interpolate an
-   operator's input into SQL.
+2. **Queries are read-only and parameterised.** SQL connections use a
+   read-only role and every query runs as a prepared statement. A REST source
+   only ever issues a GET, and an operator's answer is quoted into the path or
+   sent as a query parameter. Never interpolate an operator's input into a
+   statement or a URL.
 3. **Every label in a run renders before the first one prints.** A render
    failure must surface as a message, not as half a roll of ruined stock.
-4. **Cancel is checked between labels**, not between batches.
+4. **Cancel is checked between labels**, not between batches. So is the queue
+   hold, for the same reason: stopping halfway through one would leave it
+   under the print head. A run stopped by the hold is `paused`; one waiting on
+   a person feeding stock is `waiting`. They are different kinds of stopped and
+   letting the queue go must not run off with a hand-fed job.
 5. **A missing image degrades, it doesn't crash** — the element is skipped and
    a warning rides along with the run, unless `on_missing="fail"`.
 6. **A connection's password never reaches the browser.** Reads mask it; a URL
@@ -91,7 +101,26 @@ test suite runs the same models on SQLite, so keep column types portable.
     is the point: an auth check you forget is worse than none.
 12. **An operator never sees a credential.** Not a connection string, not the
     SQL behind their query. `get_query` returns a smaller body for them.
-13. **Discovery stays on the site's own network.** `printers.scan` refuses
+13. **A label is printed when it has come out, not when it was handed on.**
+    `RawTcp.send` returns when the printer took the bytes; `Agent.send` waits
+    for the agent to say the same. If "printed" meant "queued" for one
+    transport and "printed" for another, `printed / total` would be a lie on
+    exactly the printers nobody is standing next to.
+14. **A key is shown once.** Only its hash is stored, like a session's. An
+    agent key may reach its own agent's endpoints and nothing else.
+15. **Taking access away works immediately.** A password reset, a switch-off
+    and a delete all end that person's sessions. An administrator can never
+    remove their own rights, and the last one cannot be removed at all — not
+    even by an admin key, which isn't a person and so slips past the
+    don't-delete-yourself rule.
+16. **Retention throws the labels away, not the story.** A finished run loses
+    its `run_label` rows first and the run, its counts and its warnings much
+    later, so job history still answers "what happened" long after the ZPL is
+    gone. A run that has not settled is never pruned, however old it looks.
+17. **The log never carries a secret.** No password, key, token or connection
+    string, so a site can ship it somewhere without thinking about it. Log the
+    identifiers — run, printer, query, user — and the reason.
+18. **Discovery stays on the site's own network.** `printers.scan` refuses
     anything but a private, loopback or link-local range, caps a call at 1024
     addresses, and opens one connection per address on the one port it was
     given. It is how you find your own printers, not a port sweep.

@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      # Platen offers MySQL, so something has to actually connect to one
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: wms
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -uroot -proot"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      PLATEN_TEST_MYSQL_URL: mysql+pymysql://root:root@127.0.0.1:3306/wms
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Lint
+        run: ruff check app db tests agent
+      - name: Tests
+        run: pytest -q
+
+  migrations:
+    # The suite runs on SQLite. Postgres is what a site actually runs, so the
+    # migrations are proved there: up, no drift against the models, and back
+    # down again.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: platen
+          POSTGRES_PASSWORD: platen
+          POSTGRES_DB: platen
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U platen -d platen"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://platen:platen@localhost:5432/platen
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Upgrade
+        run: alembic upgrade head
+      - name: The models and the migrations agree
+        run: alembic check
+      - name: Downgrade
+        run: alembic downgrade base
+
+  compose:
+    # The README tells people to run docker compose up. This proves that
+    # command still brings up something that answers.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Bring it up
+        run: |
+          cp .env.example .env
+          sed -i 's/^PLATEN_ADMIN_PASSWORD=.*/PLATEN_ADMIN_PASSWORD=a-password-for-ci/' .env
+          docker compose up --build -d
+      - name: Wait for the API
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf localhost:8000/studio/login > /dev/null && exit 0
+            sleep 2
+          done
+          docker compose logs
+          exit 1
+      - name: The first administrator can sign in
+        run: |
+          curl -sf -X POST localhost:8000/auth/login \
+            -H 'content-type: application/json' \
+            -d '{"username":"admin","password":"a-password-for-ci"}' \
+            -c cookies.txt | grep -q '"role":"admin"'
+          curl -sf localhost:8000/templates -b cookies.txt | grep -q '\[\]'
+      - name: Tidy up
+        if: always()
+        run: docker compose down -v

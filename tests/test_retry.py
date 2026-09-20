@@ -12,7 +12,7 @@ from sqlalchemy import select
 
 from app import jobs
 from db import session as dbsession
-from db.models import PrintRun, RunLabel
+from db.models import RunLabel
 
 PARAMS = {"despatch_date": "2026-09-18"}
 
@@ -32,7 +32,7 @@ def fail_on(transport, n: int) -> None:
 
 def _printed(run_id: str) -> list[int]:
     with dbsession.SessionLocal() as s:
-        return [l.seq for l in s.scalars(
+        return [label.seq for label in s.scalars(
             select(RunLabel).where(RunLabel.run_id == run_id, RunLabel.printed_at.isnot(None))
             .order_by(RunLabel.seq))]
 

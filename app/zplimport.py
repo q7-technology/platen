@@ -11,17 +11,20 @@ from __future__ import annotations
 import base64
 import io
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Any, Iterator
+from typing import Any
 
 import barcode
 import qrcode
 from PIL import Image
+from ppf.datamatrix import DataMatrix
 
 from .models import (
     BarcodeElement,
     Box,
     BoxShape,
+    DataMatrixElement,
     Element,
     ImageElement,
     LineShape,
@@ -106,6 +109,7 @@ class _Field:
     unescape: str | None = None    # ^FH's escape character
     barcode: dict[str, Any] | None = None
     qr: dict[str, Any] | None = None
+    datamatrix: dict[str, Any] | None = None
     data: str | None = None
 
 
@@ -194,6 +198,9 @@ class _Reader:
             self.field().rotation = _rotation(_part(params, 0, "N"))
         elif code == "BQ":
             self.field().qr = {"params": params}
+        elif code == "BX":
+            self.field().datamatrix = {"params": params}
+            self.field().rotation = _rotation(_part(params, 0, "N"))
         elif code == "GB":
             self.graphic_box(params)
         elif code == "GF":
@@ -201,7 +208,7 @@ class _Reader:
         elif code == "FD":
             self.field().data = params
         elif code in ("CI", "FW", "PO", "LS", "LT", "LR", "PM", "FR", "JM", "MM", "MN",
-                      "MT", "PR", "SN", "PQ", "XG", "GS", "BX", "B7", "B8", "B9", "BA",
+                      "MT", "PR", "SN", "PQ", "XG", "GS", "B7", "B8", "B9", "BA",
                       "BE", "BK", "BL", "BM", "BO", "BP", "BR", "BS", "BT", "BU", "BZ"):
             self.warn(f"^{code} isn't imported, so the label may not match exactly")
         elif code.startswith("~"):
@@ -222,6 +229,8 @@ class _Reader:
         data = _unescape(f.data, f.unescape)
         if f.barcode:
             self.elements.append(self.barcode(f, data))
+        elif f.datamatrix:
+            self.elements.append(self.datamatrix(f, data))
         elif f.qr:
             self.elements.append(self.qr(f, data))
         elif f.font or f.char_h:
@@ -237,7 +246,8 @@ class _Reader:
     def text(self, f: _Field, data: str) -> TextElement:
         h = f.char_h or 30
         width = f.block[0] if f.block else max(self.width_dots - f.x, h * len(data) * 0.6)
-        align = {"L": "left", "C": "centre", "R": "right"}.get(f.block[2] if f.block else "L", "left")
+        justify = f.block[2] if f.block else "L"
+        align = {"L": "left", "C": "centre", "R": "right"}.get(justify, "left")
         return TextElement(
             name=self.name_for("text"), box=self.box(f, width, h, lift=h), value=data,
             font=f.font or "0", height_pt=round(h * 72 / self.dpi, 1),
@@ -267,7 +277,7 @@ class _Reader:
         try:
             modules = "".join(barcode.get_barcode_class(PY_SYMBOLOGY[kind])(data).build())
             return len(modules) * module
-        except Exception:                            # noqa: BLE001 — a hint, not a contract
+        except Exception:
             return len(data) * 11 * module
 
     def qr(self, f: _Field, data: str) -> QrElement:
@@ -283,13 +293,30 @@ class _Reader:
             magnification=magnification, error_correction=level,
         )
 
+    def datamatrix(self, f: _Field, data: str) -> DataMatrixElement:
+        p = f.datamatrix["params"]                   # type: ignore[index]
+        module = _ints(p, 2)[1] or 6
+        quality = _ints(p, 3)[2] or 200
+        side = self.matrix_size(data) * module
+        return DataMatrixElement(
+            name=self.name_for("datamatrix"), box=self.box(f, side, side),
+            value=data, module_dots=module,
+            quality=quality if quality in (0, 50, 80, 100, 140, 200) else 200,
+        )
+
+    def matrix_size(self, data: str) -> int:
+        try:
+            return len(DataMatrix(data).matrix)
+        except Exception:
+            return 16
+
     def qr_size(self, data: str, magnification: int) -> float:
         try:
             q = qrcode.QRCode(border=0)
             q.add_data(data)
             q.make(fit=True)
             return len(q.get_matrix()) * magnification
-        except Exception:                            # noqa: BLE001
+        except Exception:
             return 25 * magnification
 
     def graphic_box(self, params: str) -> None:

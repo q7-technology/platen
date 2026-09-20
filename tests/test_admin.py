@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.conftest import template_body
-
 PARAMS = {"despatch_date": "2026-09-18"}
 
 

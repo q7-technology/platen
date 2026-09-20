@@ -18,18 +18,22 @@ import hmac
 import logging
 import os
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from db import session as dbsession
-from db.models import AppUser, UserSession
+from db.models import ApiToken, AppUser, UserSession
+
+from .logs import where
 
 log = logging.getLogger("platen.auth")
 
 COOKIE = "platen_session"
 ROLES = ("admin", "operator")
+TOKEN_ROLES = ("admin", "operator", "agent")
+TOKEN_PREFIX = "plt_"
 
 # About 64 MB and a tenth of a second per hash: nothing to a person signing in
 # once a shift, a great deal to someone working through a stolen database.
@@ -53,7 +57,7 @@ class LockedOut(Exception):
 
 
 def now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 # ------------------------------------------------------------------ passwords
@@ -113,14 +117,19 @@ def create_user(session: Session, username: str, password: str, *,
 
 
 def set_password(session: Session, user: AppUser, password: str) -> None:
+    """Changing a password ends every session that was opened with the old
+    one. A reset you do because a password leaked is no use if the session
+    somebody already has keeps working."""
     user.password = hash_password(password)
     user.failed_logins, user.locked_until = 0, None
     session.commit()
+    end_all_sessions(session, user.username)
 
 
 def login(session: Session, username: str, password: str) -> AppUser:
     user = session.get(AppUser, (username or "").strip().lower())
     if user is not None and user.locked_until and user.locked_until > now():
+        log.warning("sign-in refused, account locked: %s", where(user=username))
         raise LockedOut(
             "too many attempts; this account is locked for "
             f"{round((user.locked_until - now()).total_seconds() / 60)} more minutes"
@@ -132,17 +141,23 @@ def login(session: Session, username: str, password: str) -> AppUser:
             user.failed_logins += 1
             if user.failed_logins >= MAX_FAILURES:
                 user.locked_until = now() + LOCKOUT
+                log.warning("account locked after %d refused sign-ins: %s",
+                            MAX_FAILURES, where(user=username))
             session.commit()
+        log.warning("sign-in refused: %s",
+                    where(user=(username or "").strip().lower() or "(none)",
+                          known=user is not None))
         raise BadLogin("that username or password isn't right")
 
     user.failed_logins, user.locked_until, user.last_login_at = 0, None, now()
     session.commit()
+    log.info("signed in: %s", where(user=user.username, role=user.role))
     return user
 
 
 # ------------------------------------------------------------------- sessions
 
-def _token_id(token: str) -> str:
+def token_id(token: str) -> str:
     # the token is 256 bits of randomness, so a fast digest is enough here:
     # there is nothing to brute-force back
     return hashlib.sha256(token.encode()).hexdigest()
@@ -150,7 +165,7 @@ def _token_id(token: str) -> str:
 
 def start_session(session: Session, user: AppUser) -> str:
     token = secrets.token_urlsafe(32)
-    session.add(UserSession(id=_token_id(token), username=user.username,
+    session.add(UserSession(id=token_id(token), username=user.username,
                             created_at=now(), expires_at=now() + SESSION_LIFE,
                             last_seen_at=now()))
     session.commit()
@@ -158,7 +173,7 @@ def start_session(session: Session, user: AppUser) -> str:
 
 
 def user_for_token(session: Session, token: str) -> AppUser | None:
-    row = session.get(UserSession, _token_id(token))
+    row = session.get(UserSession, token_id(token))
     if row is None:
         return None
     if row.expires_at <= now() or row.created_at + SESSION_CAP <= now():
@@ -175,7 +190,7 @@ def user_for_token(session: Session, token: str) -> AppUser | None:
 
 
 def end_session(session: Session, token: str) -> None:
-    row = session.get(UserSession, _token_id(token))
+    row = session.get(UserSession, token_id(token))
     if row is not None:
         session.delete(row)
         session.commit()
@@ -185,6 +200,44 @@ def end_all_sessions(session: Session, username: str) -> None:
     for row in session.scalars(select(UserSession).where(UserSession.username == username)):
         session.delete(row)
     session.commit()
+
+
+# --------------------------------------------------------------- machine keys
+
+def create_token(session: Session, *, name: str, role: str,
+                 agent_id: str | None = None, created_by: str = "") -> str:
+    """Returns the token. It is never recoverable afterwards — only its hash
+    is kept, for the same reason a session's is."""
+    if role not in TOKEN_ROLES:
+        raise ValueError(f"role must be one of {', '.join(TOKEN_ROLES)}")
+    token = TOKEN_PREFIX + secrets.token_urlsafe(32)
+    session.add(ApiToken(id=token_id(token), name=name, role=role,
+                         agent_id=agent_id, created_by=created_by))
+    session.commit()
+    return token
+
+
+def token_principal(session: Session, token: str) -> ApiToken | None:
+    row = session.get(ApiToken, token_id(token or ""))
+    if row is None:
+        return None
+    row.last_used_at = now()
+    session.commit()
+    return row
+
+
+def revoke_tokens(session: Session, *, agent_id: str | None = None,
+                  name: str | None = None) -> int:
+    stmt = select(ApiToken)
+    if agent_id is not None:
+        stmt = stmt.where(ApiToken.agent_id == agent_id)
+    if name is not None:
+        stmt = stmt.where(ApiToken.name == name)
+    rows = list(session.scalars(stmt))
+    for row in rows:
+        session.delete(row)
+    session.commit()
+    return len(rows)
 
 
 # ------------------------------------------------------------------ first run

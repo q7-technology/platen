@@ -41,12 +41,27 @@
             </div>
             <div class="row">
               <div class="field"><label for="c-name">Name</label><input id="c-name" type="text"></div>
-              <div class="field narrow"><label for="c-pool">Pool size</label><input id="c-pool" class="mono" type="number" min="1" max="50" value="5"></div>
+              <div class="field narrow">
+                <label for="c-kind">Kind</label>
+                <select id="c-kind">
+                  <option value="sql">SQL database</option>
+                  <option value="rest">REST endpoint</option>
+                </select>
+              </div>
+              <div class="field narrow" id="c-pool-field"><label for="c-pool">Pool size</label><input id="c-pool" class="mono" type="number" min="1" max="50" value="5"></div>
             </div>
             <div class="field">
-              <label for="c-url">Connection string</label>
+              <label for="c-url" id="c-url-label">Connection string</label>
               <input id="c-url" class="mono" type="text" spellcheck="false"
                      placeholder="postgresql+psycopg://platen_ro@host:5432/db">
+            </div>
+            <div class="field" id="c-headers-field" hidden>
+              <label>Headers sent with every request</label>
+              <div class="params" id="c-headers"></div>
+              <div class="actions" style="margin-top: 4px;">
+                <button class="btn sm" type="button" id="c-add-header">Add header</button>
+                <span class="mut" style="font-size: 12px;">Values are held on the server. This screen only ever shows <span class="mono">***</span>.</span>
+              </div>
             </div>
             <div class="actions">
               <button class="btn" type="button" id="c-test">Test connection</button>
@@ -72,8 +87,12 @@
                 <div class="field narrow"><label for="q-id">Id</label><input id="q-id" class="mono" type="text"></div>
               </div>
               <div class="field">
-                <label for="q-sql">SQL</label>
+                <label for="q-sql" id="q-sql-label">SQL</label>
                 <textarea id="q-sql" spellcheck="false" placeholder="select … from … where col = :parameter"></textarea>
+              </div>
+              <div class="field" id="q-rowpath-field" hidden>
+                <label for="q-rowpath">Where the records are in the response</label>
+                <input id="q-rowpath" class="mono" type="text" spellcheck="false" placeholder="data.items">
               </div>
               <div class="field">
                 <label>Parameters</label>
@@ -116,6 +135,7 @@
   renderShell('data');
 
   const state = { sources: [], current: null, queries: [], query: null };
+  const isRest = () => $('c-kind').value === 'rest';
   const TYPES = ['text', 'int', 'date', 'bool'];
 
   // ---------- connections
@@ -138,6 +158,41 @@
     if (select) await pick(select);
   }
 
+  function headerRow(name, value) {
+    const row = el('div', { class: 'param' },
+      el('input', { type: 'text', value: name, placeholder: 'Authorization', 'data-k': 'name',
+                    'aria-label': 'Header name' }),
+      el('input', { type: 'text', value: value, placeholder: 'Bearer …', 'data-k': 'value',
+                    class: 'mono', 'aria-label': 'Header value' }),
+      el('button', { class: 'btn sm gold', type: 'button', 'aria-label': `Remove ${name || 'header'}`,
+                     onclick: () => row.remove() }, icon('trash', 13)));
+    return row;
+  }
+
+  function collectHeaders() {
+    const out = {};
+    for (const row of $('c-headers').children) {
+      const name = row.querySelector('[data-k="name"]').value.trim();
+      if (name) out[name] = row.querySelector('[data-k="value"]').value;
+    }
+    return out;
+  }
+
+  /* A REST source has no pool and no connection string, and its queries are a
+     path rather than SQL. Show what applies and nothing else. */
+  function showKind() {
+    const rest = isRest();
+    $('c-pool-field').hidden = rest;
+    $('c-headers-field').hidden = !rest;
+    $('c-url-label').textContent = rest ? 'Base URL' : 'Connection string';
+    $('c-url').placeholder = rest ? 'https://api.example.com/v1'
+                                  : 'postgresql+psycopg://platen_ro@host:5432/db';
+    $('q-sql-label').textContent = rest ? 'Request path' : 'SQL';
+    $('q-sql').placeholder = rest ? '/orders/:site.json'
+                                  : 'select … from … where col = :parameter';
+    $('q-rowpath-field').hidden = !rest;
+  }
+
   async function pick(id) {
     state.current = await api('GET', `/datasources/${encodeURIComponent(id)}`);
     state.query = null;
@@ -146,7 +201,11 @@
     $('conn-id').textContent = state.current.id;
     $('c-name').value = state.current.name;
     $('c-url').value = state.current.url;
+    $('c-kind').value = state.current.kind || 'sql';
     $('c-pool').value = state.current.pool_size;
+    $('c-headers').replaceChildren(
+      ...Object.entries(state.current.headers || {}).map(([k, v]) => headerRow(k, v)));
+    showKind();
     $('conn-probe').replaceChildren();
     clearError($('c-msg'));
     $('query-edit').hidden = true;
@@ -155,12 +214,13 @@
   }
 
   function newConnection() {
-    state.current = { id: '', name: '', url: '', pool_size: 5, queries: [] };
+    state.current = { id: '', name: '', kind: 'sql', url: '', headers: {}, pool_size: 5, queries: [] };
     state.query = null;
     for (const b of $('conn-list').children) b.setAttribute('aria-pressed', 'false');
     $('detail').hidden = false;
     $('conn-id').textContent = 'new';
     $('c-name').value = ''; $('c-url').value = ''; $('c-pool').value = 5;
+    $('c-kind').value = 'sql'; $('c-headers').replaceChildren(); showKind();
     $('conn-probe').replaceChildren();
     clearError($('c-msg'));
     $('query-list').replaceChildren();
@@ -175,7 +235,8 @@
     if (!id) { showError($('c-msg'), 'A connection needs a name.'); return; }
     try {
       await api('PUT', `/datasources/${encodeURIComponent(id)}`, {
-        name: $('c-name').value, url: $('c-url').value,
+        name: $('c-name').value, url: $('c-url').value, kind: $('c-kind').value,
+        headers: isRest() ? collectHeaders() : {},
         pool_size: Number($('c-pool').value) || 5,
       });
       clearError($('c-msg'));
@@ -232,6 +293,7 @@
     $('q-id').value = state.query.id;
     $('q-id').disabled = true;
     $('q-sql').value = state.query.sql;
+    $('q-rowpath').value = state.query.row_path || '';
     renderParams(state.query.parameters);
     clearError($('q-msg'));
     $('preview-card').hidden = true;
@@ -242,7 +304,7 @@
     for (const b of $('query-list').children) b.setAttribute('aria-pressed', 'false');
     $('query-edit').hidden = false;
     $('q-name').value = ''; $('q-id').value = ''; $('q-id').disabled = false;
-    $('q-sql').value = '';
+    $('q-sql').value = ''; $('q-rowpath').value = '';
     renderParams([]);
     clearError($('q-msg'));
     $('preview-card').hidden = true;
@@ -288,6 +350,7 @@
     try {
       await api('PUT', `/queries/${encodeURIComponent(id)}`, {
         datasource_id: state.current.id, name: $('q-name').value, sql: $('q-sql').value,
+        row_path: isRest() ? $('q-rowpath').value.trim() : '',
         parameters: collectParams(),
       });
       clearError($('q-msg'));
@@ -382,6 +445,8 @@
   $('q-save').addEventListener('click', saveQuery);
   $('q-del').addEventListener('click', deleteQuery);
   $('q-preview').addEventListener('click', openPreview);
+  $('c-kind').addEventListener('change', showKind);
+  $('c-add-header').addEventListener('click', () => $('c-headers').append(headerRow('', '')));
   $('q-add-param').addEventListener('click', () =>
     $('q-params').append(paramRow({ name: '', type: 'text', default: null, ask_at_print: true })));
 

@@ -12,3 +12,4 @@ Pillow>=11.0
 python-barcode>=0.15
 qrcode>=8.0
 alembic>=1.13
+ppf.datamatrix>=0.2

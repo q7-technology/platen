@@ -57,7 +57,7 @@ class RecordingTransport:
 @pytest.fixture
 def transport(monkeypatch) -> RecordingTransport:
     t = RecordingTransport()
-    monkeypatch.setitem(printers.TRANSPORTS, "memory", lambda cfg: t)
+    monkeypatch.setitem(printers.TRANSPORTS, "memory", lambda cfg, session=None: t)
     return t
 
 

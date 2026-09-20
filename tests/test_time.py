@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from tests.conftest import template_body
 
@@ -19,7 +19,7 @@ def test_a_template_edit_time_carries_its_time_zone(seeded):
     edited = _parse(row["updated_at"])
 
     assert edited.tzinfo is not None, "a naive timestamp reads as local time in a browser"
-    assert abs(edited - datetime.now(timezone.utc)) < timedelta(minutes=1)
+    assert abs(edited - datetime.now(UTC)) < timedelta(minutes=1)
 
 
 def test_a_run_carries_its_time_zone_too(seeded):
@@ -29,7 +29,7 @@ def test_a_run_carries_its_time_zone_too(seeded):
     created = _parse(seeded.get(f"/runs/{run_id}").json()["created_at"])
 
     assert created.tzinfo is not None
-    assert abs(created - datetime.now(timezone.utc)) < timedelta(minutes=1)
+    assert abs(created - datetime.now(UTC)) < timedelta(minutes=1)
 
 
 def test_a_published_version_carries_its_time_zone(seeded):
@@ -37,4 +37,4 @@ def test_a_published_version_carries_its_time_zone(seeded):
     published = _parse(seeded.post("/templates/carton/publish").json()["published_at"])
 
     assert published.tzinfo is not None
-    assert abs(published - datetime.now(timezone.utc)) < timedelta(minutes=1)
+    assert abs(published - datetime.now(UTC)) < timedelta(minutes=1)
