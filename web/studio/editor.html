@@ -27,10 +27,12 @@
   .stage { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
   .canvas-wrap { flex: 1; min-height: 260px; overflow: auto; background: var(--well); border: 1px solid var(--line); border-radius: 10px; display: flex; align-items: flex-start; justify-content: center; padding: 22px; }
   .canvas { position: relative; background: #fff no-repeat center / 100% 100%; box-shadow: 0 2px 3px rgba(0,0,0,.4), 0 24px 44px -28px rgba(0,0,0,.8); flex: none; }
-  .el { position: absolute; border: 1px solid transparent; cursor: move; }
+  .el { position: absolute; border: 1px solid transparent; cursor: move; touch-action: none; }
   .el:hover { border-color: rgba(41,171,226,0.55); }
   .el[aria-selected="true"] { border-color: var(--accent); background: rgba(41,171,226,0.07); }
   .el.off { opacity: .35; }
+  .ink { position: absolute; inset: -1px; background-repeat: no-repeat; mix-blend-mode: multiply; pointer-events: none; }
+  .lift { position: absolute; background: #fff; pointer-events: none; }
   .el .h { position: absolute; width: 9px; height: 9px; background: var(--accent); border: 1px solid var(--ground); border-radius: 2px; display: none; }
   .el[aria-selected="true"] .h { display: block; }
   .h.nw { left: -5px; top: -5px; cursor: nwse-resize; }
@@ -138,7 +140,9 @@
 
   const id = new URLSearchParams(location.search).get('id');
   const state = { tpl: null, sel: -1, zoom: 2.2, columns: [], params: {}, query: null,
-                  dirty: false, timer: null, mode: 'columns', objectUrl: null };
+                  dirty: false, timer: null, mode: 'columns', objectUrl: null,
+                  // bumped by every edit, so a render of an older draft is never shown
+                  edit: 0, lifted: new Map() };
 
   const KINDS = [
     ['text', 'Text', 'text'], ['barcode', 'Barcode', 'barcode'], ['qr', 'QR code', 'qr'],
@@ -238,6 +242,7 @@
 
   function renderCanvas() {
     const c = $('canvas');
+    dropInk();
     [...c.querySelectorAll('.el')].forEach((n) => n.remove());
     els().forEach((e, i) => {
       const node = el('div', { class: `el${e.hidden ? ' off' : ''}`, 'data-i': i,
@@ -251,13 +256,47 @@
 
   function layout() {
     const z = state.zoom;
+    const px = (r, node) => {
+      node.style.left = `${r.x * z}px`;
+      node.style.top = `${r.y * z}px`;
+      node.style.width = `${Math.max(r.w, 0.4) * z}px`;
+      node.style.height = `${Math.max(r.h, 0.4) * z}px`;
+    };
     for (const node of $('canvas').querySelectorAll('.el')) {
-      const b = els()[Number(node.dataset.i)].box;
-      node.style.left = `${b.x * z}px`;
-      node.style.top = `${b.y * z}px`;
-      node.style.width = `${Math.max(b.w, 0.4) * z}px`;
-      node.style.height = `${Math.max(b.h, 0.4) * z}px`;
+      const i = Number(node.dataset.i);
+      px(els()[i].box, node);
+      const lift = state.lifted.get(i);
+      const ink = node.querySelector('.ink');
+      if (lift && ink) {
+        ink.style.backgroundSize = `${state.tpl.width_mm * z}px ${state.tpl.height_mm * z}px`;
+        ink.style.backgroundPosition = `${-lift.x * z}px ${-lift.y * z}px`;
+      }
     }
+    for (const lift of state.lifted.values()) px(lift, lift.patch);
+  }
+
+  // The canvas is one picture of the whole label, so a box dragged across it
+  // leaves its ink behind. Until the re-render lands, carry that slice of the
+  // picture with the box and paper over the place it came from.
+  function liftInk(node, i, from) {
+    if (!state.objectUrl) return;
+    state.edit++;
+    if (!state.lifted.has(i)) {
+      const patch = el('div', { class: 'lift' });
+      $('canvas').prepend(patch);
+      state.lifted.set(i, { x: from.x, y: from.y, w: from.w, h: from.h, patch });
+    }
+    if (!node.querySelector('.ink')) {
+      const ink = el('div', { class: 'ink' });
+      ink.style.backgroundImage = `url(${state.objectUrl})`;
+      node.prepend(ink);
+    }
+  }
+
+  function dropInk() {
+    for (const lift of state.lifted.values()) lift.patch.remove();
+    state.lifted.clear();
+    for (const ink of $('canvas').querySelectorAll('.ink')) ink.remove();
   }
 
   function startDrag(ev, i) {
@@ -268,21 +307,39 @@
     const start = { px: ev.clientX, py: ev.clientY, x: b.x, y: b.y, w: b.w, h: b.h };
     const node = ev.currentTarget;
     node.setPointerCapture(ev.pointerId);
+    let last = null;
+    let frame = 0;
+    const changed = () => ['x', 'y', 'w', 'h'].some((k) => b[k] !== start[k]);
 
-    const move = (m) => {
-      const dx = (m.clientX - start.px) / state.zoom;
-      const dy = (m.clientY - start.py) / state.zoom;
+    // pointermove can fire several times a frame; draw once per frame
+    const apply = () => {
+      frame = 0;
+      if (!last) return;
+      const dx = (last.clientX - start.px) / state.zoom;
+      const dy = (last.clientY - start.py) / state.zoom;
+      last = null;
       applyDelta(b, start, handle, dx, dy);
+      // a resized box would need the ink redrawn, not carried
+      if (!handle && changed()) liftInk(node, i, start);
       layout();
       positionInputs();
     };
+    const move = (m) => {
+      last = m;
+      if (!frame) frame = requestAnimationFrame(apply);
+    };
     const up = () => {
+      cancelAnimationFrame(frame);
+      apply();
       node.removeEventListener('pointermove', move);
       node.removeEventListener('pointerup', up);
-      touch();
+      node.removeEventListener('pointercancel', up);
+      // a click that only selects shouldn't cost a render
+      if (changed()) touch(0);
     };
     node.addEventListener('pointermove', move);
     node.addEventListener('pointerup', up);
+    node.addEventListener('pointercancel', up);
   }
 
   function applyDelta(b, start, handle, dx, dy) {
@@ -478,14 +535,16 @@
     $('saved').classList.toggle('dirty', !!dirty);
   }
 
-  function touch() {
+  function touch(delay = 600) {
+    state.edit++;
     state.dirty = true;
     setSaved('unsaved changes', true);
     clearTimeout(state.timer);
-    state.timer = setTimeout(save, 600);
+    state.timer = setTimeout(save, delay);
   }
 
   async function save() {
+    const edit = state.edit;
     try {
       await api('PUT', `/templates/${encodeURIComponent(id)}`, state.tpl);
       state.dirty = false;
@@ -493,26 +552,37 @@
       showSize();
       applyZoom();
       renderLayers();
-      await refresh();
+      await refresh(edit);
     } catch (e) { setSaved('not saved', true); showError($('msg'), e.message); }
   }
 
-  async function refresh() {
+  async function refresh(edit = state.edit) {
     const body = { data: state.mode, params: state.params, record: 0 };
+    const stale = () => edit !== state.edit;
     try {
       const r = await fetch(`/templates/${encodeURIComponent(id)}/preview.png`, {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
       });
       if (!r.ok) throw new Error((await r.json()).detail);
+      const url = URL.createObjectURL(await r.blob());
+      // decode before swapping, or the canvas shows white while it does
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      if (stale()) { URL.revokeObjectURL(url); return; }
+      $('canvas').style.backgroundImage = `url(${url})`;
+      dropInk();
       if (state.objectUrl) URL.revokeObjectURL(state.objectUrl);
-      state.objectUrl = URL.createObjectURL(await r.blob());
-      $('canvas').style.backgroundImage = `url(${state.objectUrl})`;
+      state.objectUrl = url;
       clearError($('msg'));
       const zpl = await api('POST', `/templates/${encodeURIComponent(id)}/preview.zpl`, body);
+      if (stale()) return;
       $('zpl').textContent = await zpl.text();
       ok('Every binding resolves');
     } catch (e) {
+      if (stale()) return;
       $('canvas').style.backgroundImage = 'none';
+      dropInk();
       bad(e.message);
     }
   }
