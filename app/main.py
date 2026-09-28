@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
 import threading
 import time
@@ -585,8 +586,10 @@ def preview_zpl(template_id: str, body: RenderPreview,
         labels, warnings = render_run(t, [row])
     except RenderError as exc:
         raise HTTPException(422, str(exc)) from None
+    # a header must be latin-1, and a warning can carry anything a template
+    # or a row put in it; json.dumps escapes everything else
     return Response("\n".join(labels), media_type="text/plain",
-                    headers={"x-platen-warnings": "; ".join(warnings)})
+                    headers={"x-platen-warnings": json.dumps(warnings)})
 
 
 def _one_row(s: Session, t: Template, body: RenderPreview) -> dict[str, Any]:

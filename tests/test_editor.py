@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from tests.conftest import template_body
 
 PARAMS = {"despatch_date": "2026-09-18"}
@@ -91,6 +93,21 @@ def test_a_broken_query_says_so_rather_than_returning_no_columns(seeded):
 
     assert r.status_code == 422
     assert "no_such_table" in r.json()["detail"]
+
+
+def test_a_warning_the_header_cannot_carry_as_written_still_comes_back(seeded):
+    """A blank barcode warns "is blank — label skipped". An em dash can't go
+    in an HTTP header as it stands, and the 500 that caused blanked the whole
+    editor canvas."""
+    body = template_body("blank")
+    body["elements"].append({"kind": "barcode", "name": "spare", "value": "",
+                             "box": {"x": 6, "y": 130, "w": 50, "h": 15}})
+    seeded.put("/templates/carton", json=body)
+
+    r = seeded.post("/templates/carton/preview.zpl", json={"params": PARAMS})
+
+    assert r.status_code == 200, r.text
+    assert json.loads(r.headers["x-platen-warnings"]) == ["row 1: spare is blank — label skipped"]
 
 
 def _with_filter(seeded, expr: str) -> None:
