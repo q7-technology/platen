@@ -56,6 +56,9 @@ each one is useful on its own.
 
 ## Step 2 — the toy town
 
+*First version done:* `/studio/map`. Flying parcels between sites and
+box-select are still to come.
+
 - World map: sites glowing on the star field, jobs flying between them.
   A manager's own sites are bright, the rest dimmed.
 - Site view: printers on the grid, belts with moving dashes, white label

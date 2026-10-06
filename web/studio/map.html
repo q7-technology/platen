@@ -50,6 +50,7 @@
   .panel dt { color: var(--mut); }
   .panel dd { margin: 0; }
   .panel .problem { color: var(--signal); }
+  .panel .field { flex: none; }
   .panel .acts { display: flex; flex-wrap: wrap; gap: 8px; }
   .panel ul.q { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
   .panel ul.q button { width: 100%; display: flex; gap: 10px; align-items: baseline; text-align: left; background: none; border: 1px solid transparent;
@@ -127,7 +128,7 @@
       <div class="scene" id="scene">
         <svg class="town" id="town" role="application" aria-label="Map of sites and printers"></svg>
         <div class="hud" id="hud" aria-live="polite"></div>
-        <nav class="crumbs" id="crumbs" aria-label="Where you are"></nav>
+        <div class="crumbs" id="crumbs" role="navigation" aria-label="Where you are"></div>
         <div class="zoom">
           <button class="btn sm icon" type="button" id="zin" aria-label="Zoom in">+</button>
           <button class="btn sm icon" type="button" id="zout" aria-label="Zoom out">−</button>
@@ -147,7 +148,8 @@
 
   const NS = 'http://www.w3.org/2000/svg';
   const TW = 76, TH = 38;                       // one floor tile, in screen units
-  const SITE_COLS = 6, SITE_ROWS = 5;           // a site's floor plate
+  const SITE_COLS = 9, SITE_ROWS = 7;           // a site's floor plate
+  const SHOWN = 3;                              // parcels drawn on a belt; the rest are a count
   const UNFINISHED = ['queued', 'printing', 'retrying', 'paused', 'waiting'];
   const MOVABLE = [...UNFINISHED, 'failed'];
   const WORDS = { queued: 'Queued', printing: 'Printing', retrying: 'Retrying', paused: 'Held',
@@ -159,7 +161,7 @@
     view: null,             // null = world map, otherwise a site id (or SHARED)
     sel: null,              // { kind: 'run' | 'printer' | 'site', id }
     arranging: false, undo: null, busyBefore: 0,
-    cam: { x: 0, y: 0, k: 1 }, fitted: null,
+    cam: { x: 0, y: 0, k: 1 }, fitted: false,     // which view the camera was last framed for
   };
   const town = $('town');
 
@@ -242,7 +244,8 @@
     for (const p of here) {
       if (p.grid[0] !== null && p.grid[1] !== null) { spots.set(p.id, p.grid); continue; }
       let spot;
-      do { spot = [1 + (n % 3) * 2, 1 + Math.floor(n / 3) * 2]; n++; } while (taken.has(spot.join(',')));
+      // three tiles apart, so each printer's belt and name have room
+      do { spot = [1 + (n % 3) * 3, 1 + Math.floor(n / 3) * 3]; n++; } while (taken.has(spot.join(',')));
       taken.add(spot.join(','));
       spots.set(p.id, spot);
     }
@@ -255,7 +258,7 @@
       api('GET', '/sites'), api('GET', '/printers?probe=false'),
       api('GET', '/runs?limit=150'), api('GET', '/dashboard')]);
     Object.assign(state, { sites, printers, runs, board });
-    if (state.view === undefined || (state.view === null && !state.fitted)) {
+    if (state.view === undefined) {
       // someone who works at one site starts there, not on a map of one
       const mine = places();
       if (state.me.role === 'operator' && mine.filter((s) => s.id !== SHARED).length === 1) {
@@ -285,10 +288,18 @@
   }
 
   function draw() {
+    // a redraw mid-drag would pull the parcel out from under the pointer;
+    // the drop draws again once it lands
+    // and one between a press and its release would swallow the click
+    if (state.dragging || state.holding) { state.stale = true; return; }
+    state.stale = false;
+    const focused = document.activeElement?.closest?.('[data-key]')?.dataset.key;
     const world = svg('g', { id: 'world' });
     if (state.view === null) drawWorld(world); else drawSite(world, state.view);
     town.replaceChildren(defs(), world);
     fit(world);
+    // the scene is rebuilt on every label; keyboard focus stays where it was
+    if (focused) town.querySelector(`[data-key="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
     hud(); crumbs(); tracker(); panel();
   }
 
@@ -302,7 +313,7 @@
       const busy = ps.flatMap((p) => runsAt(p.id)).filter((r) => UNFINISHED.includes(r.status));
       const [gx, gy] = s.map;
       const [cx, cy] = iso(gx + 1, gy + 1);
-      const g = svg('g', { class: `site${state.sel?.kind === 'site' && state.sel.id === s.id ? ' sel' : ''}`,
+      const g = svg('g', { class: `site${state.sel?.kind === 'site' && state.sel.id === s.id ? ' sel' : ''}`, 'data-key': `site:${s.id}`,
                            tabindex: 0, role: 'button',
                            'aria-label': `${s.name}: ${ps.length} printers, ${busy.length} jobs on, ${bad.length ? bad.length + ' need a look' : 'all well'}. Open it.`,
                            onclick: () => open(s.id), onkeydown: (e) => { if (e.key === 'Enter') open(s.id); } });
@@ -340,10 +351,16 @@
   }
 
   function drawSite(world, siteId) {
-    for (let gx = 0; gx < SITE_COLS; gx++) {
-      for (let gy = 0; gy < SITE_ROWS; gy++) world.append(diamond(gx, gy, 1, 1, 'floor'));
+    const spots = floorSpots(siteId);
+    // the floor is as big as what stands on it, so a small site isn't a
+    // speck on an empty plate; arranging shows the whole grid to drop onto
+    const used = [...spots.values()];
+    const cols = state.arranging ? SITE_COLS : Math.max(4, ...used.map(([x]) => x + 2));
+    const rows = state.arranging ? SITE_ROWS : Math.max(4, ...used.map(([, y]) => y + 3));
+    for (let gx = 0; gx < cols; gx++) {
+      for (let gy = 0; gy < rows; gy++) world.append(diamond(gx, gy, 1, 1, 'floor'));
     }
-    world.append(diamond(0, 0, SITE_COLS, SITE_ROWS, 'plate'));
+    world.append(diamond(0, 0, cols, rows, 'plate'));
     if (state.arranging) {
       for (let gx = 0; gx < SITE_COLS; gx++) {
         for (let gy = 0; gy < SITE_ROWS; gy++) {
@@ -352,7 +369,6 @@
         }
       }
     }
-    const spots = floorSpots(siteId);
     const here = state.printers.filter((p) => siteOf(p) === siteId);
     here.sort((a, b) => (spots.get(a.id)[0] + spots.get(a.id)[1]) - (spots.get(b.id)[0] + spots.get(b.id)[1]));
 
@@ -365,7 +381,7 @@
     }
     for (const p of here) world.append(drawPrinter(p, spots.get(p.id)));
     if (!here.length) {
-      const [cx, cy] = iso(SITE_COLS / 2, SITE_ROWS / 2);
+      const [cx, cy] = iso(cols / 2, rows / 2);
       world.append(svg('text', { class: 'meta', x: cx, y: cy }, document.createTextNode('No printers here yet.')));
     }
   }
@@ -375,7 +391,7 @@
     const queue = runsAt(p.id);
     const printing = queue.find((r) => r.status === 'printing');
     const g = svg('g', { class: `printer${state.sel?.kind === 'printer' && state.sel.id === p.id ? ' sel' : ''}`,
-                         'data-printer': p.id, tabindex: 0, role: 'button',
+                         'data-printer': p.id, 'data-key': `printer:${p.id}`, tabindex: 0, role: 'button',
                          'aria-label': `${p.name}, ${h.text}, ${queue.length} job${queue.length === 1 ? '' : 's'} waiting`,
                          onclick: () => select('printer', p.id),
                          onkeydown: (e) => { if (e.key === 'Enter') select('printer', p.id); } });
@@ -383,52 +399,51 @@
 
     // the belt runs out of the front of the printer, towards the viewer
     const [b0x, b0y] = iso(gx + 0.5, gy + 1);
-    const [b1x, b1y] = iso(gx + 0.5, gy + 1.9);
+    const [b1x, b1y] = iso(gx + 0.5, gy + 2.45);
     g.append(svg('line', { class: 'belt', x1: b0x, y1: b0y, x2: b1x, y2: b1y }));
     g.append(svg('line', { class: `belt-run${printing ? ' moving' : ''}`, x1: b1x, y1: b1y, x2: b0x, y2: b0y }));
 
     g.append(diamond(gx + 0.08, gy + 0.08, 0.84, 0.84, `halo ${h.bad ? 'bad' : 'ok'}`));
-    g.append(box(gx + 0.12, gy + 0.18, 0.76, 0.66, 30));
+    g.append(box(gx + 0.1, gy + 0.15, 0.8, 0.7, 38));
     // the label roll sits on top, side on
     const [rx, ry] = iso(gx + 0.5, gy + 0.5);
-    g.append(svg('ellipse', { class: 'roll', cx: rx, cy: ry - 36, rx: 11, ry: 7 }));
-    g.append(svg('ellipse', { class: 'lamp', cx: rx, cy: ry - 37, rx: 3, ry: 2 }));
+    g.append(svg('ellipse', { class: 'roll', cx: rx, cy: ry - 44, rx: 13, ry: 8 }));
+    g.append(svg('ellipse', { class: 'lamp', cx: rx, cy: ry - 45, rx: 3.5, ry: 2.2 }));
     // the lamp on the front wall
     const [lx, ly] = iso(gx + 0.7, gy + 0.84);
-    g.append(svg('circle', { class: `lamp${h.bad ? ' bad' : printing ? ' on' : ''} glow`, cx: lx, cy: ly - 18, r: 3 }));
+    g.append(svg('circle', { class: `lamp${h.bad ? ' bad' : printing ? ' on' : ''} glow`, cx: lx, cy: ly - 22, r: 3.5 }));
 
-    if (h.bad) g.append(pin(rx, ry - 74));
-    if (p.detour_to) {
-      g.append(svg('text', { class: 'meta bad', x: rx, y: ry - 52 },
-        document.createTextNode(`Detoured to ${printer(p.detour_to)?.name || p.detour_to}`)));
-    }
+    // name and state float above the machine, where nothing else is drawn
+    const said = p.detour_to ? `Detoured to ${printer(p.detour_to)?.name || p.detour_to}`
+               : printing ? `Printing ${printing.printed} of ${printing.total}` : h.text;
+    g.append(svg('text', { class: 'name', x: rx, y: ry - 74 }, document.createTextNode(p.name)));
+    g.append(svg('text', { class: `meta${h.bad || p.detour_to ? ' bad' : ''}`, x: rx, y: ry - 59 },
+      document.createTextNode(said)));
+    if (h.bad) g.append(pin(rx + 52, ry - 92));
 
     // parcels wait on the belt, nearest the printer first
     queue.sort((a, b) => (a.status === 'printing' ? -1 : 0) - (b.status === 'printing' ? -1 : 0));
-    queue.slice(0, 4).forEach((r, i) => g.append(parcel(r, gx + 0.5, gy + 1.15 + i * 0.22, i)));
-    if (queue.length > 4) {
-      const [cx, cy] = iso(gx + 0.5, gy + 2.15);
+    // drawn back to front, so the one at the printer is never hidden behind the queue
+    const shown = queue.slice(0, SHOWN);
+    for (let i = shown.length - 1; i >= 0; i--) g.append(parcel(shown[i], gx + 0.5, gy + 1.3 + i * 0.42, i));
+    if (queue.length > SHOWN) {
+      const [cx, cy] = iso(gx + 0.5, gy + 2.6);
       g.append(svg('g', { 'aria-hidden': 'true' },
         svg('rect', { class: 'count-bg', x: cx - 13, y: cy - 8, width: 26, height: 15, rx: 7 }),
-        svg('text', { class: 'count', x: cx, y: cy + 3 }, document.createTextNode(`+${queue.length - 4}`))));
+        svg('text', { class: 'count', x: cx, y: cy + 3 }, document.createTextNode(`+${queue.length - SHOWN}`))));
     }
 
-    const [nx, ny] = iso(gx + 1.15, gy + 0.6);
-    g.append(svg('text', { class: 'name', x: nx + 30, y: ny - 6, 'text-anchor': 'start', style: 'text-anchor:start' },
-      document.createTextNode(p.name)));
-    g.append(svg('text', { class: `meta${h.bad ? ' bad' : ''}`, x: nx + 30, y: ny + 9, style: 'text-anchor:start' },
-      document.createTextNode(printing ? `Printing ${printing.printed} of ${printing.total}` : h.text)));
     return g;
   }
 
   function parcel(r, gx, gy, i) {
-    const s = 0.16;
+    const s = 0.15;
     const p0 = iso(gx - s, gy - s), p1 = iso(gx + s, gy - s), p2 = iso(gx + s, gy + s), p3 = iso(gx - s, gy + s);
-    const hgt = 7;
+    const hgt = 9;
     const up = ([x, y]) => [x, y - hgt - 2];
     const lift = ([x, y]) => [x, y - 2];
     const g = svg('g', { class: `parcel${stuck(r) || ['failed', 'retrying', 'paused', 'waiting'].includes(r.status) ? ' stuck' : ''}${state.sel?.kind === 'run' && state.sel.id === r.id ? ' sel' : ''}`,
-                         'data-run': r.id, tabindex: 0, role: 'button',
+                         'data-run': r.id, 'data-key': `run:${r.id}`, tabindex: 0, role: 'button',
                          'aria-label': `${r.id}, ${r.template_name || r.template_id}, ${WORDS[r.status] || r.status}, ${r.printed} of ${r.total} labels`,
                          // the printer underneath has its own click; this one is the parcel's
                          onclick: (e) => e.stopPropagation(),
@@ -450,13 +465,13 @@
     const runs = state.runs.filter((r) => state.view === null || siteOf(printer(r.printer_id) || {}) === state.view);
     const on = runs.filter((r) => UNFINISHED.includes(r.status)).length;
     const failed = runs.filter((r) => r.status === 'failed').length;
-    $('hud').replaceChildren(
+    $('hud').replaceChildren(...[
       el('span', {}, el('b', { text: String(b?.printed_today ?? 0) }), 'labels today'),
       el('span', {}, el('b', { text: String(on) }), on === 1 ? 'job on' : 'jobs on'),
       el('span', { class: ready < here.length ? 'warn-n' : '' },
         el('b', { text: `${ready} of ${here.length}` }), 'printers ready'),
       failed ? el('span', { class: 'warn-n' }, el('b', { text: String(failed) }), 'failed') : null,
-      b?.paused ? el('span', { class: 'warn-n' }, el('b', { text: 'Queue held' })) : null);
+      b?.paused ? el('span', { class: 'warn-n' }, el('b', { text: 'Queue held' })) : null].filter(Boolean));
   }
 
   function crumbs() {
@@ -509,7 +524,7 @@
     } else {
       out.push(el('p', { class: 'lede', text: `${trouble.length} printer${trouble.length === 1 ? ' needs' : 's need'} a look.` }));
       out.push(el('ul', { class: 'q' }, ...trouble.map((p) => el('li', {},
-        el('button', { type: 'button', onclick: () => { if (state.view === null) state.view = siteOf(p); state.fitted = null; select('printer', p.id); } },
+        el('button', { type: 'button', onclick: () => { if (state.view === null) state.view = siteOf(p); state.fitted = false; select('printer', p.id); } },
           el('span', { text: p.name }), el('small', { class: 'problem', text: healthOf(p).text }))))));
     }
     if (state.view !== null && state.arranging) {
@@ -533,7 +548,8 @@
         r.error ? el('dd', { class: 'problem', text: r.error }) : null),
     ];
     if (r.moving_to) out.push(el('p', { class: 'lede', text: `Moving to ${printer(r.moving_to)?.name || r.moving_to} after the label under the head.` }));
-    const targets = state.printers.filter((x) => x.id !== r.printer_id && !x.detour_to && (!p || x.dpi === p.dpi));
+    const targets = state.printers.filter((x) => x.id !== r.printer_id && !x.detour_to && (!p || x.dpi === p.dpi))
+      .sort((a, b) => healthOf(a).bad - healthOf(b).bad);
     if (MOVABLE.includes(r.status) && left > 0 && targets.length) {
       const sel = el('select', { id: 'move-to', 'aria-label': 'Move the rest to' },
         ...targets.map((x) => el('option', { value: x.id, text: `${x.name}${healthOf(x).bad ? ` (${healthOf(x).text})` : ''}` })));
@@ -593,7 +609,7 @@
     if (kind === 'run') {
       const r = state.runs.find((x) => x.id === id);
       const p = r && printer(r.printer_id);
-      if (p && state.view !== siteOf(p)) { state.view = siteOf(p); state.fitted = null; }
+      if (p && state.view !== siteOf(p)) { state.view = siteOf(p); state.fitted = false; }
     }
     draw();
   }
@@ -604,7 +620,7 @@
     state.arranging = false;
     $('arrange').setAttribute('aria-pressed', 'false');
     $('arrange').hidden = !isManager() || siteId === null;
-    state.fitted = null;
+    state.fitted = false;
     draw();
   }
 
@@ -676,6 +692,7 @@
     const move = (ev) => {
       if (!ghost && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 5) return;
       if (!ghost) {
+        state.dragging = true;
         ghost = from.cloneNode(true);
         ghost.classList.add('ghost');
         $('world').append(ghost);
@@ -696,8 +713,10 @@
       window.removeEventListener('pointerup', up);
       if (!ghost) { select('run', r.id); return; }
       ghost.remove();
+      state.dragging = false;
       for (const n of town.querySelectorAll('.refuse, .target')) n.classList.remove('refuse', 'target');
       if (over) moveRun(r, over.dataset.printer);
+      else if (state.stale) { state.stale = false; draw(); }
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -705,6 +724,7 @@
 
   function dragPrinter(e, p) {
     e.stopPropagation();
+    state.dragging = true;
     const g = e.currentTarget;
     const start = toWorld(e.clientX, e.clientY);
     let spot = null;
@@ -717,6 +737,7 @@
     const up = async () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      state.dragging = false;
       if (!spot) { draw(); return; }
       const taken = state.printers.find((x) => x.id !== p.id && siteOf(x) === siteOf(p)
                                           && floorSpots(siteOf(p)).get(x.id).join(',') === spot.join(','));
@@ -732,13 +753,13 @@
 
   // ------------------------------------------------------------ camera
   function fit(world) {
-    if (state.fitted !== state.view) {
+    if (state.fitted !== String(state.view)) {
       const b = world.getBBox();
       const r = town.getBoundingClientRect();
       const pad = 90;
       const k = Math.min((r.width - pad * 2) / Math.max(b.width, 1), (r.height - pad * 2 - 80) / Math.max(b.height, 1), 1.6);
       state.cam = { k, x: r.width / 2 - (b.x + b.width / 2) * k, y: r.height / 2 - (b.y + b.height / 2) * k + 10 };
-      state.fitted = state.view;
+      state.fitted = String(state.view);
     }
     world.setAttribute('transform', `translate(${state.cam.x} ${state.cam.y}) scale(${state.cam.k})`);
   }
@@ -757,6 +778,12 @@
     $('world')?.setAttribute('transform', `translate(${state.cam.x} ${state.cam.y}) scale(${k})`);
   }
 
+  town.addEventListener('pointerdown', () => { state.holding = true; }, { capture: true });
+  window.addEventListener('pointerup', () => {
+    state.holding = false;
+    // after the click has landed, not before it
+    if (state.stale) setTimeout(() => { if (state.stale) draw(); }, 0);
+  });
   town.addEventListener('wheel', (e) => { e.preventDefault(); zoom(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY); }, { passive: false });
   town.addEventListener('pointerdown', (e) => {
     if (e.target.closest('.parcel, .printer, .site')) return;
@@ -783,9 +810,10 @@
     state.arranging = !state.arranging;
     $('arrange').setAttribute('aria-pressed', String(state.arranging));
     $('arrange').textContent = state.arranging ? 'Done arranging' : 'Arrange printers';
+    state.fitted = false;                 // the floor grows to the whole grid, and back
     draw();
   });
-  window.addEventListener('resize', () => { state.fitted = null; if (state.me) draw(); });
+  window.addEventListener('resize', () => { state.fitted = false; if (state.me) draw(); });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && state.sel) { state.sel = null; draw(); }
   });
