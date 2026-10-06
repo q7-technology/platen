@@ -72,6 +72,9 @@ between sites when a job moves.
 
 ## Step 3 — page printing
 
+*Done.* `app/pages.py`, the page editor at `/studio/pages`, office printers,
+and tall printers with paper stacks on the live map.
+
 - A page template: paper size, margins, header, footer, a flowing body, and
   tables bound to a query that split across pages with repeated headings.
 - Rendered to PDF with ReportLab, whose tables already know how to split.

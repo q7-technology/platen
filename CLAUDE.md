@@ -27,6 +27,7 @@ app/            the service
   datasources.py  connections (SQL or REST), read-only query runner
   images.py       base64 → PIL → 1-bit → ^GFA
   zpl.py          element tree → ^XA … ^XZ
+  pages.py        page templates (header, body, footer) → one PDF per document, via ReportLab
   zplimport.py    ^XA … ^XZ → element tree, with a list of what it dropped
   preview.py      the same tree → PNG, for the browser
   printers.py     raw 9100 / CUPS / local agent transports, and network discovery
@@ -150,6 +151,12 @@ test suite runs the same models on SQLite, so keep column types portable.
     retry of a run that has moved on, or is printing elsewhere, does nothing.
     Moving a printing run back to the printer it is still on calls off the
     move it was waiting to make; that is what undo means there.
+
+22. **A page is never markup and never sent ZPL.** Every bound value is
+    escaped before it reaches a ReportLab paragraph, which would otherwise
+    read tags (`<img src>` included) out of the data. The page preview is a
+    picture of the PDF that prints. An office printer is probed, never asked
+    `~HQES` or sent a test label: on port 9100 either comes out as a page.
 
 ## Code
 

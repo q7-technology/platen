@@ -203,6 +203,33 @@ revoke it there when the script that used it is gone. A key is shown once,
 when it is made, and only its hash is kept. An agent's key is narrower still:
 it can talk to its own agent and nothing else.
 
+## Pages as well as labels
+
+Packing slips, invoices and pick lists go to an ordinary office printer as a
+PDF. Make one under **Templates → New template → A page**. A page template is
+a header, a body and a footer, each a list of blocks: text, a table, an image,
+a barcode or QR code, a gap, a line. The header and footer are on every page
+and can say `Page {{ page }} of {{ pages }}`.
+
+One query, one document per group. A packing slip's query returns a row per
+order line with the order's own columns alongside; set **One document per**
+to `order_no` and each order gets its own slip, its lines in the table and
+its first row behind everything else. A table grows with the data and carries
+onto the next page with its headings repeated. The preview is a picture of
+the very PDF that prints. Like a label, every document is made before the
+first one prints, and a broken binding names the block and the column.
+
+Add the office printer under **Printers** with **Prints: Pages (PDF)**. Most
+office printers take a PDF straight down port 9100; for one that doesn't, use
+its CUPS queue and CUPS converts it. A desk agent carries labels only for
+now. An office printer is only ever asked whether it answers: `~HQES`, the
+Zebra health question, would come out as a printed page. The network scan
+asks `~HI` of everything on 9100, so an office printer in the range may print
+one short page when you scan.
+
+Labels go to label printers and pages to office printers, and a move or a
+detour keeps to its own kind.
+
 ## The live map
 
 `/studio/map` is every site, printer and job at once, drawn as a small model

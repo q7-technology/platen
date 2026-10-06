@@ -35,6 +35,7 @@ from . import (
     events,
     health,
     jobs,
+    pages,
     preview,
     printers,
     retention,
@@ -232,7 +233,7 @@ SCREENS = {
     "print": "print.html", "login": "login.html", "people": "people.html",
     "data": "data.html", "printers": "printers.html", "templates": "templates.html",
     "editor": "editor.html", "jobs": "jobs.html", "dashboard": "dashboard.html",
-    "map": "map.html",
+    "map": "map.html", "pages": "pages.html",
 }
 
 
@@ -260,6 +261,26 @@ def _as_template(row: db.Template) -> Template:
     )
 
 
+def _as_page(row: db.Template) -> pages.PageTemplate:
+    latest = _latest_version(row)
+    return pages.PageTemplate.model_validate({
+        **(row.page or {}), "id": row.id, "name": row.name, "folder": row.folder,
+        "version": latest.version if latest else 0,
+        "datasource": row.datasource_id, "query": row.query_id})
+
+
+def _definition(row: db.Template) -> dict[str, Any]:
+    """What a published version freezes: a label or a page, whole."""
+    return (_as_page(row) if row.kind == "page" else _as_template(row)).model_dump(mode="json")
+
+
+def _size(row: db.Template) -> list[float]:
+    if row.kind == "page" and row.page:
+        return list(pages.PageTemplate.model_validate({**row.page, "id": row.id,
+                                                       "name": row.name}).size_mm)
+    return [row.width_mm, row.height_mm]
+
+
 def _template_row(s: Session, template_id: str) -> db.Template:
     row = s.get(db.Template, template_id)
     if row is None:
@@ -279,7 +300,7 @@ def list_templates(q: str = "", folder: str | None = None,
                           | func.lower(db.Template.id).like(like))
     return [
         {"id": t.id, "name": t.name, "version": v.version if (v := _latest_version(t)) else 0,
-         "size_mm": [t.width_mm, t.height_mm], "dpi": t.dpi, "datasource": t.datasource_id,
+         "kind": t.kind, "size_mm": _size(t), "dpi": t.dpi, "datasource": t.datasource_id,
          "query": t.query_id, "folder": t.folder, "updated_at": t.updated_at}
         for t in s.scalars(stmt)
     ]
@@ -331,7 +352,11 @@ def import_zpl(body: ImportZpl, s: Session = Depends(get_session),
 
 @app.get("/templates/{template_id}", dependencies=[Depends(current_user)])
 def get_template(template_id: str, s: Session = Depends(get_session)) -> Template:
-    return _as_template(_template_row(s, template_id))
+    row = _template_row(s, template_id)
+    if row.kind == "page":
+        raise HTTPException(409, f"{template_id!r} is a page template; read it from "
+                                 f"/pages/{template_id}")
+    return _as_template(row)
 
 
 @app.put("/templates/{template_id}", dependencies=[Depends(admin)])
@@ -339,6 +364,9 @@ def put_template(template_id: str, template: Template,
                  s: Session = Depends(get_session)) -> Template:
     """Saves the draft. Nothing prints from a draft — see publish."""
     row = s.get(db.Template, template_id) or db.Template(id=template_id)
+    if row.kind == "page":
+        raise HTTPException(409, f"{template_id!r} is a page template; save it to "
+                                 f"/pages/{template_id}")
     row.name = template.name
     row.width_mm, row.height_mm, row.dpi = template.width_mm, template.height_mm, template.dpi
     row.darkness = template.darkness
@@ -358,7 +386,7 @@ def publish_template(template_id: str, s: Session = Depends(get_session),
     latest = _latest_version(row)
     version = db.TemplateVersion(
         template=row, version=(latest.version + 1) if latest else 1,
-        definition=_as_template(row).model_dump(mode="json"),
+        definition=_definition(row),
     )
     version.definition["version"] = version.version
     s.add(version)
@@ -634,6 +662,8 @@ def _preview_template(s: Session, template_id: str, published: bool) -> Template
 @app.post("/templates/{template_id}/preview.png", dependencies=[Depends(current_user)])
 def preview_png(template_id: str, body: RenderPreview,
                 s: Session = Depends(get_session)) -> Response:
+    if _template_row(s, template_id).kind == "page":
+        return page_png(template_id, body, 1, s)
     t = _preview_template(s, template_id, body.published)
     row = _one_row(s, t, body)
     try:
@@ -674,6 +704,108 @@ def _one_row(s: Session, t: Template, body: RenderPreview) -> dict[str, Any]:
     return rows[min(body.record, len(rows) - 1)]
 
 
+# --------------------------------------------------------------------- pages
+
+PAGE_ROWS = 5000                   # one preview reads at most this many rows
+
+
+@app.get("/pages/{template_id}", dependencies=[Depends(current_user)])
+def get_page(template_id: str, s: Session = Depends(get_session)) -> pages.PageTemplate:
+    row = _template_row(s, template_id)
+    if row.kind != "page":
+        raise HTTPException(409, f"{template_id!r} is a label template; read it from "
+                                 f"/templates/{template_id}")
+    return _as_page(row)
+
+
+@app.put("/pages/{template_id}")
+def put_page(template_id: str, page: pages.PageTemplate, s: Session = Depends(get_session),
+             user: AppUser = Depends(admin)) -> pages.PageTemplate:
+    """Saves a page template's draft. Like a label, nothing prints from a draft."""
+    row = s.get(db.Template, template_id)
+    if row is not None and row.kind != "page":
+        raise HTTPException(409, f"{template_id!r} is already a label template; "
+                                 "give the page template another name")
+    row = row or db.Template(id=template_id, kind="page", elements=[], dpi=203)
+    row.kind, row.name, row.folder = "page", page.name, page.folder
+    row.datasource_id, row.query_id = page.datasource, page.query
+    row.width_mm, row.height_mm = page.size_mm
+    row.page = page.model_dump(mode="json", exclude={"id", "name", "version", "folder",
+                                                     "datasource", "query"})
+    s.add(row)
+    s.commit()
+    return _as_page(row)
+
+
+def _preview_page(s: Session, template_id: str, published: bool) -> pages.PageTemplate:
+    row = _template_row(s, template_id)
+    if row.kind != "page":
+        raise HTTPException(409, f"{template_id!r} is a label template")
+    if not published:
+        return _as_page(row)
+    version = _latest_version(row)
+    if version is None:
+        raise HTTPException(
+            422, f"template {template_id!r} has no published version; publish it first")
+    return pages.PageTemplate.model_validate(version.definition)
+
+
+def _one_document(s: Session, t: pages.PageTemplate, body: RenderPreview,
+                  ) -> tuple[list[dict[str, Any]], int]:
+    """The rows behind document `body.record`, and how many documents there are."""
+    if not t.query:
+        return [{}], 1
+    query = _query(s, t.query)
+    try:
+        if body.data == "columns":
+            # three stand-in lines, so a table looks like a table
+            row = {c: binding.Placeholder(c) for c in datasources.columns(s, query)}
+            return [row, row, row], 1
+        rows = datasources.run(s, query, body.params, limit=PAGE_ROWS)
+        docs = pages.group(t, rows)
+    except HTTPException:
+        raise
+    except pages.RenderError as exc:
+        raise HTTPException(422, str(exc)) from None
+    except Exception as exc:
+        raise HTTPException(422, f"{t.query}: {exc}") from None
+    if not docs:
+        raise HTTPException(422, "the query returned no rows")
+    return docs[min(body.record, len(docs) - 1)], len(docs)
+
+
+def _page_pdf(s: Session, t: pages.PageTemplate, body: RenderPreview,
+              ) -> tuple[bytes, list[str], int]:
+    rows, documents = _one_document(s, t, body)
+    try:
+        pdf, warnings = pages.render_document(t, rows)
+    except pages.RenderError as exc:
+        raise HTTPException(422, str(exc)) from None
+    return pdf, warnings, documents
+
+
+@app.post("/pages/{template_id}/preview.png", dependencies=[Depends(current_user)])
+def page_png(template_id: str, body: RenderPreview, page: int = 1,
+             s: Session = Depends(get_session)) -> Response:
+    """One page of one document, drawn from the PDF that would be printed."""
+    pdf, warnings, documents = _page_pdf(s, _preview_page(s, template_id, body.published), body)
+    try:
+        png = pages.to_png(pdf, page)
+    except pages.RenderError as exc:
+        raise HTTPException(422, str(exc)) from None
+    return Response(png, media_type="image/png", headers={
+        "x-platen-pages": str(pages.page_count(pdf)), "x-platen-documents": str(documents),
+        "x-platen-warnings": json.dumps(warnings)})
+
+
+@app.post("/pages/{template_id}/preview.pdf", dependencies=[Depends(current_user)])
+def page_pdf(template_id: str, body: RenderPreview,
+             s: Session = Depends(get_session)) -> Response:
+    pdf, warnings, _ = _page_pdf(s, _preview_page(s, template_id, body.published), body)
+    return Response(pdf, media_type="application/pdf",
+                    headers={"x-platen-warnings": json.dumps(warnings)})
+
+
 # ---------------------------------------------------------------- print runs
 
 class RunSpec(BaseModel):
@@ -701,7 +833,41 @@ class Prepared(BaseModel):
     printing: int                   # how many of them will actually print
     labels: list[str]
     warnings: list[str]
-    template: Template
+    template: Any                   # a Template, or a PageTemplate for a page run
+    kind: Literal["label", "page"] = "label"
+    documents: list[bytes] = []     # a page run's PDFs, one per document and copy
+
+
+def _prepare_pages(s: Session, body: RunSpec, version: db.TemplateVersion) -> Prepared:
+    """A page run: one document per group, each a PDF, all made before any
+    of it is queued. Record numbers count documents, not rows."""
+    t = pages.PageTemplate.model_validate(version.definition)
+    rows = datasources.run(s, _query(s, t.query), body.params) if t.query else [{}]
+    try:
+        groups = pages.group(t, rows)
+    except pages.RenderError as exc:
+        raise HTTPException(422, str(exc)) from None
+    skip = set(body.skip_rows)
+    in_range = [(i, g) for i, g in enumerate(groups, start=1) if i >= body.start_at]
+    printing = [(i, g) for i, g in in_range if i not in skip]
+    if len(printing) > pages.MAX_DOCUMENTS:
+        raise HTTPException(422, f"that is {len(printing)} documents; one run takes at most "
+                                 f"{pages.MAX_DOCUMENTS}. Narrow the query and print it in two")
+    documents, warnings = [], []
+    for i, g in printing:
+        try:
+            pdf, said = pages.render_document(t, g)
+        except pages.RenderError as exc:
+            raise HTTPException(422, f"document {i}: {exc}") from None
+        warnings += [f"document {i}: {w}" for w in said]
+        documents.extend([pdf] * body.copies)
+    return Prepared(
+        version_id=version.id, version=version.version,
+        records=[{"n": n, "summary": _summarise(g[0]) if g else "", "included": n not in skip}
+                 for n, g in in_range],
+        printing=len(printing), labels=[], warnings=warnings, template=t,
+        kind="page", documents=documents,
+    )
 
 
 def _prepare(s: Session, body: RunSpec) -> Prepared:
@@ -711,6 +877,8 @@ def _prepare(s: Session, body: RunSpec) -> Prepared:
     if version is None:
         raise HTTPException(
             422, f"template {body.template_id!r} has no published version; publish it first")
+    if version.definition.get("kind") == "page":
+        return _prepare_pages(s, body, version)
     t = Template.model_validate(version.definition)
 
     rows = datasources.run(s, _query(s, t.query), body.params) if t.query else [{}]
@@ -758,7 +926,21 @@ def check_run(body: RunSpec, s: Session = Depends(get_session)) -> dict[str, Any
     """Everything a run would do short of writing it down or queueing it."""
     started = time.perf_counter()
     p = _prepare(s, body)
+    if p.kind == "page":
+        return {
+            "kind": "page",
+            "records": p.printing,
+            "record_list": p.records[:MAX_RECORDS],
+            "records_capped": len(p.records) > MAX_RECORDS,
+            "documents": len(p.documents),
+            "labels": len(p.documents),        # what the print screen counts
+            "pages": sum(pages.page_count(d) for d in p.documents),
+            "warnings": p.warnings,
+            "template_version": p.version,
+            "elapsed_ms": round((time.perf_counter() - started) * 1000),
+        }
     return {
+        "kind": "label",
         "records": p.printing,
         "record_list": p.records[:MAX_RECORDS],
         "records_capped": len(p.records) > MAX_RECORDS,
@@ -773,35 +955,43 @@ def check_run(body: RunSpec, s: Session = Depends(get_session)) -> dict[str, Any
 def run_pdf(body: RunSpec, s: Session = Depends(get_session)) -> RawResponse:
     """The run as a PDF, to look at before committing a roll of stock to it."""
     p = _prepare(s, body)
+    if p.kind == "page":
+        if not p.documents:
+            raise HTTPException(422, "there is nothing to draw")
+        name = f"{body.template_id}-{auth.now():%Y%m%d-%H%M}.pdf"
+        return RawResponse(
+            pages.merge(p.documents[:MAX_PDF_PAGES]), media_type="application/pdf",
+            headers={"content-disposition": f'attachment; filename="{name}"',
+                     "x-platen-documents": str(len(p.documents))})
     rows = (datasources.run(s, _query(s, p.template.query), body.params)
             if p.template.query else [{}])
     skip = set(body.skip_rows)
     chosen = [r for i, r in enumerate(rows, start=1)
               if i >= body.start_at and i not in skip]
 
-    pages: list[Image.Image] = []
+    sheets: list[Image.Image] = []
     for row in chosen:
-        if len(pages) >= MAX_PDF_PAGES:
+        if len(sheets) >= MAX_PDF_PAGES:
             break
         for _ in range(body.copies):
-            if len(pages) >= MAX_PDF_PAGES:
+            if len(sheets) >= MAX_PDF_PAGES:
                 break
             try:
-                pages.append(Image.open(io.BytesIO(preview.render_png(p.template, row))))
+                sheets.append(Image.open(io.BytesIO(preview.render_png(p.template, row))))
             except preview.RenderError as exc:
                 raise HTTPException(422, str(exc)) from None
-    if not pages:
+    if not sheets:
         raise HTTPException(422, "there is nothing to draw")
 
     out = io.BytesIO()
-    pages[0].convert("L").save(out, "PDF", save_all=True,
-                               append_images=[page.convert("L") for page in pages[1:]],
+    sheets[0].convert("L").save(out, "PDF", save_all=True,
+                               append_images=[page.convert("L") for page in sheets[1:]],
                                resolution=p.template.dpi)
     name = f"{body.template_id}-{auth.now():%Y%m%d-%H%M}.pdf"
     return RawResponse(
         out.getvalue(), media_type="application/pdf",
         headers={"content-disposition": f'attachment; filename="{name}"',
-                 "x-platen-pages": str(len(pages)),
+                 "x-platen-pages": str(len(sheets)),
                  "x-platen-labels": str(len(p.labels))},
     )
 
@@ -839,19 +1029,29 @@ def create_run(body: NewRun, s: Session = Depends(get_session),
 
     # every label renders here, before a run row exists, let alone a job
     p = _prepare(s, body)
+    if printer.kind != p.kind:
+        raise HTTPException(
+            422, f"{printer.name} is a {printer.kind} printer and this template prints "
+                 f"{p.kind}s; pick a {p.kind} printer")
 
     run_id = f"JOB-{uuid.uuid4().hex[:6].upper()}"
-    labels = _with_separator(p, run_id) if body.separator else p.labels
+    if p.kind == "page":
+        if body.separator:
+            p.warnings.append("a separator is a label; a page run leaves it out")
+        rows = [db.RunLabel(seq=i, zpl="", body=d) for i, d in enumerate(p.documents, start=1)]
+    else:
+        labels = _with_separator(p, run_id) if body.separator else p.labels
+        rows = [db.RunLabel(seq=i, zpl=z) for i, z in enumerate(labels, start=1)]
     run = db.PrintRun(
         id=run_id, template_version_id=p.version_id,
         printer_id=printer.id, params=body.params, copies=body.copies,
-        pause_between=body.pause_between, total=len(labels),
-        labels=[db.RunLabel(seq=i, zpl=z) for i, z in enumerate(labels, start=1)],
+        pause_between=body.pause_between, total=len(rows),
+        labels=rows,
         warnings=[_warning(w) for w in p.warnings],
     )
     s.add(run)
     audit(s, "create", "run", run.id, template_id=body.template_id, template_version=p.version,
-          printer_id=printer.id, asked_for=asked_for.id, labels=len(labels),
+          printer_id=printer.id, asked_for=asked_for.id, labels=len(rows), kind=p.kind,
           skip_rows=body.skip_rows, actor=user)
     s.commit()
 
@@ -994,8 +1194,12 @@ def _move(s: Session, run: db.PrintRun, target: db.Printer, user: AppUser, *,
     if target.detour_to:
         raise HTTPException(409, f"{target.name} is detoured to {target.detour_to}; "
                                  "move the run there instead")
+    run_kind = run.template_version.definition.get("kind", "label")
+    if target.kind != run_kind:
+        raise HTTPException(
+            422, f"{run.id} prints {run_kind}s and {target.name} is a {target.kind} printer")
     drawn_at = run.template_version.definition.get("dpi", 203)
-    if target.dpi != drawn_at:
+    if run_kind == "label" and target.dpi != drawn_at:
         # the labels are already ZPL at the template's dot pitch; on another
         # pitch every one comes out the wrong size
         raise HTTPException(
@@ -1057,6 +1261,7 @@ class PrinterBody(BaseModel):
     name: str
     model: str = ""
     dpi: int = 203
+    kind: Literal["label", "page"] = "label"
     transport: dict[str, Any]
     site_id: str | None = None
     grid_x: int | None = None
@@ -1067,7 +1272,7 @@ def _printer_json(row: db.Printer, online: bool | None) -> dict[str, Any]:
     return {"id": row.id, "name": row.name, "model": row.model, "dpi": row.dpi,
             "transport": {"kind": row.transport_kind, **row.transport_config},
             "site_id": row.site_id, "grid": [row.grid_x, row.grid_y],
-            "detour_to": row.detour_to,
+            "detour_to": row.detour_to, "kind": row.kind,
             "health": {"state": row.health, "problems": row.health_problems or [],
                        "checked_at": row.health_at},
             "online": online}
@@ -1147,6 +1352,15 @@ def put_printer(printer_id: str, body: PrinterBody,
     kind = config.pop("kind", None)
     if kind is None:
         raise HTTPException(422, "transport.kind is required: tcp, cups or agent")
+    if body.kind == "page" and kind == "agent":
+        raise HTTPException(422, "a desk agent passes labels only for now; reach an office "
+                                 "printer over the network or through CUPS")
+    if kind == "cups":
+        # CUPS turns a PDF into what an office printer speaks; ZPL goes through
+        # untouched, which is the default and so isn't written down
+        config.pop("raw", None)
+        if body.kind == "page":
+            config["raw"] = False
     try:
         printers.build(kind, config)
     except (ValueError, KeyError) as exc:
@@ -1159,6 +1373,7 @@ def put_printer(printer_id: str, body: PrinterBody,
     row = s.get(db.Printer, printer_id) or db.Printer(id=printer_id)
     row.name, row.model, row.dpi = body.name, body.model, body.dpi
     row.site_id, row.grid_x, row.grid_y = body.site_id, body.grid_x, body.grid_y
+    row.kind = body.kind
     row.transport_kind, row.transport_config = kind, config
     s.add(row)
     audit(s, "save", "printer", row.id, transport=kind, site_id=row.site_id, actor=user)
@@ -1196,7 +1411,10 @@ def detour_printer(printer_id: str, body: DetourBody, s: Session = Depends(get_s
     if into:
         raise HTTPException(409, f"{', '.join(into)} already detour(s) to {row.name}; "
                                  "point them somewhere else first")
-    if target.dpi != row.dpi:
+    if target.kind != row.kind:
+        raise HTTPException(422, f"{row.name} is a {row.kind} printer and {target.name} a "
+                                 f"{target.kind} printer; a detour stays with its own kind")
+    if row.kind == "label" and target.dpi != row.dpi:
         raise HTTPException(422, f"{row.name} prints at {row.dpi} dpi and {target.name} at "
                                  f"{target.dpi}; its labels would come out the wrong size")
     row.detour_to = target.id
@@ -1832,8 +2050,12 @@ def test_printer(printer_id: str, s: Session = Depends(get_session)) -> dict[str
     p = printers.load(s, printer_id)
     if p is None:
         raise HTTPException(404, f"no printer {printer_id!r}")
+    row = s.get(db.Printer, printer_id)
+    # ZPL on an office printer comes out as a page of ZPL; it gets a page instead
+    test = (pages.render_document(pages.TEST_PAGE, [{}])[0] if row.kind == "page"
+            else printers.TEST_LABEL)
     try:
-        p.transport.send(printers.TEST_LABEL)
+        p.transport.send(test)
     except Exception as exc:
         raise HTTPException(502, f"{printer_id}: {type(exc).__name__}: {exc}") from None
-    return {"id": printer_id, "sent": "test label"}
+    return {"id": printer_id, "sent": "test page" if row.kind == "page" else "test label"}

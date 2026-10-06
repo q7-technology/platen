@@ -219,7 +219,8 @@
     // so too, but there is no point offering the ones it would refuse
     const here = state.printers.find((p) => p.id === r.printer_id);
     const options = state.printers.filter((p) => p.id !== r.printer_id && !p.detour_to
-                                                 && (!here || p.dpi === here.dpi));
+                                                 && (!here || ((p.kind || 'label') === (here.kind || 'label')
+                                                               && (here.kind === 'page' || p.dpi === here.dpi))));
     $('d-move').hidden = !(MOVABLE.includes(r.status) && left > 0 && options.length);
     $('d-to').replaceChildren(...options.map((p) => el('option', { value: p.id,
       text: `${p.name}${p.health?.state && p.health.state !== 'ready' ? ` (${p.health.problems.join(', ') || p.health.state})` : ''}` })));

@@ -12,6 +12,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
     TypeDecorator,
@@ -150,6 +151,10 @@ class Template(Base):
     datasource_id: Mapped[str | None] = mapped_column(String(64))
     query_id: Mapped[str | None] = mapped_column(String(64))
     elements: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    # "label" draws ZPL on stock; "page" draws a PDF on paper (app/pages.py),
+    # and keeps its whole layout in `page` rather than in the label columns
+    kind: Mapped[str] = mapped_column(String(8), default="label")
+    page: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now, onupdate=now)
 
@@ -264,6 +269,8 @@ class Printer(Base):
     health_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
     # new runs for this printer go to that one instead, until it is cleared
     detour_to: Mapped[str | None] = mapped_column(String(64))
+    # "label" takes ZPL; "page" is an office printer and takes PDF
+    kind: Mapped[str] = mapped_column(String(8), default="label")
 
 
 class PrintRun(Base):
@@ -306,6 +313,8 @@ class RunLabel(Base):
     run_id: Mapped[str] = mapped_column(ForeignKey("print_run.id"))
     seq: Mapped[int]
     zpl: Mapped[str] = mapped_column(Text)
+    # a page run's document, as PDF; zpl is empty for those
+    body: Mapped[bytes | None] = mapped_column(LargeBinary)
     printed_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
     run: Mapped[PrintRun] = relationship(back_populates="labels")

@@ -183,7 +183,7 @@
     $('step2').classList.remove('is-off');
     $('save-run').disabled = false;
     $('q-note').hidden = true; $('q-err').hidden = true;
-    renderWarnings([]); showPreview(null); updateGo();
+    renderWarnings([]); showPreview(null); fillPrinters();
     state.query = t.query ? await api('GET', `/queries/${encodeURIComponent(t.query)}`) : null;
     // an operator isn't told which connection it came from, so don't print a gap
     $('q-chip').textContent = state.query
@@ -231,7 +231,9 @@
       state.check = await api('POST', '/runs/check', spec());
       const c = state.check;
       $('q-note-text').replaceChildren(el('b', {}, `${c.records} record${c.records === 1 ? '' : 's'}`),
-        ` returned in ${c.elapsed_ms} ms · ${c.labels} label${c.labels === 1 ? '' : 's'} at ${spec().copies} cop${spec().copies === 1 ? 'y' : 'ies'} each`);
+        c.kind === 'page'
+          ? ` returned in ${c.elapsed_ms} ms · ${c.documents} ${unit(c.documents)}, ${c.pages} page${c.pages === 1 ? '' : 's'} in all`
+          : ` returned in ${c.elapsed_ms} ms · ${c.labels} label${c.labels === 1 ? '' : 's'} at ${spec().copies} cop${spec().copies === 1 ? 'y' : 'ies'} each`);
       $('q-note').hidden = false;
       $('step3').classList.remove('is-off');
       renderWarnings(c.warnings);
@@ -358,22 +360,37 @@
   // ---------- step 3: printer, then go
   async function loadPrinters() {
     state.printers = await api('GET', '/printers');
+    fillPrinters();
+  }
+
+  /* Labels go to label printers and pages to office printers, so only the
+     ones that can take this template are offered. */
+  function fillPrinters() {
+    const kind = state.template?.kind || 'label';
     const sel = $('printer');
+    const was = sel.value;
     sel.replaceChildren();
-    for (const p of state.printers) {
-      sel.append(el('option', { value: p.id }, `${p.model ? p.model + ' · ' : ''}${p.name} — ${p.online ? 'online' : 'not answering'}`));
+    const fits = (state.printers || []).filter((p) => (p.kind || 'label') === kind);
+    for (const p of fits) {
+      sel.append(el('option', { value: p.id, selected: p.id === was },
+        `${p.model ? p.model + ' · ' : ''}${p.name} — ${p.online ? 'online' : 'not answering'}`));
     }
-    if (!state.printers.length) sel.append(el('option', { value: '' }, 'No printers registered'));
+    if (!fits.length) sel.append(el('option', { value: '' }, kind === 'page' ? 'No office printers registered' : 'No label printers registered'));
     updateGo();
   }
+
+  const unit = (n) => {
+    const word = state.template?.kind === 'page' ? 'document' : 'label';
+    return n === 1 ? word : `${word}s`;
+  };
 
   function updateGo() {
     const ready = !!(state.check && state.check.labels && $('printer').value && !state.run);
     const p = state.printers.find((x) => x.id === $('printer').value);
     $('go-count').textContent = state.check ? state.check.labels : '–';
-    $('go-where').textContent = p && state.check ? `labels to ${p.name}` : 'labels';
+    $('go-where').textContent = p && state.check ? `${unit(2)} to ${p.name}` : unit(2);
     $('go-version').textContent = state.check ? `${state.template.id} v${state.check.template_version}` : '';
-    $('go-text').textContent = state.check ? `Print ${state.check.labels} label${state.check.labels === 1 ? '' : 's'}` : 'Print';
+    $('go-text').textContent = state.check ? `Print ${state.check.labels} ${unit(state.check.labels)}` : 'Print';
     $('go-btn').disabled = !ready;
   }
 
@@ -409,7 +426,7 @@
       state.run = null; state.timer = null;
       $('go-fine').hidden = false;
       $('go-fine').textContent = r.status === 'done'
-        ? `${r.printed} labels sent to the printer. Run it again or pick another template.`
+        ? `${r.printed} ${unit(r.printed)} sent to the printer. Run it again or pick another template.`
         : 'Nothing more will print from this run.';
       updateGo();
     } else if (r.status === 'waiting') {

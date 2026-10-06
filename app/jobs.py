@@ -201,7 +201,9 @@ def print_run(run_id: str) -> None:
                     return
                 # one label per write: the printer buffers a few, and a mid-run
                 # failure then costs one label instead of the whole batch
-                printer.transport.send(label.zpl.encode("ascii") + b"\n")
+                # a page run carries a PDF per document; a label run, ZPL
+                printer.transport.send(label.body if label.body is not None
+                                       else label.zpl.encode("ascii") + b"\n")
                 label.printed_at = datetime.now(UTC)
                 printed += 1
                 run.printed = printed

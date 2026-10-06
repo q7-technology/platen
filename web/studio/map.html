@@ -78,6 +78,7 @@
   .meta { fill: #8892b0; font-size: 11.5px; text-anchor: middle; }
   .meta.bad { fill: #f7941d; }
   .roll { fill: #e9edf6; stroke: #8892b0; stroke-width: 0.8; }
+  .paper { fill: #ffffff; stroke: #8892b0; stroke-width: 0.6; }
   .lamp { fill: #23415c; }
   .lamp.on { fill: #29abe2; animation: blink 0.9s steps(2, start) infinite; }
   .lamp.bad { fill: #f7941d; animation: pulse 1.6s ease-in-out infinite; }
@@ -213,6 +214,10 @@
   // a failed run with labels left is still somebody's problem, for a day
   const stuck = (r) => r.status === 'failed' && r.printed < r.total
                        && Date.now() - new Date(r.created_at).getTime() < 86400000;
+  /* Would `to` take what `from` prints? Same kind, and for labels the same
+     dot pitch, because a label run's ZPL is already drawn at it. */
+  const fits = (to, from) => !from || ((to.kind || 'label') === (from.kind || 'label')
+                                       && (from.kind === 'page' || to.dpi === from.dpi));
   const isManager = () => ['admin', 'manager'].includes(state.me?.role);
 
   function healthOf(p) {
@@ -431,22 +436,33 @@
     g.append(svg('line', { class: `belt-run${printing ? ' moving' : ''}`, x1: b1x, y1: b1y, x2: b0x, y2: b0y }));
 
     g.append(diamond(gx + 0.08, gy + 0.08, 0.84, 0.84, `halo ${h.bad ? 'bad' : 'ok'}`));
-    g.append(box(gx + 0.1, gy + 0.15, 0.8, 0.7, 38));
-    // the label roll sits on top, side on
+    // a label printer is short and chunky with a roll on top; an office
+    // printer is tall, with a stack of paper in its tray
+    const tall = p.kind === 'page';
+    const lift = tall ? 64 : 38;
     const [rx, ry] = iso(gx + 0.5, gy + 0.5);
-    g.append(svg('ellipse', { class: 'roll', cx: rx, cy: ry - 44, rx: 13, ry: 8 }));
-    g.append(svg('ellipse', { class: 'lamp', cx: rx, cy: ry - 45, rx: 3.5, ry: 2.2 }));
+    if (tall) {
+      g.append(box(gx + 0.15, gy + 0.2, 0.7, 0.6, lift));
+      const sheet = (z) => svg('polygon', { class: 'paper', points: pts(
+        [iso(gx + 0.3, gy + 0.33), iso(gx + 0.7, gy + 0.33), iso(gx + 0.7, gy + 0.67), iso(gx + 0.3, gy + 0.67)]
+          .map(([x, y]) => [x, y - lift - z])) });
+      g.append(sheet(1), sheet(3), sheet(5));
+    } else {
+      g.append(box(gx + 0.1, gy + 0.15, 0.8, 0.7, lift));
+      g.append(svg('ellipse', { class: 'roll', cx: rx, cy: ry - 44, rx: 13, ry: 8 }));
+      g.append(svg('ellipse', { class: 'lamp', cx: rx, cy: ry - 45, rx: 3.5, ry: 2.2 }));
+    }
     // the lamp on the front wall
-    const [lx, ly] = iso(gx + 0.7, gy + 0.84);
-    g.append(svg('circle', { class: `lamp${h.bad ? ' bad' : printing ? ' on' : ''} glow`, cx: lx, cy: ly - 22, r: 3.5 }));
+    const [lx, ly] = iso(gx + 0.7, gy + (tall ? 0.8 : 0.84));
+    g.append(svg('circle', { class: `lamp${h.bad ? ' bad' : printing ? ' on' : ''} glow`, cx: lx, cy: ly - lift * 0.58, r: 3.5 }));
 
     // name and state float above the machine, where nothing else is drawn
     const said = p.detour_to ? `Detoured to ${printer(p.detour_to)?.name || p.detour_to}`
                : printing ? `Printing ${printing.printed} of ${printing.total}` : h.text;
-    g.append(svg('text', { class: 'name', x: rx, y: ry - 74 }, document.createTextNode(p.name)));
-    g.append(svg('text', { class: `meta${h.bad || p.detour_to ? ' bad' : ''}`, x: rx, y: ry - 59 },
+    g.append(svg('text', { class: 'name', x: rx, y: ry - lift - 36 }, document.createTextNode(p.name)));
+    g.append(svg('text', { class: `meta${h.bad || p.detour_to ? ' bad' : ''}`, x: rx, y: ry - lift - 21 },
       document.createTextNode(said)));
-    if (h.bad) g.append(pin(rx + 52, ry - 92));
+    if (h.bad) g.append(pin(rx + 52, ry - lift - 54));
 
     // parcels wait on the belt, nearest the printer first
     queue.sort((a, b) => (a.status === 'printing' ? -1 : 0) - (b.status === 'printing' ? -1 : 0));
@@ -464,14 +480,16 @@
   }
 
   function parcel(r, gx, gy, i) {
-    const s = 0.15;
+    // a label job is a little box; a page job, a flat stack of paper
+    const paper = printer(r.printer_id)?.kind === 'page';
+    const s = paper ? 0.19 : 0.15;
     const p0 = iso(gx - s, gy - s), p1 = iso(gx + s, gy - s), p2 = iso(gx + s, gy + s), p3 = iso(gx - s, gy + s);
-    const hgt = 9;
+    const hgt = paper ? 4 : 9;
     const up = ([x, y]) => [x, y - hgt - 2];
     const lift = ([x, y]) => [x, y - 2];
     const g = svg('g', { class: `parcel${stuck(r) || ['failed', 'retrying', 'paused', 'waiting'].includes(r.status) ? ' stuck' : ''}${state.sel?.kind === 'run' && state.sel.id === r.id ? ' sel' : ''}${state.picked.has(r.id) ? ' picked' : ''}`,
                          'data-run': r.id, 'data-key': `run:${r.id}`, tabindex: 0, role: 'button',
-                         'aria-label': `${r.id}, ${r.template_name || r.template_id}, ${WORDS[r.status] || r.status}, ${r.printed} of ${r.total} labels`,
+                         'aria-label': `${r.id}, ${r.template_name || r.template_id}, ${WORDS[r.status] || r.status}, ${r.printed} of ${r.total} ${paper ? 'documents' : 'labels'}`,
                          // the printer underneath has its own click; this one is the parcel's
                          onclick: (e) => e.stopPropagation(),
                          onkeydown: (e) => {
@@ -580,7 +598,7 @@
         r.error ? el('dd', { class: 'problem', text: r.error }) : null),
     ];
     if (r.moving_to) out.push(el('p', { class: 'lede', text: `Moving to ${printer(r.moving_to)?.name || r.moving_to} after the label under the head.` }));
-    const targets = state.printers.filter((x) => x.id !== r.printer_id && !x.detour_to && (!p || x.dpi === p.dpi))
+    const targets = state.printers.filter((x) => x.id !== r.printer_id && !x.detour_to && fits(x, p))
       .sort((a, b) => healthOf(a).bad - healthOf(b).bad);
     if (MOVABLE.includes(r.status) && left > 0 && targets.length) {
       const sel = el('select', { id: 'move-to', 'aria-label': 'Move the rest to' },
@@ -607,7 +625,7 @@
   function commonTargets(runs) {
     return state.printers.filter((x) => !x.detour_to && runs.every((r) => {
       const at = printer(r.printer_id);
-      return x.id !== r.printer_id && (!at || x.dpi === at.dpi);
+      return x.id !== r.printer_id && fits(x, at);
     })).sort((a, b) => healthOf(a).bad - healthOf(b).bad);
   }
 
@@ -645,7 +663,7 @@
       el('dl', {},
         el('dt', { text: 'Status' }), el('dd', { class: h.bad ? 'problem' : '', text: h.text }),
         el('dt', { text: 'Model' }), el('dd', { text: p.model || '—' }),
-        el('dt', { text: 'Dots per inch' }), el('dd', { text: String(p.dpi) }),
+        el('dt', { text: 'Prints' }), el('dd', { text: p.kind === 'page' ? 'Pages, as PDF' : `Labels at ${p.dpi} dpi` }),
         el('dt', { text: 'Site' }), el('dd', { text: places().find((s) => s.id === siteOf(p))?.name || 'Shared' }),
         p.health?.checked_at ? el('dt', { text: 'Checked' }) : null,
         p.health?.checked_at ? el('dd', { text: new Date(p.health.checked_at).toLocaleTimeString() }) : null),
@@ -658,7 +676,7 @@
           el('small', { text: `${WORDS[r.status] || r.status} · ${r.printed}/${r.total}` }))))));
     }
     if (isManager()) {
-      const others = state.printers.filter((x) => x.id !== p.id && !x.detour_to && x.dpi === p.dpi);
+      const others = state.printers.filter((x) => x.id !== p.id && !x.detour_to && fits(x, p));
       const sel = el('select', { id: 'detour-to', 'aria-label': 'Send its work to' },
         el('option', { value: '', text: 'Nowhere — print here', selected: !p.detour_to }),
         ...others.map((x) => el('option', { value: x.id, text: x.name, selected: x.id === p.detour_to })));
@@ -825,7 +843,7 @@
     let ghost = null, over = null;
     const can = (p) => p && !p.detour_to && group.every((x) => {
       const at = printer(x.printer_id);
-      return p.id !== x.printer_id && (!at || p.dpi === at.dpi) && MOVABLE.includes(x.status) && x.printed < x.total;
+      return p.id !== x.printer_id && fits(p, at) && MOVABLE.includes(x.status) && x.printed < x.total;
     });
 
     const move = (ev) => {

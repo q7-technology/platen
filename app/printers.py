@@ -59,14 +59,16 @@ class RawTcp:
 @dataclass
 class Cups:
     """For printers already set up on the print server. -o raw stops CUPS
-    from helpfully turning our ZPL into a picture of ZPL."""
+    from helpfully turning our ZPL into a picture of ZPL. An office printer
+    wants the opposite: CUPS's own filters turn a PDF into what it speaks."""
 
     queue: str
+    raw: bool = True
 
     def send(self, data: bytes) -> None:
         try:
             subprocess.run(
-                ["lp", "-d", self.queue, "-o", "raw", "-"],
+                ["lp", "-d", self.queue, *(["-o", "raw"] if self.raw else []), "-"],
                 input=data, check=True, capture_output=True,
             )
         except FileNotFoundError:
@@ -157,7 +159,7 @@ class Printer:
 # test) can register a transport without editing this file.
 TRANSPORTS: dict[str, Callable[..., Transport]] = {
     "tcp": lambda c, s=None: RawTcp(c["host"], c.get("port", 9100)),
-    "cups": lambda c, s=None: Cups(c["queue"]),
+    "cups": lambda c, s=None: Cups(c["queue"], c.get("raw", True)),
     "agent": lambda c, s=None: Agent(c["agent_id"], c.get("device", ""), s),
 }
 

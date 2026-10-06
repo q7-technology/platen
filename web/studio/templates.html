@@ -30,11 +30,24 @@
 
         <section class="card" id="new-card" aria-labelledby="h-new" hidden>
           <div class="card-head"><h2 id="h-new">New template</h2></div>
+          <div class="field">
+            <label id="l-kind">What it prints on</label>
+            <div class="picks" role="radiogroup" aria-labelledby="l-kind">
+              <label><input type="radio" name="n-kind" value="label" checked>
+                <span><b>Label stock</b><small>A Zebra, drawn in millimetres</small></span></label>
+              <label><input type="radio" name="n-kind" value="page">
+                <span><b>A page</b><small>A4 or Letter on an office printer, with tables that grow</small></span></label>
+            </div>
+          </div>
           <div class="row">
             <div class="field"><label for="n-name">Name</label><input id="n-name" type="text" placeholder="Carton despatch"></div>
-            <div class="field narrow"><label for="n-w">Width mm</label><input id="n-w" class="mono" type="number" min="5" max="300" step="0.5" value="100"></div>
-            <div class="field narrow"><label for="n-h">Height mm</label><input id="n-h" class="mono" type="number" min="5" max="500" step="0.5" value="150"></div>
-            <div class="field narrow">
+            <div class="field narrow" id="n-paper-field" hidden>
+              <label for="n-paper">Paper</label>
+              <select id="n-paper"><option value="A4">A4</option><option value="Letter">Letter</option></select>
+            </div>
+            <div class="field narrow n-label"><label for="n-w">Width mm</label><input id="n-w" class="mono" type="number" min="5" max="300" step="0.5" value="100"></div>
+            <div class="field narrow n-label"><label for="n-h">Height mm</label><input id="n-h" class="mono" type="number" min="5" max="500" step="0.5" value="150"></div>
+            <div class="field narrow n-label">
               <label for="n-dpi">Dots per inch</label>
               <select id="n-dpi"><option>203</option><option>300</option><option>600</option></select>
             </div>
@@ -124,12 +137,14 @@
       ? `${templates.length} template${templates.length === 1 ? '' : 's'}`
       : 'What a label looks like, and where its values come from';
     for (const t of templates) {
-      const open = () => { location.href = `/studio/editor?id=${encodeURIComponent(t.id)}`; };
+      const page = t.kind === 'page';
+      const open = () => { location.href = `/studio/${page ? 'pages' : 'editor'}?id=${encodeURIComponent(t.id)}`; };
       body.append(el('tr', { class: 'clickable', tabindex: '0', onclick: open,
                              onkeydown: (e) => { if (e.key === 'Enter') open(); } },
         el('td', {}, el('b', { text: t.name || t.id }),
                      el('small', { class: 'mut mono', style: 'display:block', text: t.id })),
-        el('td', { class: 'mono', text: `${t.size_mm[0]} × ${t.size_mm[1]} mm · ${t.dpi} dpi` }),
+        el('td', { class: 'mono', text: page ? `${t.size_mm[0]} × ${t.size_mm[1]} mm page`
+                                            : `${t.size_mm[0]} × ${t.size_mm[1]} mm · ${t.dpi} dpi` }),
         el('td', { class: 'mono', text: t.query ? `${t.datasource || '?'} · ${t.query}` : 'no query' }),
         el('td', {}, t.folder
           ? el('span', { class: 'badge', text: t.folder })
@@ -166,6 +181,13 @@
     const name = $('n-name').value.trim();
     const id = slug(name);
     if (!id) { showError($('n-msg'), 'A template needs a name.'); return; }
+    if (newKind() === 'page') {
+      try {
+        await api('PUT', `/pages/${encodeURIComponent(id)}`, { id, name, paper: $('n-paper').value });
+        location.href = `/studio/pages?id=${encodeURIComponent(id)}`;
+      } catch (e) { showError($('n-msg'), e.message); }
+      return;
+    }
     try {
       await api('PUT', `/templates/${encodeURIComponent(id)}`, {
         id, name, width_mm: Number($('n-w').value), height_mm: Number($('n-h').value),
@@ -213,6 +235,15 @@
     $('new-card').hidden = false; clearError($('n-msg')); $('n-name').focus();
   });
   $('n-cancel').addEventListener('click', () => { $('new-card').hidden = true; });
+  const newKind = () => [...document.getElementsByName('n-kind')].find((r) => r.checked).value;
+  for (const r of document.getElementsByName('n-kind')) {
+    r.addEventListener('change', () => {
+      const page = newKind() === 'page';
+      $('n-paper-field').hidden = !page;
+      for (const n of document.querySelectorAll('.n-label')) n.hidden = page;
+      $('n-name').placeholder = page ? 'Packing slip' : 'Carton despatch';
+    });
+  }
   $('n-create').addEventListener('click', create);
 
   load().catch((e) => showError($('msg'), e.message));

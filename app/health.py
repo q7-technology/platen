@@ -91,7 +91,12 @@ def check(transport: printers.Transport) -> Health:
 
 def _safe_check(row: PrinterRow) -> Health:
     try:
-        return check(printers.from_row(row).transport)
+        transport = printers.from_row(row).transport
+        if row.kind == "page":
+            # ~HQES is ZPL; an office printer on 9100 would print it on a
+            # sheet of paper. Whether it answers is all it is asked.
+            return Health("ready") if transport.probe() else Health("offline", ("not answering",))
+        return check(transport)
     except Exception as exc:
         return Health("offline", (f"{type(exc).__name__}: {exc}",))
 

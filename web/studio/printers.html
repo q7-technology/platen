@@ -15,7 +15,7 @@
   <main>
     <header>
       <h1>Printers</h1>
-      <span class="sub" id="sub">Anything that takes ZPL</span>
+      <span class="sub" id="sub">Label printers and office printers</span>
       <span class="spacer"></span>
       <button class="btn" type="button" id="recheck">Re-check status</button>
       <button class="btn" type="button" id="scan">Scan network</button>
@@ -118,6 +118,10 @@
             <div class="field"><label for="p-name">Name</label><input id="p-name" type="text" placeholder="Despatch"></div>
             <div class="field narrow"><label for="p-model">Model</label><input id="p-model" type="text" placeholder="ZT411"></div>
             <div class="field narrow">
+              <label for="p-type">Prints</label>
+              <select id="p-type"><option value="label">Labels (ZPL)</option><option value="page">Pages (PDF)</option></select>
+            </div>
+            <div class="field narrow" id="dpi-field">
               <label for="p-dpi">Dots per inch</label>
               <select id="p-dpi"><option>203</option><option>300</option><option>600</option></select>
             </div>
@@ -229,7 +233,7 @@
     const up = state.printers.filter((p) => p.online).length;
     $('sub').textContent = state.printers.length
       ? `${state.printers.length} configured${probe ? ` · ${up} reachable` : ''}`
-      : 'Anything that takes ZPL';
+      : 'Label printers and office printers';
     for (const p of state.printers) {
       body.append(el('tr', { class: 'clickable', tabindex: '0', 'data-id': p.id,
                              onclick: () => pick(p.id),
@@ -241,10 +245,21 @@
         el('td', { class: p.site_id ? '' : 'mut', text: siteName(p.site_id) }),
         el('td', { text: p.model || '—' }),
         el('td', { class: 'mono', text: wire(p.transport) }),
-        el('td', { class: 'mono', text: String(p.dpi) }),
+        el('td', { class: 'mono', text: p.kind === 'page' ? 'pages' : String(p.dpi) }),
         el('td', {}, status(p))));
     }
     if (select) pick(select);
+  }
+
+  /* An office printer has no dot pitch Platen cares about, and a desk agent
+     only carries labels for now. */
+  function showType() {
+    const page = $('p-type').value === 'page';
+    $('dpi-field').hidden = page;
+    const agent = [...document.getElementsByName('kind')].find((r) => r.value === 'agent');
+    agent.disabled = page;
+    agent.closest('label').style.opacity = page ? 0.45 : '';
+    if (page && agent.checked) showKind('tcp');
   }
 
   function showKind(kind) {
@@ -258,6 +273,8 @@
     $('p-name').value = p.name || '';
     $('p-model').value = p.model || '';
     $('p-dpi').value = String(p.dpi || 203);
+    $('p-type').value = p.kind || 'label';
+    showType();
     fillSites(p.site_id);
     const t = p.transport || { kind: 'tcp' };
     showKind(t.kind || 'tcp');
@@ -280,7 +297,8 @@
   }
 
   function fillDetour(p) {
-    const others = state.printers.filter((x) => x.id !== p.id && !x.detour_to && x.dpi === p.dpi);
+    const others = state.printers.filter((x) => x.id !== p.id && !x.detour_to && (x.kind || 'label') === (p.kind || 'label')
+                                                 && (p.kind === 'page' || x.dpi === p.dpi));
     $('detour-row').hidden = $('detour-note').hidden = false;
     $('p-detour').replaceChildren(
       el('option', { value: '', text: 'Nowhere — print here', selected: !p.detour_to }),
@@ -329,7 +347,7 @@
     try {
       await api('PUT', `/printers/${encodeURIComponent(id)}`, {
         name: $('p-name').value, model: $('p-model').value,
-        dpi: Number($('p-dpi').value), transport: transport(),
+        dpi: Number($('p-dpi').value), kind: $('p-type').value, transport: transport(),
         site_id: $('p-site').value || null,
         grid_x: state.current?.grid?.[0] ?? null, grid_y: state.current?.grid?.[1] ?? null,
       });
@@ -488,6 +506,7 @@
   });
   $('a-add').addEventListener('click', addAgent);
 
+  $('p-type').addEventListener('change', showType);
   for (const r of document.getElementsByName('kind')) {
     r.addEventListener('change', () => showKind(r.value));
   }

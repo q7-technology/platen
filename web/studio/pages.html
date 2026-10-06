@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page editor — Platen Label Studio</title>
+<link rel="icon" href="/studio/static/q7-logo-128.png">
+<link rel="stylesheet" href="/studio/static/studio/studio.css">
+<script src="/studio/static/studio/studio.js"></script>
+<style>
+  .work { grid-template-columns: minmax(0, 1fr) minmax(360px, 520px); }
+  .part { gap: 10px; }
+  .block { border: 1px solid var(--line-soft); border-radius: 9px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; background: rgba(13,17,23,0.35); }
+  .block-head { display: flex; align-items: center; gap: 8px; }
+  .block-head b { font-size: 13px; font-weight: 600; }
+  .block-head .spacer { flex: 1; }
+  .block textarea { min-height: 54px; }
+  .block .field { min-width: 110px; }
+  .block .field.tiny { flex: none; width: 92px; min-width: 0; }
+  .check { display: flex; gap: 7px; align-items: center; height: 38px; font-size: 12.5px; color: var(--mut); }
+  .check input { width: auto; height: auto; accent-color: var(--accent); }
+  .cols { display: flex; flex-direction: column; gap: 8px; }
+  .col-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 84px 104px 28px; gap: 8px; align-items: end; }
+  .col-row .field { min-width: 0; }
+  @media (max-width: 760px) { .col-row { grid-template-columns: 1fr 1fr; } }
+  .adds { display: flex; flex-wrap: wrap; gap: 6px; }
+  .empty-part { font-size: 12.5px; color: var(--mut); }
+  .sheet-wrap { background: var(--well); display: flex; justify-content: center; padding: 18px; min-height: 420px; }
+  .sheet { max-width: 100%; height: auto; background: #ffffff; box-shadow: 0 0 0 1px var(--line); }
+  .pager { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--mut); }
+  .fields-help { font-size: 12px; color: var(--mut); }
+  .sticky { position: sticky; top: 16px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside id="shell-nav"></aside>
+
+  <main>
+    <header>
+      <h1 id="title">Page template</h1>
+      <span class="sub" id="saved">Loading…</span>
+      <span class="spacer"></span>
+      <a class="btn sm" href="/studio/templates">Library</a>
+      <button class="btn pri" type="button" id="publish" style="height: 34px;">Publish</button>
+    </header>
+
+    <div class="work">
+      <div class="col">
+        <section class="card" aria-labelledby="h-page">
+          <div class="card-head"><h2 id="h-page">Page</h2><span class="badge mono" id="t-id"></span></div>
+          <div class="row">
+            <div class="field"><label for="p-name">Name</label><input id="p-name" type="text"></div>
+            <div class="field narrow">
+              <label for="p-paper">Paper</label>
+              <select id="p-paper"><option value="A4">A4</option><option value="Letter">Letter</option></select>
+            </div>
+            <div class="field narrow"><label for="p-margin">Margin mm</label><input id="p-margin" class="mono" type="number" min="5" max="40" step="1"></div>
+            <label class="check"><input id="p-landscape" type="checkbox"> Landscape</label>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label for="p-query">Data</label>
+              <select id="p-query"></select>
+            </div>
+            <div class="field">
+              <label for="p-group">One document per</label>
+              <select id="p-group"></select>
+            </div>
+            <div class="field narrow"><label for="p-folder">Folder</label><input id="p-folder" type="text"></div>
+          </div>
+          <p class="fields-help" id="group-help"></p>
+          <div>
+            <p class="fields-help" id="fields-label">Columns from the query. Click one to put it where your cursor is.</p>
+            <div class="chips" id="fields" style="margin-top: 8px;"></div>
+          </div>
+        </section>
+
+        <section class="card part" aria-labelledby="h-header">
+          <div class="card-head"><h2 id="h-header">Header</h2>
+            <span class="spacer"></span><span class="mut" style="font-size:12px">On every page. Can use {{ page }} and {{ pages }}.</span></div>
+          <div id="part-header" class="col" style="gap: 10px;"></div>
+          <div class="adds" id="add-header"></div>
+        </section>
+
+        <section class="card part" aria-labelledby="h-body">
+          <div class="card-head"><h2 id="h-body">Body</h2>
+            <span class="spacer"></span><span class="mut" style="font-size:12px">Flows down the page and onto the next</span></div>
+          <div id="part-body" class="col" style="gap: 10px;"></div>
+          <div class="adds" id="add-body"></div>
+        </section>
+
+        <section class="card part" aria-labelledby="h-footer">
+          <div class="card-head"><h2 id="h-footer">Footer</h2>
+            <span class="spacer"></span><span class="mut" style="font-size:12px">On every page, at the bottom</span></div>
+          <div id="part-footer" class="col" style="gap: 10px;"></div>
+          <div class="adds" id="add-footer"></div>
+        </section>
+        <div id="msg" hidden></div>
+      </div>
+
+      <div class="col sticky">
+        <section class="card preview" aria-labelledby="h-preview">
+          <div class="preview-head">
+            <h2 id="h-preview">Preview</h2>
+            <span class="spacer" style="flex:1"></span>
+            <div class="pager" id="doc-pager"></div>
+          </div>
+          <div class="row" style="padding: 12px 18px 0;">
+            <div class="chips" role="group" aria-label="What the preview shows">
+              <button class="chip-btn" type="button" id="show-cols" aria-pressed="true">Column names</button>
+              <button class="chip-btn" type="button" id="show-rows" aria-pressed="false">Real rows</button>
+            </div>
+          </div>
+          <div class="row" id="params" style="padding: 10px 18px 0;"></div>
+          <div class="sheet-wrap"><img class="sheet" id="sheet" alt="The page as it will print"></div>
+          <div class="preview-head" style="border-top: 1px solid var(--line-soft); border-bottom: 0;">
+            <div class="pager" id="page-pager"></div>
+          </div>
+          <div id="p-warn" style="padding: 0 18px 14px;"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  renderShell('templates');
+
+  const id = new URLSearchParams(location.search).get('id');
+  const KINDS = {
+    text: { label: 'Text', make: () => ({ kind: 'text', value: '', size_pt: 10, bold: false, align: 'left' }) },
+    table: { label: 'Table', make: () => ({ kind: 'table', size_pt: 9, columns: [] }) },
+    image: { label: 'Image', make: () => ({ kind: 'image', value: '', width_mm: 40, align: 'left', on_missing: 'blank' }) },
+    barcode: { label: 'Barcode', make: () => ({ kind: 'barcode', value: '', symbology: 'code128', height_mm: 12, align: 'left' }) },
+    space: { label: 'Gap', make: () => ({ kind: 'space', height_mm: 5 }) },
+    rule: { label: 'Line', make: () => ({ kind: 'rule' }) },
+  };
+  const ALIGN = [['left', 'Left'], ['centre', 'Centre'], ['right', 'Right']];
+  const state = { t: null, queries: [], columns: [], query: null, show: 'columns', params: {},
+                  page: 1, pages: 1, record: 0, documents: 1, lastField: null, timer: null, rendering: 0 };
+
+  // ------------------------------------------------------------ small parts
+  function field(label, input, cls = '') {
+    const fid = `f${Math.random().toString(36).slice(2, 8)}`;
+    input.id = fid;
+    return el('div', { class: `field ${cls}` }, el('label', { for: fid, text: label }), input);
+  }
+  /* An input bound to one key of an object; every edit saves and redraws. */
+  function bound(obj, key, type = 'text', opts = {}) {
+    const n = type === 'textarea' ? el('textarea', { spellcheck: 'false' })
+            : el('input', { type, class: type === 'number' ? 'mono' : null, step: opts.step ?? null, min: opts.min ?? null });
+    n.value = obj[key] ?? '';
+    n.addEventListener('input', () => {
+      obj[key] = type === 'number' ? (n.value === '' ? null : Number(n.value)) : n.value;
+      changed();
+    });
+    if (opts.bindable) n.addEventListener('focus', () => { state.lastField = n; });
+    return n;
+  }
+  function choose(obj, key, options) {
+    const n = el('select', {}, ...options.map(([v, l]) => el('option', { value: v, text: l, selected: obj[key] === v })));
+    n.addEventListener('change', () => { obj[key] = n.value; changed(); });
+    return n;
+  }
+  function tick(obj, key, label) {
+    const n = el('input', { type: 'checkbox', checked: !!obj[key] });
+    n.addEventListener('change', () => { obj[key] = n.checked; changed(); });
+    return el('label', { class: 'check' }, n, label);
+  }
+
+  // ------------------------------------------------------------ blocks
+  function blockEditor(part, list, i) {
+    const b = list[i];
+    const move = (d) => { const j = i + d; if (j < 0 || j >= list.length) return; [list[i], list[j]] = [list[j], list[i]]; drawParts(); changed(); };
+    const head = el('div', { class: 'block-head' },
+      el('b', { text: KINDS[b.kind].label }),
+      el('span', { class: 'spacer' }),
+      el('button', { class: 'btn sm icon', type: 'button', 'aria-label': 'Move up', onclick: () => move(-1) }, icon('up', 13)),
+      el('button', { class: 'btn sm icon', type: 'button', 'aria-label': 'Move down', onclick: () => move(1) }, icon('down', 13)),
+      el('button', { class: 'btn sm icon gold', type: 'button', 'aria-label': `Remove this ${KINDS[b.kind].label.toLowerCase()}`,
+                     onclick: () => { list.splice(i, 1); drawParts(); changed(); } }, icon('trash', 13)));
+    const box = el('div', { class: 'block' }, head);
+    if (b.kind === 'text') {
+      box.append(field('Text', bound(b, 'value', 'textarea', { bindable: true })),
+        el('div', { class: 'row' },
+          field('Size pt', bound(b, 'size_pt', 'number', { step: 0.5, min: 5 }), 'tiny'),
+          field('Align', choose(b, 'align', ALIGN), 'tiny'),
+          tick(b, 'bold', 'Bold')));
+    } else if (b.kind === 'table') {
+      const cols = el('div', { class: 'cols' });
+      const drawCols = () => {
+        cols.replaceChildren(...b.columns.map((c, j) => el('div', { class: 'col-row' },
+          field('Heading', bound(c, 'title')),
+          field('Value', bound(c, 'value', 'text', { bindable: true })),
+          field('Width mm', bound(c, 'width_mm', 'number', { min: 5 })),
+          field('Align', choose(c, 'align', ALIGN)),
+          el('button', { class: 'btn sm icon gold', type: 'button', 'aria-label': `Remove the ${c.title || 'untitled'} column`,
+                         onclick: () => { b.columns.splice(j, 1); drawCols(); changed(); } }, icon('trash', 13)))));
+        if (!b.columns.length) cols.append(el('p', { class: 'empty-part', text: 'No columns yet. A table needs at least one.' }));
+      };
+      drawCols();
+      box.append(cols, el('div', { class: 'row' },
+        el('button', { class: 'btn sm', type: 'button', text: 'Add a column', onclick: () => {
+          // the next column nothing on the page shows yet: the header already
+          // has the order's own columns, so the table gets the line's
+          const used = new Set(JSON.stringify(state.t).match(/\{\{\s*([\w.]+)/g)?.map((m) => m.replace(/\{\{\s*/, '')) || []);
+          if (state.t.group_by) used.add(state.t.group_by);
+          const next = state.columns.find((c) => !used.has(c));
+          b.columns.push({ title: next ? next.replace(/_/g, ' ').replace(/^./, (m) => m.toUpperCase()) : 'Column',
+                           value: next ? `{{ ${next} }}` : '', width_mm: null, align: 'left' });
+          drawCols(); changed();
+        } }),
+        field('Size pt', bound(b, 'size_pt', 'number', { step: 0.5, min: 5 }), 'tiny')),
+        el('p', { class: 'fields-help', text: 'One line per row. Columns with no width share what is left.' }));
+    } else if (b.kind === 'image') {
+      box.append(field('Image from', bound(b, 'value', 'text', { bindable: true })),
+        el('div', { class: 'row' },
+          field('Width mm', bound(b, 'width_mm', 'number', { min: 5 }), 'tiny'),
+          field('Align', choose(b, 'align', ALIGN), 'tiny'),
+          field('If it is empty', choose(b, 'on_missing', [['blank', 'Leave it out'], ['fail', 'Stop the run']]))));
+    } else if (b.kind === 'barcode') {
+      box.append(field('Value', bound(b, 'value', 'text', { bindable: true })),
+        el('div', { class: 'row' },
+          field('Kind', choose(b, 'symbology', [['code128', 'Code 128'], ['qr', 'QR']]), 'tiny'),
+          field('Height mm', bound(b, 'height_mm', 'number', { min: 5 }), 'tiny'),
+          field('Align', choose(b, 'align', ALIGN), 'tiny')));
+    } else if (b.kind === 'space') {
+      box.append(el('div', { class: 'row' }, field('Height mm', bound(b, 'height_mm', 'number', { min: 1 }), 'tiny')));
+    }
+    return box;
+  }
+
+  function drawParts() {
+    for (const part of ['header', 'body', 'footer']) {
+      const list = state.t[part];
+      $(`part-${part}`).replaceChildren(...(list.length
+        ? list.map((_, i) => blockEditor(part, list, i))
+        : [el('p', { class: 'empty-part', text: part === 'body' ? 'Nothing on the page yet. Add a table for the lines, and text above it.' : 'Nothing here.' })]));
+      const allowed = part === 'body' ? Object.keys(KINDS) : ['text', 'image', 'space', 'rule'];
+      $(`add-${part}`).replaceChildren(...allowed.map((k) => el('button', { class: 'btn sm', type: 'button',
+        onclick: () => { list.push(KINDS[k].make()); drawParts(); changed(); } }, icon('plus', 13), KINDS[k].label)));
+    }
+  }
+
+  // ------------------------------------------------------------ data
+  async function chooseQuery(qid) {
+    state.query = qid ? await api('GET', `/queries/${encodeURIComponent(qid)}`) : null;
+    try {
+      state.columns = qid ? (await api('GET', `/queries/${encodeURIComponent(qid)}/columns`)).columns.map((c) => c.name ?? c) : [];
+    } catch { state.columns = []; }
+    for (const p of state.query?.parameters || []) {
+      if (!(p.name in state.params)) state.params[p.name] = p.default ?? '';
+    }
+    drawData();
+  }
+
+  function drawData() {
+    const t = state.t;
+    $('p-group').replaceChildren(
+      el('option', { value: '', text: t.query ? 'All rows in one document' : '—', selected: !t.group_by }),
+      ...state.columns.map((c) => el('option', { value: c, text: c, selected: t.group_by === c })));
+    $('p-group').disabled = !t.query;
+    $('group-help').textContent = t.group_by
+      ? `A document for each ${t.group_by}. Its rows fill the tables; everything else comes from its first row.`
+      : t.query ? 'Every row lands in one document.' : 'With no data, the page prints as it is drawn.';
+    const chips = [...state.columns, 'page', 'pages'];
+    $('fields').replaceChildren(...chips.map((c) => el('button', { class: 'chip-btn', type: 'button', text: c,
+      title: c === 'page' || c === 'pages' ? 'Header and footer only' : null,
+      onclick: () => insert(`{{ ${c} }}`) })));
+    $('params').replaceChildren(...(state.show === 'rows' ? (state.query?.parameters || []).map((p) => {
+      const n = el('input', { type: p.type === 'date' ? 'date' : 'text', value: state.params[p.name] ?? '' });
+      n.addEventListener('change', () => { state.params[p.name] = n.value; state.record = 0; state.page = 1; render(); });
+      return field(p.label || p.name, n, 'narrow');
+    }) : []));
+  }
+
+  function insert(text) {
+    const n = state.lastField;
+    if (!n || !document.body.contains(n)) { showError($('msg'), 'Click into a text box first, then pick a column.'); return; }
+    const at = n.selectionStart ?? n.value.length;
+    n.value = n.value.slice(0, at) + text + n.value.slice(n.selectionEnd ?? at);
+    n.dispatchEvent(new Event('input'));
+    n.focus();
+    n.setSelectionRange(at + text.length, at + text.length);
+  }
+
+  // ------------------------------------------------------------ saving
+  function changed() {
+    $('saved').textContent = 'Saving…';
+    clearTimeout(state.timer);
+    state.timer = setTimeout(save, 500);
+  }
+
+  async function save() {
+    const t = state.t;
+    t.name = $('p-name').value; t.paper = $('p-paper').value; t.landscape = $('p-landscape').checked;
+    t.margin_mm = Number($('p-margin').value) || 15; t.folder = $('p-folder').value.trim();
+    try {
+      const back = await api('PUT', `/pages/${encodeURIComponent(id)}`, t);
+      t.version = back.version;
+      $('saved').textContent = `Draft saved${back.version ? ` · v${back.version} is published` : ' · not published yet'}`;
+      clearError($('msg'));
+      render();
+    } catch (e) { $('saved').textContent = 'Not saved'; showError($('msg'), e.message); }
+  }
+
+  async function render() {
+    const mine = ++state.rendering;
+    const body = { data: state.show === 'columns' ? 'columns' : 'row', params: state.params, record: state.record };
+    try {
+      const r = await fetch(`/pages/${encodeURIComponent(id)}/preview.png?page=${state.page}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      if (mine !== state.rendering) return;          // a newer one is on its way
+      if (!r.ok) {
+        const detail = (await r.json().catch(() => ({}))).detail;
+        if (r.status === 422 && /no page/.test(detail || '') && state.page > 1) { state.page = 1; return render(); }
+        throw new Error(typeof detail === 'string' ? detail : `the preview failed (${r.status})`);
+      }
+      state.pages = Number(r.headers.get('x-platen-pages')) || 1;
+      state.documents = Number(r.headers.get('x-platen-documents')) || 1;
+      const warnings = JSON.parse(r.headers.get('x-platen-warnings') || '[]');
+      const url = URL.createObjectURL(await r.blob());
+      const img = $('sheet');
+      if (img.dataset.url) URL.revokeObjectURL(img.dataset.url);
+      img.src = url; img.dataset.url = url;
+      $('p-warn').replaceChildren(...(warnings.length ? [el('div', { class: 'warn' }, icon('alert', 18),
+        el('span', { class: 'txt' }, ...warnings.map((w) => el('span', { text: w }))))] : []));
+      pagers();
+    } catch (e) {
+      $('p-warn').replaceChildren(el('div', { class: 'warn' }, icon('alert', 18),
+        el('span', { class: 'txt' }, el('b', { text: "This page can't be drawn yet" }), el('span', { text: e.message }))));
+    }
+  }
+
+  function pagers() {
+    const nav = (label, at, of, go) => [
+      el('button', { class: 'btn sm icon', type: 'button', 'aria-label': `Previous ${label}`, disabled: at <= 1, onclick: () => go(at - 1) }, '‹'),
+      el('span', { text: `${label[0].toUpperCase()}${label.slice(1)} ${at} of ${of}` }),
+      el('button', { class: 'btn sm icon', type: 'button', 'aria-label': `Next ${label}`, disabled: at >= of, onclick: () => go(at + 1) }, '›')];
+    $('page-pager').replaceChildren(...nav('page', state.page, state.pages, (n) => { state.page = n; render(); }));
+    $('doc-pager').replaceChildren(...(state.show === 'rows' && state.documents > 1
+      ? nav('document', state.record + 1, state.documents, (n) => { state.record = n - 1; state.page = 1; render(); }) : []));
+  }
+
+  async function publish() {
+    clearTimeout(state.timer);
+    await save();
+    try {
+      const r = await api('POST', `/templates/${encodeURIComponent(id)}/publish`);
+      $('saved').textContent = `Published v${r.version}`;
+    } catch (e) { showError($('msg'), e.message); }
+  }
+
+  // ------------------------------------------------------------ start
+  async function start() {
+    if (!id) { location.href = '/studio/templates'; return; }
+    const [t, queries] = await Promise.all([api('GET', `/pages/${encodeURIComponent(id)}`), api('GET', '/queries')]);
+    state.t = t; state.queries = queries;
+    $('title').textContent = t.name || id;
+    $('t-id').textContent = id;
+    $('p-name').value = t.name; $('p-paper').value = t.paper; $('p-landscape').checked = t.landscape;
+    $('p-margin').value = t.margin_mm; $('p-folder').value = t.folder || '';
+    $('p-query').replaceChildren(el('option', { value: '', text: 'No data — print it as drawn', selected: !t.query }),
+      ...queries.map((q) => el('option', { value: q.id, text: `${q.name} · ${q.datasource_id}`, selected: q.id === t.query })));
+    $('saved').textContent = t.version ? `v${t.version} is published` : 'Not published yet';
+    for (const n of ['p-name', 'p-paper', 'p-landscape', 'p-margin', 'p-folder']) {
+      $(n).addEventListener(n === 'p-name' || n === 'p-folder' || n === 'p-margin' ? 'input' : 'change', () => {
+        if (n === 'p-name') $('title').textContent = $('p-name').value || id;
+        changed();
+      });
+    }
+    $('p-query').addEventListener('change', async () => {
+      const q = state.queries.find((x) => x.id === $('p-query').value);
+      state.t.query = q ? q.id : null; state.t.datasource = q ? q.datasource_id : null; state.t.group_by = null;
+      await chooseQuery(state.t.query); changed();
+    });
+    $('p-group').addEventListener('change', () => { state.t.group_by = $('p-group').value || null; drawData(); changed(); });
+    const show = (what) => {
+      state.show = what; state.page = 1; state.record = 0;
+      $('show-cols').setAttribute('aria-pressed', String(what === 'columns'));
+      $('show-rows').setAttribute('aria-pressed', String(what === 'rows'));
+      drawData(); render();
+    };
+    $('show-cols').addEventListener('click', () => show('columns'));
+    $('show-rows').addEventListener('click', () => show('rows'));
+    $('publish').addEventListener('click', publish);
+    drawParts();
+    await chooseQuery(t.query);
+    render();
+  }
+
+  start().catch((e) => showError($('msg'), e.message));
+})();
+</script>
+</body>
+</html>
