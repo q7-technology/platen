@@ -16,7 +16,7 @@ from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.responses import Response as RawResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
@@ -32,6 +32,8 @@ from . import (
     auth,
     binding,
     datasources,
+    events,
+    health,
     jobs,
     preview,
     printers,
@@ -58,12 +60,27 @@ def _housekeeping(stop: threading.Event) -> None:
             log.exception("housekeeping failed; trying again in an hour")
 
 
+def _checkups(stop: threading.Event) -> None:
+    """Ask every printer how it is, every half minute, so a screen can say
+    "out of labels" without anyone pressing Re-check."""
+    while True:
+        try:
+            with SessionLocal() as s:
+                health.check_all(s)
+        except Exception:
+            log.exception("printer health check failed; trying again shortly")
+        if stop.wait(health.EVERY):
+            return
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     auth.bootstrap()
     stop = threading.Event()
     threading.Thread(target=_housekeeping, args=(stop,), daemon=True,
                      name="platen-housekeeping").start()
+    threading.Thread(target=_checkups, args=(stop,), daemon=True,
+                     name="platen-health").start()
     yield
     stop.set()
 
@@ -181,6 +198,26 @@ def whoami(user: AppUser = Depends(current_user),
            s: Session = Depends(get_session)) -> dict[str, Any]:
     mine = sites.allowed(s, user)
     return {**_me(user), "sites": None if mine is sites.ALL else sorted(mine)}
+
+
+def _visible_printers(user: AppUser) -> set[str] | None:
+    with SessionLocal() as s:
+        where = sites.printer_filter(s, user)
+        if where is None:
+            return None
+        return set(s.scalars(select(db.Printer.id).where(where)))
+
+
+@app.get("/events")
+def live_events(user: AppUser = Depends(current_user)) -> StreamingResponse:
+    """Server-sent events: runs moving and printers changing health, for the
+    printers this person may see. A nudge to re-read, not a record."""
+    return StreamingResponse(
+        events.stream(lambda: _visible_printers(user)),
+        media_type="text/event-stream",
+        # a proxy that buffers would hold every event until the stream ends
+        headers={"cache-control": "no-cache", "x-accel-buffering": "no"},
+    )
 
 
 SCREENS = {
@@ -805,7 +842,9 @@ def create_run(body: NewRun, s: Session = Depends(get_session),
     except Exception as exc:
         run.status, run.error = "failed", f"could not queue: {type(exc).__name__}: {exc}"
         s.commit()
+        events.run_changed(run)
         raise HTTPException(503, run.error) from None
+    events.run_changed(run)
     return {"id": run.id, "labels": run.total, "warnings": p.warnings,
             "template_version": p.version}
 
@@ -875,6 +914,7 @@ def retry_run(run_id: str, s: Session = Depends(get_session),
     audit(s, "retry", "run", run_id, remaining=left, actor=user)
     s.commit()
     jobs.enqueue(run_id)
+    events.run_changed(run)
     return {"id": run_id, "status": "queued", "remaining": left}
 
 
@@ -889,6 +929,7 @@ def continue_run(run_id: str, s: Session = Depends(get_session),
     audit(s, "continue", "run", run_id, actor=user)
     s.commit()
     jobs.enqueue(run_id)
+    events.run_changed(run)
     return {"id": run_id, "status": "queued", "remaining": jobs.remaining(s, run_id)}
 
 
@@ -919,6 +960,8 @@ def _printer_json(row: db.Printer, online: bool | None) -> dict[str, Any]:
     return {"id": row.id, "name": row.name, "model": row.model, "dpi": row.dpi,
             "transport": {"kind": row.transport_kind, **row.transport_config},
             "site_id": row.site_id, "grid": [row.grid_x, row.grid_y],
+            "health": {"state": row.health, "problems": row.health_problems or [],
+                       "checked_at": row.health_at},
             "online": online}
 
 
@@ -1167,6 +1210,7 @@ def pause_queue(s: Session = Depends(get_session),
     jobs.set_paused(s, True)
     audit(s, "pause", "queue", "all", actor=user)
     s.commit()
+    events.publish("queue", paused=True)
     return {"paused": True}
 
 
@@ -1183,6 +1227,8 @@ def resume_queue(s: Session = Depends(get_session),
     s.commit()
     for run in held:
         jobs.enqueue(run.id)
+        events.run_changed(run)
+    events.publish("queue", paused=False)
     return {"paused": False, "resumed": len(held)}
 
 

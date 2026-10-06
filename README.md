@@ -145,6 +145,21 @@ however old it looks. Change the windows under **Settings** on the dashboard,
 or set one to zero to keep it forever. The API prunes once a day by itself;
 `python -m app.prune --dry-run` says what would go.
 
+**It says how the printers are.** Every 30 seconds the API asks each socket
+printer `~HQES`, the Zebra's own report on itself, and keeps the answer: out
+of labels, head open, out of ribbon, labels nearly out, and the rest. The
+Printers screen shows it. A CUPS queue or an agent can only say whether it
+answered. Each API process runs its own check, so two of them ask twice.
+
+**The screens update themselves.** The worker and the API announce every
+change on a Redis channel: a run queued, each label as it comes out, a run
+done, a printer's health changing, the queue held. `GET /events` passes them
+on to the browser as server-sent events, and only the ones about printers at
+the viewer's own sites. They are nudges, not records: a screen that misses
+one catches up on its next read, and a Redis that has gone away never stops
+a label from printing. Behind nginx, turn buffering off for `/events`
+(`proxy_buffering off;`) or nothing arrives until the stream closes.
+
 ## Who can do what
 
 Three roles. An **administrator** wires up connections, printers and templates.

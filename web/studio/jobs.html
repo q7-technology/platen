@@ -218,6 +218,7 @@
   $('d-retry').addEventListener('click', () => act('retry'));
   $('d-cancel').addEventListener('click', () => act('cancel'));
   $('refresh').addEventListener('click', load);
+  onLive(load, ['run', 'queue']);
   $('filter').addEventListener('change', load);
 
   load().catch((e) => showError($('d-msg'), e.message));

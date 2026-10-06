@@ -29,16 +29,17 @@ each one is useful on its own.
 
 ## Step 1 — foundations
 
-- **Sites.** A printer belongs to a site. A printer in no site is shared:
+- **Sites.** *Done.* A printer belongs to a site. A printer in no site is shared:
   everyone can use it, which is how an install with no sites keeps working.
-- **A manager role.** Operators have at most one site, managers any number,
+- **A manager role.** *Done.* Operators have at most one site, managers any number,
   administrators all of them. Every route that touches a printer or a run
   checks the site as well as the role.
 - **Grid positions** for printers and agents, ready for the site view.
-- **Live updates.** A one-way event stream from the API, fed by the worker
-  through Redis, scoped to the sites the viewer looks after.
-- **Printer health.** Ask a Zebra for its host status (`~HS`): out of labels,
-  head open, paused. That is what turns a printer gold or red.
+- **Live updates.** *Done.* `/events`, a one-way stream fed by the worker and
+  the API through Redis, scoped to the sites the viewer looks after.
+- **Printer health.** *Done.* Every 30 seconds each Zebra is asked `~HQES`:
+  out of labels, head open, out of ribbon, labels nearly out. That is what
+  turns a printer gold or red.
 - **Moving a run safely.**
   - only between labels, like cancel and the queue hold
   - only labels with no `printed_at` move; nothing prints twice

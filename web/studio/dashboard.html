@@ -172,6 +172,7 @@
   });
 
   load().catch((e) => showError($('msg'), e.message));
+  onLive(load);
 })();
 </script>
 </body>

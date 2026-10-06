@@ -31,7 +31,7 @@
           <div class="card-head">
             <h2 id="h-list">Configured printers</h2>
             <span class="spacer"></span>
-            <span class="mut" style="font-size: 12px;">Status is checked when you open this screen</span>
+            <span class="mut" style="font-size: 12px;">Each printer is asked how it is every 30 seconds</span>
           </div>
           <div class="scroll">
             <table>
@@ -189,11 +189,24 @@
     return t.kind;
   };
 
+  const sentence = (list) => {
+    const text = list.join(', ');
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  };
+
+  /* A live probe says whether it answers; the last health check says what it
+     thinks of itself — out of labels, head open — which a probe can't. */
   function status(p) {
-    if (p.online === null) return el('span', { class: 'mut', text: 'not checked' });
-    return p.online
-      ? el('span', { class: 'ok' }, icon('check', 14), el('span', { text: 'Ready' }))
-      : el('span', { class: 'badge gold', text: 'Not answering' });
+    const h = p.health || {};
+    if (p.online === false || (p.online === null && h.state === 'offline')) {
+      return el('span', { class: 'badge gold', text: 'Not answering' });
+    }
+    if (h.state === 'error' || h.state === 'warning') {
+      return el('span', { class: 'badge gold', title: h.state === 'error' ? "Can't print" : 'Still printing',
+                          text: sentence(h.problems) });
+    }
+    if (p.online === null && !h.state) return el('span', { class: 'mut', text: 'not checked' });
+    return el('span', { class: 'ok' }, icon('check', 14), el('span', { text: 'Ready' }));
   }
 
   async function load(probe = true, select) {
@@ -485,6 +498,9 @@
   $('del').addEventListener('click', remove);
   $('recheck').addEventListener('click', () => load(true, state.current?.id));
 
+  // a health change re-reads the list without probing every printer again,
+  // and without touching a form someone may be halfway through
+  onLive(() => load(false), ['printer']);
   loadAgents().catch(() => {});
   loadSites().catch(() => {}).finally(() => load().catch((e) => showError($('msg'), e.message)));
 })();

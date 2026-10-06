@@ -31,6 +31,8 @@ app/            the service
   preview.py      the same tree → PNG, for the browser
   printers.py     raw 9100 / CUPS / local agent transports, and network discovery
   jobs.py         redis queue worker, retries, cancel
+  events.py       live updates: publish on Redis, relay to browsers as server-sent events
+  health.py       asks each printer how it is (~HQES) on a timer, keeps the answer
   main.py         the HTTP surface
 agent/          the print agent, for a USB printer on a workstation. Standard
                 library only, on purpose: it installs on a warehouse PC
@@ -132,6 +134,11 @@ test suite runs the same models on SQLite, so keep column types portable.
     for one by name, the answer is a 403 that says which site it is at, so
     they know who to ask. Use `sites.printer_filter` for a query and
     `_may_use` for a single printer; a run is checked through its printer.
+
+20. **An event is a nudge, never the truth.** Publishing never raises: a
+    Redis that has gone away must not stop a label from printing. Anything a
+    screen shows comes from a read, and an event only says when to read
+    again. `/events` relays only events about printers the viewer may see.
 
 ## Code
 

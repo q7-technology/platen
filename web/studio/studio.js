@@ -143,6 +143,22 @@ async function renderShell(current, footNote) {
   ].filter(Boolean));
 }
 
+/* Live updates from /events. An event is only a nudge to read again, so a
+   page hands over the function that reads, and it is called at most every
+   quarter second while things are moving. The browser reconnects a dropped
+   stream by itself, and a page's own refresh carries on regardless. */
+function onLive(reread, kinds = ['run', 'printer', 'queue']) {
+  if (!window.EventSource) return null;
+  const stream = new EventSource('/events');
+  let soon = null;
+  const nudge = () => {
+    clearTimeout(soon);
+    soon = setTimeout(() => Promise.resolve().then(reread).catch(() => {}), 250);
+  };
+  for (const kind of kinds) stream.addEventListener(kind, nudge);
+  return stream;
+}
+
 const ROLE_NAMES = { admin: 'Administrator', manager: 'Manager', operator: 'Operator' };
 
 /* A failure the operator needs to read, in the gold that means "look here". */

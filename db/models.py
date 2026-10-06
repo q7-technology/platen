@@ -258,6 +258,10 @@ class Printer(Base):
     site_id: Mapped[str | None] = mapped_column(ForeignKey("site.id"), index=True)
     grid_x: Mapped[int | None]
     grid_y: Mapped[int | None]
+    # the last answer to "how are you?" (see app/health.py), not a live one
+    health: Mapped[str | None] = mapped_column(String(16))
+    health_problems: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    health_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
 
 class PrintRun(Base):

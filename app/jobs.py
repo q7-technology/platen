@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from db import session as dbsession
 from db.models import PrintRun, RunLabel, Setting
 
-from . import printers
+from . import events, printers
 from .logs import where
 
 log = logging.getLogger("platen.jobs")
@@ -114,6 +114,7 @@ def print_run(run_id: str) -> None:
             run.error = f"printer {run.printer_id!r} no longer exists"
             run.finished_at = datetime.now(UTC)
             s.commit()
+            events.run_changed(run)
             log.error("run failed: %s", where(run=run_id, printer=run.printer_id,
                                               reason="printer no longer exists"))
             return
@@ -122,11 +123,13 @@ def print_run(run_id: str) -> None:
         if paused(s):
             run.status = "paused"
             s.commit()
+            events.run_changed(run)
             log.info("run held before it started: %s", where(run=run_id))
             return
 
         run.status, run.started_at, run.error = "printing", datetime.now(UTC), None
         s.commit()
+        events.run_changed(run)
         printed = run.total - remaining(s, run_id)
         log.info("run started: %s", where(run=run_id, printer=run.printer_id,
                                           printed=printed, total=run.total,
@@ -142,6 +145,7 @@ def print_run(run_id: str) -> None:
                     run.status = "cancelled"
                     run.finished_at = datetime.now(UTC)
                     s.commit()
+                    events.run_changed(run)
                     log.info("run cancelled: %s", where(run=run_id, printed=printed,
                                                         total=run.total))
                     return
@@ -151,6 +155,7 @@ def print_run(run_id: str) -> None:
                     run.status = "paused"
                     run.printed = printed
                     s.commit()
+                    events.run_changed(run)
                     log.info("run held: %s", where(run=run_id, printed=printed,
                                                    total=run.total))
                     return
@@ -160,11 +165,14 @@ def print_run(run_id: str) -> None:
                 label.printed_at = datetime.now(UTC)
                 printed += 1
                 run.printed = printed
+                s.commit()
+                events.run_changed(run)
                 # hand-fed stock: one label, then wait to be told to carry on.
                 # A different kind of stopped from a held queue, so it says so.
                 if run.pause_between and printed < run.total:
                     run.status = "waiting"
                     s.commit()
+                    events.run_changed(run)
                     log.info("run waiting on the operator: %s",
                              where(run=run_id, printed=printed, total=run.total))
                     return
@@ -179,9 +187,11 @@ def print_run(run_id: str) -> None:
             run.status = "retrying" if left else "failed"
             run.finished_at = None if left else datetime.now(UTC)
             s.commit()
+            events.run_changed(run)
             log.error("run %s: %s", run.status,
                       where(run=run_id, printer=run.printer_id, printed=printed,
                             total=run.total, tries_left=left, error=run.error))
             raise                                     # rq schedules the next attempt
         run.finished_at = datetime.now(UTC)
         s.commit()
+        events.run_changed(run)
