@@ -19,6 +19,7 @@
       <span class="spacer"></span>
       <button class="btn" type="button" id="recheck">Re-check status</button>
       <button class="btn" type="button" id="scan">Scan network</button>
+      <button class="btn" type="button" id="sites">Sites</button>
       <button class="btn" type="button" id="agents">Agents</button>
       <button class="btn" type="button" id="add">Add printer</button>
     </header>
@@ -35,7 +36,7 @@
           <div class="scroll">
             <table>
               <thead><tr>
-                <th>Name</th><th>Model</th><th>Connection</th><th>dpi</th><th>Status</th>
+                <th>Name</th><th>Site</th><th>Model</th><th>Connection</th><th>dpi</th><th>Status</th>
               </tr></thead>
               <tbody id="rows"></tbody>
             </table>
@@ -60,6 +61,29 @@
           <p class="mut" style="font-size: 12px;">Platen opens one connection per address on that one port and asks each answering device to identify itself. It only looks at private networks, up to 1024 addresses at a time, because a despatch printer is never on a public address.</p>
           <div class="scroll" id="s-results"></div>
           <div id="s-msg" hidden></div>
+        </section>
+
+        <section class="card" id="sites-card" aria-labelledby="h-sites" hidden>
+          <div class="card-head"><h2 id="h-sites">Sites</h2>
+            <span class="spacer"></span>
+            <span class="mut" style="font-size: 12px;">A building with printers in it</span></div>
+          <div class="scroll"><table>
+            <thead><tr><th>Site</th><th>Name</th><th>Printers</th><th></th></tr></thead>
+            <tbody id="site-rows"></tbody>
+          </table></div>
+          <p class="mut" id="sites-empty" style="font-size: 12px;" hidden>No sites yet, so every printer is shared by everyone.</p>
+          <label style="display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--mut); margin: 4px 0 8px;">
+            <input id="st-show-archived" type="checkbox" style="width: auto; height: auto; accent-color: var(--accent);">
+            Show archived sites
+          </label>
+          <div class="row">
+            <div class="field"><label for="st-name">Name</label><input id="st-name" type="text" placeholder="Ballarat DC"></div>
+            <div class="field narrow" style="align-self: flex-end;">
+              <button class="btn" type="button" id="st-add" style="height: 38px;">Add a site</button>
+            </div>
+          </div>
+          <p class="mut" style="font-size: 12px;">Put a printer in a site and only the people who look after that site see it. A printer in no site is shared with everyone. Who looks after which site is set under People.</p>
+          <div id="st-msg" hidden></div>
         </section>
 
         <section class="card" id="agents-card" aria-labelledby="h-agents" hidden>
@@ -96,6 +120,10 @@
             <div class="field narrow">
               <label for="p-dpi">Dots per inch</label>
               <select id="p-dpi"><option>203</option><option>300</option><option>600</option></select>
+            </div>
+            <div class="field narrow">
+              <label for="p-site">Site</label>
+              <select id="p-site"></select>
             </div>
           </div>
 
@@ -150,7 +178,9 @@
   'use strict';
   renderShell('printers');
 
-  const state = { printers: [], current: null, agents: [] };
+  const state = { printers: [], current: null, agents: [], sites: [], archivedSites: [] };
+
+  const siteName = (id) => (id ? state.sites.find((s) => s.id === id)?.name || id : 'Shared');
 
   const wire = (t) => {
     if (t.kind === 'tcp') return `tcp ${t.host}:${t.port ?? 9100}`;
@@ -180,6 +210,7 @@
                              onclick: () => pick(p.id),
                              onkeydown: (e) => { if (e.key === 'Enter') pick(p.id); } },
         el('td', {}, el('b', { text: p.name })),
+        el('td', { class: p.site_id ? '' : 'mut', text: siteName(p.site_id) }),
         el('td', { text: p.model || '—' }),
         el('td', { class: 'mono', text: wire(p.transport) }),
         el('td', { class: 'mono', text: String(p.dpi) }),
@@ -199,6 +230,7 @@
     $('p-name').value = p.name || '';
     $('p-model').value = p.model || '';
     $('p-dpi').value = String(p.dpi || 203);
+    fillSites(p.site_id);
     const t = p.transport || { kind: 'tcp' };
     showKind(t.kind || 'tcp');
     $('t-host').value = t.host || '';
@@ -242,9 +274,12 @@
       await api('PUT', `/printers/${encodeURIComponent(id)}`, {
         name: $('p-name').value, model: $('p-model').value,
         dpi: Number($('p-dpi').value), transport: transport(),
+        site_id: $('p-site').value || null,
+        grid_x: state.current?.grid?.[0] ?? null, grid_y: state.current?.grid?.[1] ?? null,
       });
       clearError($('msg'));
       await load(true, id);
+      await loadSites();
     } catch (e) { showError($('msg'), e.message); }
   }
 
@@ -271,6 +306,68 @@
       await load();
     } catch (e) { showError($('msg'), e.message); }
   }
+
+  // ---------- sites
+  function fillSites(selected) {
+    $('p-site').replaceChildren(
+      el('option', { value: '', text: 'Shared — everyone', selected: !selected }),
+      ...state.sites.map((s) => el('option', { value: s.id, text: s.name,
+                                               selected: s.id === selected })));
+  }
+
+  async function loadSites() {
+    const all = await api('GET', '/sites?archived=true');
+    state.sites = all.filter((s) => !s.archived_at);
+    state.archivedSites = all.filter((s) => s.archived_at);
+    const shown = $('st-show-archived').checked ? all : state.sites;
+    const body = $('site-rows');
+    body.replaceChildren();
+    $('sites-empty').hidden = all.length > 0;
+    for (const s of shown) {
+      body.append(el('tr', { class: s.archived_at ? 'mut' : null },
+        el('td', { class: 'mono', text: s.id }),
+        el('td', {}, el('span', { text: s.name }), s.archived_at
+          ? el('span', { class: 'badge gold', style: 'margin-left: 8px;', text: 'Archived' }) : null),
+        el('td', { class: 'mono', text: String(s.printers) }),
+        el('td', {}, s.archived_at
+          ? el('button', { class: 'btn sm', type: 'button', text: 'Restore',
+                           onclick: () => siteAction(s, 'restore') })
+          : el('button', { class: 'btn sm', type: 'button', title: 'Archive',
+                           'aria-label': `Archive ${s.name}`,
+                           onclick: () => siteAction(s, 'archive') }, icon('archive', 13)))));
+    }
+    fillSites($('p-site').value);
+  }
+
+  async function addSite() {
+    const name = $('st-name').value.trim();
+    const id = slug(name);
+    if (!id) { showError($('st-msg'), 'Give the site a name.'); return; }
+    if ([...state.sites, ...state.archivedSites].some((s) => s.id === id)) {
+      showError($('st-msg'), `There is already a site called ${id}. If it is archived, restore it instead.`); return;
+    }
+    try {
+      await api('PUT', `/sites/${encodeURIComponent(id)}`, { name });
+      clearError($('st-msg'));
+      $('st-name').value = '';
+      await loadSites();
+      await load(false, state.current?.id);
+    } catch (e) { showError($('st-msg'), e.message); }
+  }
+
+  async function siteAction(s, action) {
+    try {
+      await api('POST', `/sites/${encodeURIComponent(s.id)}/${action}`);
+      clearError($('st-msg'));
+      await loadSites();
+    } catch (e) { showError($('st-msg'), e.message); }
+  }
+
+  $('sites').addEventListener('click', () => {
+    $('sites-card').hidden = false; clearError($('st-msg')); $('st-name').focus();
+  });
+  $('st-add').addEventListener('click', addSite);
+  $('st-show-archived').addEventListener('change', () => loadSites().catch(() => {}));
 
   // ---------- agents
   function fillAgents(selected) {
@@ -389,7 +486,7 @@
   $('recheck').addEventListener('click', () => load(true, state.current?.id));
 
   loadAgents().catch(() => {});
-  load().catch((e) => showError($('msg'), e.message));
+  loadSites().catch(() => {}).finally(() => load().catch((e) => showError($('msg'), e.message)));
 })();
 </script>
 </body>

@@ -21,6 +21,7 @@ app/            the service
   retention.py    what gets thrown away, and when
   logs.py         one place that decides what Platen says about itself
   auth.py         users, roles, password hashing, sessions
+  sites.py        which sites somebody looks after, so which printers and runs they see
   models.py       template + element schema (pydantic), mm↔dots
   binding.py      "{{ order.sku }}" → a value from a row
   datasources.py  connections (SQL or REST), read-only query runner
@@ -124,6 +125,13 @@ test suite runs the same models on SQLite, so keep column types portable.
     anything but a private, loopback or link-local range, caps a call at 1024
     addresses, and opens one connection per address on the one port it was
     given. It is how you find your own printers, not a port sweep.
+
+19. **Every route that touches a printer or a run checks the site.** An
+    operator or manager sees printers in their own sites and printers in no
+    site, and nothing else turns up in a list, a count or a dashboard. Asked
+    for one by name, the answer is a 403 that says which site it is at, so
+    they know who to ask. Use `sites.printer_filter` for a query and
+    `_may_use` for a single printer; a run is checked through its printer.
 
 ## Code
 

@@ -59,6 +59,7 @@ const ICONS = {
   check: ['M20 6 9 17l-5-5'],
   alert: ['m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3', 'M12 9v4', 'M12 17h.01'],
   plus: ['M5 12h14', 'M12 5v14'],
+  archive: ['M2 3h20v5H2z', 'M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8', 'M10 12h4'],
   trash: ['M3 6h18', 'M8 6V4h8v2', 'M19 6l-1 14H6L5 6'],
   plug: ['M12 22v-5', 'M9 8V2', 'M15 8V2', 'M18 8v3a6 6 0 0 1-12 0V8z'],
   image: ['M3 5h18v14H3z', 'm4 16 4.5-4.5 3.5 3.5 2.6-2.6L20 17', 'M15.5 9h.01'],
@@ -136,11 +137,13 @@ async function renderShell(current, footNote) {
       el('span', { class: 'avatar', text: initials(me.name || me.username) }),
       el('span', { class: 'who' },
         el('b', { text: me.name || me.username }),
-        el('small', { text: me.role === 'admin' ? 'Administrator' : 'Operator' })),
+        el('small', { text: ROLE_NAMES[me.role] || me.role })),
       el('button', { class: 'signout', type: 'button', 'aria-label': 'Sign out',
                      title: 'Sign out', onclick: signOut }, icon('exit', 15))),
   ].filter(Boolean));
 }
+
+const ROLE_NAMES = { admin: 'Administrator', manager: 'Manager', operator: 'Operator' };
 
 /* A failure the operator needs to read, in the gold that means "look here". */
 function showError(box, message) {

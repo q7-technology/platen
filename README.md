@@ -53,7 +53,7 @@ The screens are at http://localhost:8000/studio/dashboard (what is going on),
 `/studio/print` (run a job),
 `/studio/templates` (the library and the editor), `/studio/data` (connections
 and saved queries), `/studio/printers` and `/studio/jobs`. The API reference is
-at http://localhost:8000/docs.
+at http://localhost:8000/docs. The landing page is at http://localhost:8080.
 
 On your own machine instead:
 
@@ -147,9 +147,18 @@ or set one to zero to keep it forever. The API prunes once a day by itself;
 
 ## Who can do what
 
-Two roles. An **administrator** wires up connections, printers and templates.
+Three roles. An **administrator** wires up connections, printers and templates.
 An **operator** picks a template, answers the question it asks and presses
 print — and is never shown a connection string or the SQL behind their query.
+A **manager** does what an operator does, across more than one site.
+
+**Sites** are the buildings your printers are in. Make them under
+**Printers → Sites**, put each printer in one, and tick who looks after which
+under **People**. An operator works at one site, a manager at any number, and
+an administrator sees them all. People only see the printers and runs at
+their own sites. A printer in no site is shared with everyone, which is how
+an install that has never made a site carries on exactly as it did. A key
+sees every site, as an administrator would.
 
 The first administrator is made once at startup from `PLATEN_ADMIN_USERNAME`
 and `PLATEN_ADMIN_PASSWORD`. After that, **People** is where you add someone,
@@ -157,7 +166,7 @@ change a role, reset a password, switch an account off or delete it. There is
 also a command, for when nobody can get in:
 
 ```bash
-python -m app.adduser dave --role operator
+python -m app.adduser dave --role operator     # or manager, or admin
 ```
 
 Resetting a password signs that person out everywhere, and so does switching

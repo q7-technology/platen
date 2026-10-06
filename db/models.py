@@ -1,4 +1,4 @@
-"""The ten tables. Types are kept portable so the same models run on Postgres
+"""The tables. Types are kept portable so the same models run on Postgres
 in production and on SQLite in the test suite."""
 
 from __future__ import annotations
@@ -218,6 +218,32 @@ class QueryParameter(Base):
     query: Mapped[SavedQuery] = relationship(back_populates="parameters")
 
 
+class Site(Base):
+    """A building with printers in it. Where it sits on the world map is kept
+    here so every viewer sees the same map."""
+
+    __tablename__ = "site"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    map_x: Mapped[int] = mapped_column(Integer, default=0)
+    map_y: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
+    # a site is archived, never deleted: who looked after it stays on record
+    # and comes back with it if it is restored
+    archived_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+
+
+class UserSite(Base):
+    """Which sites a person looks after. An operator has at most one, a
+    manager any number; an administrator needs none, because they see all."""
+
+    __tablename__ = "user_site"
+
+    username: Mapped[str] = mapped_column(ForeignKey("app_user.username"), primary_key=True)
+    site_id: Mapped[str] = mapped_column(ForeignKey("site.id"), primary_key=True, index=True)
+
+
 class Printer(Base):
     __tablename__ = "printer"
 
@@ -227,6 +253,11 @@ class Printer(Base):
     dpi: Mapped[int] = mapped_column(Integer, default=203)
     transport_kind: Mapped[str] = mapped_column(String(16))
     transport_config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # no site means shared: everyone may use it, which is how an install with
+    # no sites at all keeps working exactly as it did
+    site_id: Mapped[str | None] = mapped_column(ForeignKey("site.id"), index=True)
+    grid_x: Mapped[int | None]
+    grid_y: Mapped[int | None]
 
 
 class PrintRun(Base):

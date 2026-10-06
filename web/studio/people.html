@@ -33,9 +33,15 @@
               <label for="u-role">Role</label>
               <select id="u-role">
                 <option value="operator">Operator</option>
+                <option value="manager">Manager</option>
                 <option value="admin">Administrator</option>
               </select>
             </div>
+          </div>
+          <div class="field" id="u-sites-field">
+            <label id="l-sites">Sites</label>
+            <div id="u-sites" role="group" aria-labelledby="l-sites" style="display: flex; flex-wrap: wrap; gap: 6px 16px;"></div>
+            <p class="mut" id="u-sites-note" style="font-size: 12px; margin: 6px 0 0;"></p>
           </div>
           <div class="row">
             <div class="field">
@@ -63,7 +69,7 @@
           <div class="card-head"><h2 id="h-people">People</h2></div>
           <div class="scroll">
             <table>
-              <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Last signed in</th><th>Status</th></tr></thead>
+              <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Sites</th><th>Last signed in</th><th>Status</th></tr></thead>
               <tbody id="rows"></tbody>
             </table>
           </div>
@@ -108,13 +114,14 @@
   'use strict';
   renderShell('people');
 
-  const state = { people: [], current: null, me: null };
+  const state = { people: [], current: null, me: null, sites: [] };
 
   const when = (iso) => (iso ? new Date(iso).toLocaleString() : 'never');
 
   async function load() {
     state.me = await whoami();
-    state.people = await api('GET', '/users');
+    [state.people, state.sites] = await Promise.all([api('GET', '/users'),
+                                                     api('GET', '/sites?archived=true')]);
     const body = $('rows');
     body.replaceChildren();
     $('sub').textContent = `${state.people.length} ${state.people.length === 1 ? 'person' : 'people'}`;
@@ -123,7 +130,8 @@
                              onkeydown: (e) => { if (e.key === 'Enter') pick(u); } },
         el('td', {}, el('b', { text: u.name || u.username })),
         el('td', { class: 'mono', text: u.username }),
-        el('td', { text: u.role === 'admin' ? 'Administrator' : 'Operator' }),
+        el('td', { text: ROLE_NAMES[u.role] || u.role }),
+        el('td', { class: 'mut', text: siteNames(u) }),
         el('td', { class: 'mut', text: when(u.last_login_at) }),
         el('td', {}, u.disabled
           ? el('span', { class: 'badge gold', text: 'Switched off' })
@@ -133,6 +141,40 @@
     }
   }
 
+  function siteNames(u) {
+    if (u.role === 'admin') return 'All';
+    if (!u.sites.length) return 'Shared printers only';
+    return u.sites.map((id) => state.sites.find((s) => s.id === id)?.name || id).join(', ');
+  }
+
+  /* An operator works at one site, so ticking a second one moves them
+     rather than adding; a manager may have any number. */
+  function showSites(chosen) {
+    const role = $('u-role').value;
+    $('u-sites-field').hidden = role === 'admin';
+    $('u-sites-note').textContent = !state.sites.some((s) => !s.archived_at)
+      ? 'No sites yet. Make them under Printers; until then everyone shares every printer.'
+      : role === 'operator'
+        ? 'An operator works at one site. Printers in no site are shared with everyone.'
+        : 'A manager looks after every site ticked here.';
+    const box = $('u-sites');
+    // an archived site is only offered to someone who already has it, so a
+    // save doesn't quietly drop it and a restore brings them back with it
+    const offered = state.sites.filter((s) => !s.archived_at || chosen.includes(s.id));
+    box.replaceChildren(...offered.map((s) => el('label', {
+        style: 'display: flex; gap: 6px; align-items: center; font-size: 13px;' },
+      el('input', { type: 'checkbox', value: s.id, checked: chosen.includes(s.id),
+                    style: 'width: auto; height: auto; accent-color: var(--accent);',
+                    onchange: (e) => {
+                      if (e.target.checked && $('u-role').value === 'operator') {
+                        for (const c of box.querySelectorAll('input')) c.checked = c === e.target;
+                      }
+                    } }),
+      el('span', { text: s.archived_at ? `${s.name} (archived)` : s.name }))));
+  }
+
+  const ticked = () => [...$('u-sites').querySelectorAll('input:checked')].map((c) => c.value);
+
   function pick(u) {
     state.current = u;
     $('edit').hidden = false;
@@ -141,6 +183,7 @@
     $('u-username').value = u.username;
     $('u-username').disabled = true;
     $('u-role').value = u.role;
+    showSites(u.sites || []);
     $('u-disabled').checked = u.disabled;
     $('u-password').value = '';
     $('u-password-label').textContent = 'New password (leave blank to keep it)';
@@ -155,6 +198,7 @@
     $('u-id').textContent = 'new';
     $('u-name').value = ''; $('u-username').value = ''; $('u-username').disabled = false;
     $('u-role').value = 'operator'; $('u-disabled').checked = false; $('u-password').value = '';
+    showSites([]);
     $('u-password-label').textContent = 'Password';
     $('u-signout').hidden = true; $('u-del').hidden = true;
     clearError($('u-msg'));
@@ -166,6 +210,7 @@
     if (!username) { showError($('u-msg'), 'Give them a username.'); return; }
     const body = { name: $('u-name').value, role: $('u-role').value,
                    disabled: $('u-disabled').checked };
+    if (body.role !== 'admin') body.sites = ticked();
     if ($('u-password').value) body.password = $('u-password').value;
     try {
       await api('PUT', `/users/${encodeURIComponent(username)}`, body);
@@ -229,6 +274,10 @@
 
   $('add').addEventListener('click', add);
   $('u-save').addEventListener('click', save);
+  $('u-role').addEventListener('change', () => {
+    const keep = ticked();
+    showSites($('u-role').value === 'operator' ? keep.slice(0, 1) : keep);
+  });
   $('u-signout').addEventListener('click', () => act(
     { method: 'POST', url: (u) => `/users/${encodeURIComponent(u)}/sessions/end` },
     'Sign them out of every browser they are signed in to?'));

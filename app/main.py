@@ -28,7 +28,17 @@ from db import models as db
 from db.models import AppUser
 from db.session import SessionLocal, get_session
 
-from . import auth, binding, datasources, jobs, preview, printers, retention, zplimport
+from . import (
+    auth,
+    binding,
+    datasources,
+    jobs,
+    preview,
+    printers,
+    retention,
+    sites,
+    zplimport,
+)
 from .models import Template
 from .settings import settings
 from .zpl import RenderError, render_run, separator
@@ -116,6 +126,13 @@ def admin(user: AppUser = Depends(current_user)) -> AppUser:
     return user
 
 
+def _may_use(s: Session, user: AppUser, printer: db.Printer) -> None:
+    try:
+        sites.check(s, user, printer)
+    except sites.NotYours as exc:
+        raise HTTPException(403, str(exc)) from None
+
+
 app.mount("/studio/static", StaticFiles(directory=WEB), name="static")
 
 
@@ -160,8 +177,10 @@ def sign_out(request: Request, response: Response,
 
 
 @app.get("/auth/me")
-def whoami(user: AppUser = Depends(current_user)) -> dict[str, Any]:
-    return _me(user)
+def whoami(user: AppUser = Depends(current_user),
+           s: Session = Depends(get_session)) -> dict[str, Any]:
+    mine = sites.allowed(s, user)
+    return {**_me(user), "sites": None if mine is sites.ALL else sorted(mine)}
 
 
 SCREENS = {
@@ -759,8 +778,10 @@ def _run_json(run: db.PrintRun) -> dict[str, Any]:
 @app.post("/runs", status_code=202)
 def create_run(body: NewRun, s: Session = Depends(get_session),
                  user: AppUser = Depends(current_user)) -> dict[str, Any]:
-    if s.get(db.Printer, body.printer_id) is None:
+    printer = s.get(db.Printer, body.printer_id)
+    if printer is None:
         raise HTTPException(404, f"no printer {body.printer_id!r}")
+    _may_use(s, user, printer)
 
     # every label renders here, before a run row exists, let alone a job
     p = _prepare(s, body)
@@ -797,16 +818,28 @@ def _warning(text: str) -> db.RunWarning:
     return db.RunWarning(row_no=None, message=text)
 
 
-def _run_row(s: Session, run_id: str) -> db.PrintRun:
+def _run_row(s: Session, run_id: str, user: AppUser) -> db.PrintRun:
     run = s.get(db.PrintRun, run_id)
     if run is None:
         raise HTTPException(404, f"no run {run_id!r}")
+    printer = s.get(db.Printer, run.printer_id)
+    if printer is not None:
+        _may_use(s, user, printer)
     return run
 
 
-@app.get("/runs", dependencies=[Depends(current_user)])
+def _scope_runs(stmt: Any, s: Session, user: AppUser) -> Any:
+    """Narrow a select over PrintRun to the printers this person may see."""
+    where = sites.printer_filter(s, user)
+    if where is None:
+        return stmt
+    return stmt.join(db.Printer, db.Printer.id == db.PrintRun.printer_id).where(where)
+
+
+@app.get("/runs")
 def list_runs(s: Session = Depends(get_session), limit: int = 50,
-              status: str | None = None) -> list[dict[str, Any]]:
+              status: str | None = None,
+              user: AppUser = Depends(current_user)) -> list[dict[str, Any]]:
     stmt = (
         select(db.PrintRun)
         # a dashboard that asks once per row falls over on a busy morning
@@ -817,12 +850,13 @@ def list_runs(s: Session = Depends(get_session), limit: int = 50,
     )
     if status:
         stmt = stmt.where(db.PrintRun.status.in_(status.split(",")))
-    return [_run_json(r) for r in s.scalars(stmt)]
+    return [_run_json(r) for r in s.scalars(_scope_runs(stmt, s, user))]
 
 
-@app.get("/runs/{run_id}", dependencies=[Depends(current_user)])
-def get_run(run_id: str, s: Session = Depends(get_session)) -> dict[str, Any]:
-    return _run_json(_run_row(s, run_id))
+@app.get("/runs/{run_id}")
+def get_run(run_id: str, s: Session = Depends(get_session),
+            user: AppUser = Depends(current_user)) -> dict[str, Any]:
+    return _run_json(_run_row(s, run_id, user))
 
 
 @app.post("/runs/{run_id}/retry", status_code=202)
@@ -830,7 +864,7 @@ def retry_run(run_id: str, s: Session = Depends(get_session),
                  user: AppUser = Depends(current_user)) -> dict[str, Any]:
     """Put a stopped run back on the queue. It resumes: labels that already
     came out of the printer are not sent again."""
-    run = _run_row(s, run_id)
+    run = _run_row(s, run_id, user)
     if run.status in ("done", "printing", "queued"):
         raise HTTPException(409, f"{run_id} is {run.status}; there is nothing to retry")
     left = jobs.remaining(s, run_id)
@@ -848,7 +882,7 @@ def retry_run(run_id: str, s: Session = Depends(get_session),
 def continue_run(run_id: str, s: Session = Depends(get_session),
                  user: AppUser = Depends(current_user)) -> dict[str, Any]:
     """The next label of a hand-fed job."""
-    run = _run_row(s, run_id)
+    run = _run_row(s, run_id, user)
     if run.status != "waiting":
         raise HTTPException(409, f"{run_id} is {run.status}; it is not waiting on anyone")
     run.status = "queued"
@@ -861,7 +895,7 @@ def continue_run(run_id: str, s: Session = Depends(get_session),
 @app.post("/runs/{run_id}/cancel", status_code=202)
 def cancel_run(run_id: str, s: Session = Depends(get_session),
                  user: AppUser = Depends(current_user)) -> dict[str, str]:
-    run = _run_row(s, run_id)
+    run = _run_row(s, run_id, user)
     if run.status in ("done", "failed", "cancelled"):
         return {"id": run_id, "status": run.status}
     audit(s, "cancel", "run", run_id, actor=user)
@@ -876,11 +910,15 @@ class PrinterBody(BaseModel):
     model: str = ""
     dpi: int = 203
     transport: dict[str, Any]
+    site_id: str | None = None
+    grid_x: int | None = None
+    grid_y: int | None = None
 
 
 def _printer_json(row: db.Printer, online: bool | None) -> dict[str, Any]:
     return {"id": row.id, "name": row.name, "model": row.model, "dpi": row.dpi,
             "transport": {"kind": row.transport_kind, **row.transport_config},
+            "site_id": row.site_id, "grid": [row.grid_x, row.grid_y],
             "online": online}
 
 
@@ -893,12 +931,18 @@ def _probe(row: db.Printer, agents: dict[str, bool]) -> bool | None:
         return False
 
 
-@app.get("/printers", dependencies=[Depends(current_user)])
-def list_printers(probe: bool = True,
-                  s: Session = Depends(get_session)) -> list[dict[str, Any]]:
+def _printers_for(s: Session, user: AppUser) -> list[db.Printer]:
+    stmt = select(db.Printer).order_by(db.Printer.name)
+    where = sites.printer_filter(s, user)
+    return list(s.scalars(stmt if where is None else stmt.where(where)))
+
+
+@app.get("/printers")
+def list_printers(probe: bool = True, s: Session = Depends(get_session),
+                  user: AppUser = Depends(current_user)) -> list[dict[str, Any]]:
     """Probing talks to every printer, and an offline one only answers when it
     times out — so they are asked all at once rather than one after another."""
-    rows = list(s.scalars(select(db.Printer).order_by(db.Printer.name)))
+    rows = _printers_for(s, user)
     if not probe:
         return [_printer_json(r, None) for r in rows]
     # agents are a database read, so they are answered here rather than in a
@@ -956,11 +1000,17 @@ def put_printer(printer_id: str, body: PrinterBody,
         printers.build(kind, config)
     except (ValueError, KeyError) as exc:
         raise HTTPException(422, f"transport: {exc}") from None
+    site = s.get(db.Site, body.site_id) if body.site_id is not None else None
+    if body.site_id is not None and site is None:
+        raise HTTPException(422, f"no site {body.site_id!r}; make the site first")
+    if site is not None and site.archived_at is not None:
+        raise HTTPException(422, f"{site.name} is archived; restore it first")
     row = s.get(db.Printer, printer_id) or db.Printer(id=printer_id)
     row.name, row.model, row.dpi = body.name, body.model, body.dpi
+    row.site_id, row.grid_x, row.grid_y = body.site_id, body.grid_x, body.grid_y
     row.transport_kind, row.transport_config = kind, config
     s.add(row)
-    audit(s, "save", "printer", row.id, transport=kind, actor=user)
+    audit(s, "save", "printer", row.id, transport=kind, site_id=row.site_id, actor=user)
     s.commit()
     return _printer_json(row, None)
 
@@ -984,10 +1034,15 @@ def _saved_run_json(row: db.SavedRun) -> dict[str, Any]:
             "created_by": row.created_by, "updated_at": row.updated_at}
 
 
-@app.get("/saved-runs", dependencies=[Depends(current_user)])
-def list_saved_runs(s: Session = Depends(get_session)) -> list[dict[str, Any]]:
+@app.get("/saved-runs")
+def list_saved_runs(s: Session = Depends(get_session),
+                    user: AppUser = Depends(current_user)) -> list[dict[str, Any]]:
+    """A saved run pinned to a printer at somebody else's site is theirs, not
+    yours; one with no printer is anyone's."""
+    usable = {p.id for p in _printers_for(s, user)}
     return [_saved_run_json(r) for r in s.scalars(
-        select(db.SavedRun).order_by(db.SavedRun.name))]
+        select(db.SavedRun).order_by(db.SavedRun.name))
+        if r.printer_id is None or r.printer_id in usable]
 
 
 @app.put("/saved-runs/{saved_id}")
@@ -1054,31 +1109,35 @@ def run_prune(s: Session = Depends(get_session),
 ACTIVE = ("queued", "printing", "retrying")
 
 
-@app.get("/dashboard", dependencies=[Depends(current_user)])
-def dashboard(s: Session = Depends(get_session)) -> dict[str, Any]:
-    """The few numbers worth seeing on the way past, and what is on the queue."""
+@app.get("/dashboard")
+def dashboard(s: Session = Depends(get_session),
+              user: AppUser = Depends(current_user)) -> dict[str, Any]:
+    """The few numbers worth seeing on the way past, and what is on the queue —
+    for the sites this person looks after."""
     since = auth.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
-    printed_today = s.scalar(
+    printed_today = s.scalar(_scope_runs(
         select(func.count()).select_from(db.RunLabel)
-        .where(db.RunLabel.printed_at >= since)) or 0
-    queued = s.scalar(
+        .join(db.PrintRun, db.PrintRun.id == db.RunLabel.run_id)
+        .where(db.RunLabel.printed_at >= since), s, user)) or 0
+    queued = s.scalar(_scope_runs(
         select(func.count()).select_from(db.PrintRun)
-        .where(db.PrintRun.status.in_(ACTIVE))) or 0
-    failed_today = s.scalar(
+        .where(db.PrintRun.status.in_(ACTIVE)), s, user)) or 0
+    failed_today = s.scalar(_scope_runs(
         select(func.count()).select_from(db.PrintRun)
-        .where(db.PrintRun.status == "failed", db.PrintRun.created_at >= since)) or 0
+        .where(db.PrintRun.status == "failed", db.PrintRun.created_at >= since),
+        s, user)) or 0
 
-    printer_rows = list(s.scalars(select(db.Printer)))
+    printer_rows = _printers_for(s, user)
     agents = {a.id: _agent_online(a) for a in s.scalars(select(db.PrintAgent))}
     with ThreadPoolExecutor(max_workers=min(8, max(1, len(printer_rows)))) as pool:
         states = list(pool.map(lambda r: _probe(r, agents), printer_rows))
 
-    runs = list(s.scalars(
+    runs = list(s.scalars(_scope_runs(
         select(db.PrintRun)
         .options(selectinload(db.PrintRun.template_version),
                  selectinload(db.PrintRun.warnings))
-        .order_by(db.PrintRun.created_at.desc()).limit(8)))
+        .order_by(db.PrintRun.created_at.desc()).limit(8), s, user)))
 
     templates = list(s.scalars(
         select(db.Template).order_by(db.Template.updated_at.desc()).limit(5)))
@@ -1127,13 +1186,94 @@ def resume_queue(s: Session = Depends(get_session),
     return {"paused": False, "resumed": len(held)}
 
 
+# ---------------------------------------------------------------------- sites
+
+class SiteBody(BaseModel):
+    name: str
+    map_x: int = 0
+    map_y: int = 0
+
+
+def _site_json(s: Session, row: db.Site) -> dict[str, Any]:
+    return {"id": row.id, "name": row.name, "map": [row.map_x, row.map_y],
+            "archived_at": row.archived_at,
+            "printers": s.scalar(select(func.count()).select_from(db.Printer)
+                                 .where(db.Printer.site_id == row.id)) or 0}
+
+
+@app.get("/sites")
+def list_sites(archived: bool = False, s: Session = Depends(get_session),
+               user: AppUser = Depends(current_user)) -> list[dict[str, Any]]:
+    """The sites this person looks after; every site, for an administrator.
+    Archived ones only when asked for."""
+    mine = sites.allowed(s, user)
+    rows = s.scalars(select(db.Site).order_by(db.Site.name))
+    return [_site_json(s, r) for r in rows
+            if (mine is sites.ALL or r.id in mine)
+            and (archived or r.archived_at is None)]
+
+
+@app.put("/sites/{site_id}")
+def put_site(site_id: str, body: SiteBody, s: Session = Depends(get_session),
+             user: AppUser = Depends(admin)) -> dict[str, Any]:
+    if not body.name.strip():
+        raise HTTPException(422, "a site needs a name")
+    row = s.get(db.Site, site_id) or db.Site(id=site_id)
+    if row.archived_at is not None:
+        raise HTTPException(409, f"{row.name} is archived; restore it before changing it")
+    row.name, row.map_x, row.map_y = body.name.strip(), body.map_x, body.map_y
+    s.add(row)
+    audit(s, "save", "site", site_id, actor=user)
+    s.commit()
+    return _site_json(s, row)
+
+
+def _site_row(s: Session, site_id: str) -> db.Site:
+    row = s.get(db.Site, site_id)
+    if row is None:
+        raise HTTPException(404, f"no site {site_id!r}")
+    return row
+
+
+@app.post("/sites/{site_id}/archive")
+def archive_site(site_id: str, s: Session = Depends(get_session),
+                 user: AppUser = Depends(admin)) -> dict[str, Any]:
+    """A site is archived, never deleted. Refused while printers are in it:
+    nobody could reach them, and moving them out is a choice somebody should
+    make on purpose. Who looked after it is kept for a restore."""
+    row = _site_row(s, site_id)
+    inside = s.scalars(select(db.Printer.name).where(db.Printer.site_id == site_id)
+                       .order_by(db.Printer.name)).all()
+    if inside:
+        raise HTTPException(
+            409, f"{row.name} still has {len(inside)} printer(s) in it: "
+                 f"{', '.join(inside[:5])}. Move them to another site first.")
+    if row.archived_at is None:
+        row.archived_at = auth.now()
+        audit(s, "archive", "site", site_id, actor=user)
+        s.commit()
+    return _site_json(s, row)
+
+
+@app.post("/sites/{site_id}/restore")
+def restore_site(site_id: str, s: Session = Depends(get_session),
+                 user: AppUser = Depends(admin)) -> dict[str, Any]:
+    row = _site_row(s, site_id)
+    if row.archived_at is not None:
+        row.archived_at = None
+        audit(s, "restore", "site", site_id, actor=user)
+        s.commit()
+    return _site_json(s, row)
+
+
 # ------------------------------------------------------------ people and keys
 
 class UserBody(BaseModel):
     name: str = ""
-    role: Literal["admin", "operator"] = "operator"
+    role: Literal["admin", "manager", "operator"] = "operator"
     disabled: bool = False
     password: str | None = None    # required when there is no such user yet
+    sites: list[str] | None = None  # None leaves them as they are
 
 
 class PasswordBody(BaseModel):
@@ -1145,8 +1285,9 @@ class KeyBody(BaseModel):
     role: Literal["admin", "operator"] = "operator"
 
 
-def _user_json(row: AppUser) -> dict[str, Any]:
+def _user_json(s: Session, row: AppUser) -> dict[str, Any]:
     return {"username": row.username, "name": row.display_name, "role": row.role,
+            "sites": sites.assigned(s, row.username),
             "disabled": row.disabled, "locked": bool(row.locked_until
                                                      and row.locked_until > auth.now()),
             "created_at": row.created_at, "last_login_at": row.last_login_at}
@@ -1169,7 +1310,7 @@ def _other_admins(s: Session, username: str) -> int:
 
 @app.get("/users", dependencies=[Depends(admin)])
 def list_users(s: Session = Depends(get_session)) -> list[dict[str, Any]]:
-    return [_user_json(u) for u in s.scalars(select(AppUser).order_by(AppUser.username))]
+    return [_user_json(s, u) for u in s.scalars(select(AppUser).order_by(AppUser.username))]
 
 
 @app.put("/users/{username}")
@@ -1189,6 +1330,23 @@ def put_user(username: str, body: UserBody, s: Session = Depends(get_session),
             and not _other_admins(s, username)):
         raise HTTPException(409, f"{username} is the last administrator")
 
+    # checked before anything is written, so a bad site list never leaves
+    # half a user behind
+    if body.role == "operator" and body.sites and len(set(body.sites)) > 1:
+        raise HTTPException(422, "an operator works at one site; make them a "
+                                 "manager to look after more than one")
+    missing = [i for i in body.sites or [] if s.get(db.Site, i) is None]
+    if missing:
+        raise HTTPException(422, f"no site {', '.join(repr(m) for m in missing)}")
+    kept = sites.assigned(s, username) if row is not None else []
+    archived = [i for i in body.sites or [] if i not in kept
+                and s.get(db.Site, i).archived_at is not None]
+    if archived:
+        raise HTTPException(422, f"{', '.join(archived)} is archived; restore it first")
+    if (body.sites is None and body.role == "operator" and len(kept) > 1):
+        raise HTTPException(422, f"{username} looks after {len(kept)} sites; say "
+                                 "which one they keep before making them an operator")
+
     if row is None:
         if not body.password:
             raise HTTPException(422, "a new user needs a password")
@@ -1206,9 +1364,12 @@ def put_user(username: str, body: UserBody, s: Session = Depends(get_session),
         if body.password:
             auth.set_password(s, row, body.password)
 
-    audit(s, "save", "user", username, actor=user, role=body.role, disabled=body.disabled)
+    chosen = sites.assign(s, username, body.role,
+                          kept if body.sites is None else body.sites)
+    audit(s, "save", "user", username, actor=user, role=body.role,
+          disabled=body.disabled, sites=chosen)
     s.commit()
-    return _user_json(row)
+    return _user_json(s, row)
 
 
 @app.post("/users/{username}/password")
@@ -1243,6 +1404,7 @@ def delete_user(username: str, s: Session = Depends(get_session),
     if row.role == "admin" and not _other_admins(s, username):
         raise HTTPException(409, f"{username} is the last administrator")
     auth.end_all_sessions(s, username)
+    sites.assign(s, username, row.role, [])
     s.delete(row)
     audit(s, "delete", "user", username, actor=user)
     s.commit()

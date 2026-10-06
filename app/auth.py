@@ -1,8 +1,10 @@
 """Who is at the keyboard, and what they are allowed to do.
 
-Two roles, because that is what a floor looks like. An administrator wires up
-connections, printers and templates. An operator answers a question and presses
-print, and never needs to see a connection string.
+Three roles, because that is what a business with more than one floor looks
+like. An administrator wires up connections, printers and templates. An
+operator answers a question and presses print, at one site, and never needs to
+see a connection string. A manager does what an operator does, across whichever
+sites they have been given (see `sites.py`).
 
 Passwords are hashed with scrypt from the standard library — no new dependency,
 and a real memory-hard KDF rather than a bare digest. A session is a random
@@ -31,7 +33,7 @@ from .logs import where
 log = logging.getLogger("platen.auth")
 
 COOKIE = "platen_session"
-ROLES = ("admin", "operator")
+ROLES = ("admin", "manager", "operator")
 TOKEN_ROLES = ("admin", "operator", "agent")
 TOKEN_PREFIX = "plt_"
 
