@@ -34,21 +34,24 @@ each one is useful on its own.
 - **A manager role.** *Done.* Operators have at most one site, managers any number,
   administrators all of them. Every route that touches a printer or a run
   checks the site as well as the role.
-- **Grid positions** for printers and agents, ready for the site view.
+- **Grid positions** for printers, ready for the site view. *Done* for
+  printers (`PUT /printers/{id}/position`); agents can follow.
 - **Live updates.** *Done.* `/events`, a one-way stream fed by the worker and
   the API through Redis, scoped to the sites the viewer looks after.
 - **Printer health.** *Done.* Every 30 seconds each Zebra is asked `~HQES`:
   out of labels, head open, out of ribbon, labels nearly out. That is what
   turns a printer gold or red.
-- **Moving a run safely.**
+- **Moving a run safely.** *Done.*
   - only between labels, like cancel and the queue hold
   - only labels with no `printed_at` move; nothing prints twice
-  - a printer at a different dpi gets every remaining label re-rendered first;
-    if any fail, the run stays where it was and the screen says why
-  - labels never go to a page printer, nor pages to a label printer
+  - a run only moves to a printer at its template's dpi. Re-rendering for
+    another pitch would re-read the data, and the labels could then differ
+    from the ones that were checked, so it is refused with a reason instead
+  - labels never go to a page printer, nor pages to a label printer (lands
+    with page printing in step 3)
   - a hand-fed (`waiting`) run asks before it moves
   - every move is audited; undo moves the remaining labels back
-- **Detours.** "Send everything for printer 3 to printer 4 until I say."
+- **Detours.** *Done.* "Send everything for printer 3 to printer 4 until I say."
   New runs follow the detour until it is cleared.
 
 ## Step 2 — the toy town

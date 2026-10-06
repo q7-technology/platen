@@ -85,6 +85,16 @@
             <button class="btn" type="button" id="d-retry" hidden>Retry from where it stopped</button>
             <button class="btn gold" type="button" id="d-cancel" hidden>Cancel</button>
           </div>
+          <div class="row" id="d-move" hidden style="margin-top: 12px;">
+            <div class="field">
+              <label for="d-to">Move what's left to</label>
+              <select id="d-to"></select>
+            </div>
+            <div class="field narrow" style="align-self: flex-end;">
+              <button class="btn" type="button" id="d-move-go" style="height: 38px;">Move</button>
+            </div>
+          </div>
+          <div id="d-moved"></div>
           <div id="d-msg" hidden></div>
         </section>
 
@@ -98,7 +108,8 @@
   'use strict';
   renderShell('jobs');
 
-  const state = { runs: [], sel: null, timer: null };
+  const state = { runs: [], sel: null, timer: null, printers: [], undo: null };
+  const MOVABLE = ['queued', 'printing', 'retrying', 'paused', 'waiting', 'failed'];
   const ACTIVE = ['queued', 'printing', 'retrying'];
   const WORDS = { queued: 'Queued', printing: 'Printing', done: 'Done',
                   failed: 'Failed', cancelled: 'Cancelled', retrying: 'Retrying' };
@@ -203,7 +214,48 @@
     $('d-retry').hidden = !(stopped && left > 0);
     if (!$('d-retry').hidden) $('d-retry').textContent = `Retry the remaining ${left}`;
     $('d-cancel').hidden = !ACTIVE.includes(r.status);
+
+    // only printers at the same dot pitch take these labels; the server says
+    // so too, but there is no point offering the ones it would refuse
+    const here = state.printers.find((p) => p.id === r.printer_id);
+    const options = state.printers.filter((p) => p.id !== r.printer_id && !p.detour_to
+                                                 && (!here || p.dpi === here.dpi));
+    $('d-move').hidden = !(MOVABLE.includes(r.status) && left > 0 && options.length);
+    $('d-to').replaceChildren(...options.map((p) => el('option', { value: p.id,
+      text: `${p.name}${p.health?.state && p.health.state !== 'ready' ? ` (${p.health.problems.join(', ') || p.health.state})` : ''}` })));
+    if (r.moving_to) {
+      $('d-moved').replaceChildren(el('p', { class: 'mut', style: 'font-size:12.5px',
+        text: `Moving to ${r.moving_to} after the label that is printing now.` }));
+    } else if (!state.undo || state.undo.id !== r.id) {
+      $('d-moved').replaceChildren();
+    } else if (!MOVABLE.includes(r.status) || left === 0) {
+      // it finished where it was sent; there is nothing left to take back
+      $('d-moved').querySelector('button')?.remove();
+    }
     clearError($('d-msg'));
+  }
+
+  async function move(to, confirmed = false) {
+    const r = state.sel;
+    if (!r) return;
+    try {
+      const done = await api('POST', `/runs/${encodeURIComponent(r.id)}/move`,
+                             { printer_id: to, confirm: confirmed });
+      state.undo = { id: r.id, back: done.from };
+      const name = (id) => state.printers.find((p) => p.id === id)?.name || id;
+      $('d-moved').replaceChildren(el('div', { class: 'ok', style: 'margin-top:10px' },
+        icon('check', 14),
+        el('span', { text: `${done.remaining} label${done.remaining === 1 ? '' : 's'} moved to ${name(done.to)}.` }),
+        el('button', { class: 'btn sm', type: 'button', text: 'Undo',
+                       onclick: () => { state.undo = null; move(done.from); } })));
+      clearError($('d-msg'));
+      await load();
+    } catch (e) {
+      if (!confirmed && /confirm to move it anyway/.test(e.message) && confirm(e.message)) {
+        return move(to, true);
+      }
+      showError($('d-msg'), e.message);
+    }
   }
 
   async function act(what) {
@@ -217,6 +269,9 @@
 
   $('d-retry').addEventListener('click', () => act('retry'));
   $('d-cancel').addEventListener('click', () => act('cancel'));
+  $('d-move-go').addEventListener('click', () => move($('d-to').value));
+  api('GET', '/printers?probe=false').then((list) => { state.printers = list; })
+    .catch(() => {});
   $('refresh').addEventListener('click', load);
   onLive(load, ['run', 'queue']);
   $('filter').addEventListener('change', load);

@@ -59,6 +59,7 @@ const ICONS = {
   check: ['M20 6 9 17l-5-5'],
   alert: ['m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3', 'M12 9v4', 'M12 17h.01'],
   plus: ['M5 12h14', 'M12 5v14'],
+  map: ['M14.1 4.4l-4.2-2.1a2 2 0 0 0-1.8 0L3.6 4.6A1 1 0 0 0 3 5.5v14.9a1 1 0 0 0 1.4.9l4.5-2.3a2 2 0 0 1 1.8 0l4.2 2.1a2 2 0 0 0 1.8 0l4.6-2.3a1 1 0 0 0 .6-.9V3.6a1 1 0 0 0-1.4-.9l-4.6 2.3a2 2 0 0 1-1.8 0z', 'M15 5.8v15', 'M9 3.2v15'],
   archive: ['M2 3h20v5H2z', 'M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8', 'M10 12h4'],
   trash: ['M3 6h18', 'M8 6V4h8v2', 'M19 6l-1 14H6L5 6'],
   plug: ['M12 22v-5', 'M9 8V2', 'M15 8V2', 'M18 8v3a6 6 0 0 1-12 0V8z'],
@@ -100,6 +101,7 @@ function icon(name, size = 16) {
 
 const NAV = [
   { href: '/studio/dashboard', label: 'Dashboard', icon: 'grid', key: 'dashboard' },
+  { href: '/studio/map', label: 'Live map', icon: 'map', key: 'map' },
   { href: '/studio/print', label: 'Print run', icon: 'play', key: 'print' },
   { href: '/studio/templates', label: 'Templates', icon: 'layers', key: 'templates', admin: true },
   { href: '/studio/data', label: 'Data sources', icon: 'database', key: 'data', admin: true },

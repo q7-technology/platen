@@ -203,6 +203,22 @@ revoke it there when the script that used it is gone. A key is shown once,
 when it is made, and only its hash is kept. An agent's key is narrower still:
 it can talk to its own agent and nothing else.
 
+## When a printer stops
+
+**Move a run.** Open it under **Job history** and pick another printer. What
+has already come out stays out: only labels with nothing recorded against
+them move. A run that is printing finishes the label under the head and
+carries on at the new printer. One that is waiting on someone feeding stock
+asks first, because the next label will come out somewhere else. The labels
+were rendered at the template's dot pitch, so a run only moves to a printer
+at the same dpi. Undo is moving it back. `POST /runs/{id}/move`.
+
+**Detour a printer.** On **Printers**, send everything for a broken printer
+to another one until you clear it. Its unfinished runs move straight away,
+except a hand-fed one somebody is standing at, and new runs follow the
+detour. Detours don't chain. Managers and administrators can set them, and
+anyone can only move work between printers at their own sites.
+
 ## Printers on somebody's desk
 
 A printer on a workstation's USB port needs an agent, because Platen cannot

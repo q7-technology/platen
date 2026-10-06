@@ -7,6 +7,8 @@ it at all.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from sqlalchemy import select
 
@@ -21,6 +23,14 @@ PARAMS = {"despatch_date": "2026-09-18"}
 def run_id(seeded) -> str:
     return seeded.post("/runs", json={"template_id": "carton", "printer_id": "dock",
                                       "params": PARAMS}).json()["id"]
+
+
+@pytest.fixture
+def under_rq(monkeypatch) -> None:
+    """Run the worker as rq does, with a retry still to come, so a failure
+    leaves the run "retrying" rather than "failed" — and so the next call is
+    the retry rq would make."""
+    monkeypatch.setattr(jobs, "get_current_job", lambda: SimpleNamespace(retries_left=1))
 
 
 def fail_on(transport, n: int) -> None:
@@ -50,7 +60,7 @@ def test_a_printer_that_stops_answering_leaves_the_run_where_it_stopped(seeded, 
     assert _printed(run_id) == [1, 2, 3, 4]
 
 
-def test_a_retry_prints_only_what_is_left(seeded, transport, run_id):
+def test_a_retry_prints_only_what_is_left(seeded, transport, run_id, under_rq):
     fail_on(transport, 5)
     with pytest.raises(OSError):
         jobs.print_run(run_id)
@@ -79,7 +89,7 @@ def test_a_cancelled_run_resumes_where_the_operator_stopped_it(seeded, transport
     assert seeded.get(f"/runs/{run_id}").json()["status"] == "done"
 
 
-def test_the_worker_counts_its_attempts(seeded, transport, run_id):
+def test_the_worker_counts_its_attempts(seeded, transport, run_id, under_rq):
     for _ in range(2):
         transport.sent.clear()                        # fail on this attempt's second label
         fail_on(transport, 2)
@@ -129,4 +139,14 @@ def test_a_cancelled_run_that_is_retried_clears_the_cancel(seeded, transport, ru
     seeded.post(f"/runs/{run_id}/retry")
     jobs.print_run(run_id)
 
+    assert seeded.get(f"/runs/{run_id}").json()["status"] == "done"
+
+
+def test_a_late_retry_of_a_run_that_has_moved_on_does_nothing(seeded, transport, run_id):
+    """A retry rq scheduled can fire after the run was moved and finished,
+    or while it is printing somewhere else. It must not print anything."""
+    jobs.print_run(run_id)
+    transport.sent.clear()
+    jobs.print_run(run_id)                            # the stale retry
+    assert transport.sent == []
     assert seeded.get(f"/runs/{run_id}").json()["status"] == "done"

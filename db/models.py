@@ -262,6 +262,8 @@ class Printer(Base):
     health: Mapped[str | None] = mapped_column(String(16))
     health_problems: Mapped[list[Any]] = mapped_column(JSON, default=list)
     health_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    # new runs for this printer go to that one instead, until it is cleared
+    detour_to: Mapped[str | None] = mapped_column(String(64))
 
 
 class PrintRun(Base):
@@ -279,6 +281,8 @@ class PrintRun(Base):
     error: Mapped[str | None] = mapped_column(Text)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    # set while printing, like cancel: the worker moves the run between labels
+    move_to: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now, index=True)
     started_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
     finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime)

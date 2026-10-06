@@ -140,6 +140,15 @@ test suite runs the same models on SQLite, so keep column types portable.
     screen shows comes from a read, and an event only says when to read
     again. `/events` relays only events about printers the viewer may see.
 
+21. **A move never sends a label twice.** Moving a run changes where the
+    labels with no `printed_at` go, and nothing else. A printing run is moved
+    by the worker between labels, through `move_to`, like cancel; any other
+    run is moved with an update that only lands if its status hasn't changed
+    since it was read. A run only moves to a printer at its template's dpi,
+    because its labels are already rendered. The worker claims a run
+    (`queued` or `retrying` → `printing`) before it sends anything, so a late
+    retry of a run that has moved on, or is printing elsewhere, does nothing.
+
 ## Code
 
 Python 3.11+. `from __future__ import annotations` at the top of every module.

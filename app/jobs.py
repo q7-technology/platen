@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 import redis
 from rq import Queue, Retry
 from rq.job import get_current_job
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from db import session as dbsession
@@ -95,6 +95,14 @@ def _cancelled(session: Session, run_id: str) -> bool:
     return bool(session.scalar(select(PrintRun.cancel_requested).where(PrintRun.id == run_id)))
 
 
+STARTABLE = ("queued", "retrying")
+
+
+def _move_requested(session: Session, run_id: str) -> str | None:
+    """Read right after `_cancelled`, which has just committed."""
+    return session.scalar(select(PrintRun.move_to).where(PrintRun.id == run_id))
+
+
 def print_run(run_id: str) -> None:
     """Runs in the worker process.
 
@@ -108,6 +116,9 @@ def print_run(run_id: str) -> None:
         run = s.get(PrintRun, run_id)
         if run is None:
             raise KeyError(run_id)
+        if run.move_to:                    # asked to move before it got going
+            run.printer_id, run.move_to = run.move_to, None
+            s.commit()
         printer = printers.load(s, run.printer_id)
         if printer is None:
             run.status = "failed"
@@ -127,8 +138,25 @@ def print_run(run_id: str) -> None:
             log.info("run held before it started: %s", where(run=run_id))
             return
 
-        run.status, run.started_at, run.error = "printing", datetime.now(UTC), None
+        # claimed, not just set: a retry rq scheduled earlier can fire while
+        # this run is already printing (or after it was moved and started
+        # again), and two workers on one run would send the same labels twice
+        claimed = s.execute(
+            update(PrintRun)
+            .where(PrintRun.id == run_id, PrintRun.status.in_(STARTABLE))
+            .values(status="printing", started_at=datetime.now(UTC), error=None)
+        ).rowcount
         s.commit()
+        if not claimed:
+            s.refresh(run)
+            log.info("run not started, it is %s: %s", run.status, where(run=run_id))
+            return
+        # a move that landed after this run was read but before it said it was
+        # printing: from here on the API sees "printing" and asks via move_to
+        s.refresh(run)
+        if run.printer_id != printer.id:
+            moved = printers.load(s, run.printer_id)
+            printer = moved if moved is not None else printer
         events.run_changed(run)
         printed = run.total - remaining(s, run_id)
         log.info("run started: %s", where(run=run_id, printer=run.printer_id,
@@ -148,6 +176,18 @@ def print_run(run_id: str) -> None:
                     events.run_changed(run)
                     log.info("run cancelled: %s", where(run=run_id, printed=printed,
                                                         total=run.total))
+                    return
+                target = _move_requested(s, run_id)
+                if target:
+                    # between labels, like cancel: the rest of the roll goes
+                    # to the new printer, and nothing already out is sent again
+                    run.printer_id, run.move_to = target, None
+                    run.status, run.printed = "queued", printed
+                    s.commit()
+                    events.run_changed(run)
+                    log.info("run moved: %s", where(run=run_id, to=target, printed=printed,
+                                                   total=run.total))
+                    enqueue(run_id)
                     return
                 if paused(s):
                     # between labels, like cancel: holding halfway through one
@@ -176,7 +216,7 @@ def print_run(run_id: str) -> None:
                     log.info("run waiting on the operator: %s",
                              where(run=run_id, printed=printed, total=run.total))
                     return
-            run.status = "done"
+            run.status, run.move_to = "done", None
             log.info("run done: %s", where(run=run_id, printer=run.printer_id,
                                            printed=printed))
         except Exception as exc:

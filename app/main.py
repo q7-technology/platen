@@ -21,7 +21,7 @@ from fastapi.responses import Response as RawResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from db import models as db
@@ -143,6 +143,14 @@ def admin(user: AppUser = Depends(current_user)) -> AppUser:
     return user
 
 
+def manager(user: AppUser = Depends(current_user)) -> AppUser:
+    """A manager or an administrator. Detours and floor plans change what
+    everyone at a site sees, so an operator can't."""
+    if user.role not in ("admin", "manager"):
+        raise HTTPException(403, "that needs a manager or an administrator")
+    return user
+
+
 def _may_use(s: Session, user: AppUser, printer: db.Printer) -> None:
     try:
         sites.check(s, user, printer)
@@ -224,6 +232,7 @@ SCREENS = {
     "print": "print.html", "login": "login.html", "people": "people.html",
     "data": "data.html", "printers": "printers.html", "templates": "templates.html",
     "editor": "editor.html", "jobs": "jobs.html", "dashboard": "dashboard.html",
+    "map": "map.html",
 }
 
 
@@ -804,6 +813,7 @@ def _run_json(run: db.PrintRun) -> dict[str, Any]:
         "template_id": run.template_version.template_id,
         "template_name": run.template_version.definition.get("name"),
         "template_version": run.template_version.version, "printer_id": run.printer_id,
+        "moving_to": run.move_to,
         "params": run.params, "copies": run.copies, "pause_between": run.pause_between,
         "warnings": [f"row {w.row_no}: {w.message}" if w.row_no else w.message
                      for w in run.warnings],
@@ -819,6 +829,13 @@ def create_run(body: NewRun, s: Session = Depends(get_session),
     if printer is None:
         raise HTTPException(404, f"no printer {body.printer_id!r}")
     _may_use(s, user, printer)
+    asked_for = printer
+    if printer.detour_to:
+        printer = s.get(db.Printer, printer.detour_to) or printer
+        if not sites.may_use(s, user, printer):
+            raise HTTPException(
+                409, f"{asked_for.name} is detoured to {printer.name}, which isn't at one "
+                     "of your sites; ask a manager to clear the detour")
 
     # every label renders here, before a run row exists, let alone a job
     p = _prepare(s, body)
@@ -827,14 +844,15 @@ def create_run(body: NewRun, s: Session = Depends(get_session),
     labels = _with_separator(p, run_id) if body.separator else p.labels
     run = db.PrintRun(
         id=run_id, template_version_id=p.version_id,
-        printer_id=body.printer_id, params=body.params, copies=body.copies,
+        printer_id=printer.id, params=body.params, copies=body.copies,
         pause_between=body.pause_between, total=len(labels),
         labels=[db.RunLabel(seq=i, zpl=z) for i, z in enumerate(labels, start=1)],
         warnings=[_warning(w) for w in p.warnings],
     )
     s.add(run)
     audit(s, "create", "run", run.id, template_id=body.template_id, template_version=p.version,
-          printer_id=body.printer_id, labels=len(labels), skip_rows=body.skip_rows, actor=user)
+          printer_id=printer.id, asked_for=asked_for.id, labels=len(labels),
+          skip_rows=body.skip_rows, actor=user)
     s.commit()
 
     try:
@@ -846,7 +864,8 @@ def create_run(body: NewRun, s: Session = Depends(get_session),
         raise HTTPException(503, run.error) from None
     events.run_changed(run)
     return {"id": run.id, "labels": run.total, "warnings": p.warnings,
-            "template_version": p.version}
+            "template_version": p.version, "printer_id": printer.id,
+            "detoured_from": asked_for.id if asked_for is not printer else None}
 
 
 def _warning(text: str) -> db.RunWarning:
@@ -944,6 +963,83 @@ def cancel_run(run_id: str, s: Session = Depends(get_session),
     return {"id": run_id, "status": "cancelling"}
 
 
+class MoveBody(BaseModel):
+    printer_id: str
+    confirm: bool = False          # a hand-fed run only moves when someone says so
+
+
+MOVABLE = ("queued", "printing", "retrying", "paused", "waiting", "failed")
+
+
+def _move(s: Session, run: db.PrintRun, target: db.Printer, user: AppUser, *,
+          confirm: bool = False) -> dict[str, Any]:
+    """Point what is left of a run at another printer. Labels already out stay
+    out: the worker only ever sends labels with no printed_at."""
+    if run.status not in MOVABLE:
+        raise HTTPException(409, f"{run.id} is {run.status}; there is nothing left to move")
+    if target.id == run.printer_id:
+        raise HTTPException(409, f"{run.id} is already on {target.name}")
+    _may_use(s, user, target)
+    if target.detour_to:
+        raise HTTPException(409, f"{target.name} is detoured to {target.detour_to}; "
+                                 "move the run there instead")
+    drawn_at = run.template_version.definition.get("dpi", 203)
+    if target.dpi != drawn_at:
+        # the labels are already ZPL at the template's dot pitch; on another
+        # pitch every one comes out the wrong size
+        raise HTTPException(
+            422, f"{run.id}'s labels were drawn for {drawn_at} dpi and {target.name} prints at "
+                 f"{target.dpi}. Start a new run on {target.name} instead.")
+    left = jobs.remaining(s, run.id)
+    if not left:
+        raise HTTPException(409, f"every label in {run.id} has already printed")
+    source = s.get(db.Printer, run.printer_id)
+    if run.status == "waiting" and not confirm:
+        raise HTTPException(
+            409, f"{run.id} is waiting on someone feeding stock at "
+                 f"{source.name if source else run.printer_id}. Moving it means the next "
+                 f"label comes out at {target.name}; confirm to move it anyway.")
+
+    seen, from_id = run.status, run.printer_id
+    if seen == "printing":
+        run.move_to = target.id               # the worker moves it between labels
+    else:
+        # only if nothing picked it up since it was read: a worker that did is
+        # now "printing", and is asked through move_to instead
+        changes: dict[str, Any] = {"printer_id": target.id}
+        # a failed run, or one sitting out a retry on a printer that isn't
+        # answering, goes now; the worker's claim makes a late retry harmless
+        if seen in ("failed", "retrying"):
+            changes.update(status="queued", error=None, finished_at=None,
+                           cancel_requested=False)
+        done = s.execute(update(db.PrintRun)
+                         .where(db.PrintRun.id == run.id, db.PrintRun.status == seen)
+                         .values(**changes)).rowcount
+        if not done:
+            s.rollback()
+            s.refresh(run)
+            if run.status != "printing":
+                raise HTTPException(409, f"{run.id} changed while it was being moved; try again")
+            run.move_to = target.id
+    audit(s, "move", "run", run.id, actor=user, **{"from": from_id, "to": target.id},
+          remaining=left)
+    s.commit()
+    s.refresh(run)
+    if seen in ("failed", "retrying") and run.status == "queued":
+        jobs.enqueue(run.id)
+    events.run_changed(run)
+    return {"id": run.id, "from": from_id, "to": target.id, "status": run.status,
+            "remaining": left, "moving": run.move_to is not None}
+
+
+@app.post("/runs/{run_id}/move")
+def move_run(run_id: str, body: MoveBody, s: Session = Depends(get_session),
+             user: AppUser = Depends(current_user)) -> dict[str, Any]:
+    """Undo is the same call with the printer it came from."""
+    run = _run_row(s, run_id, user)
+    return _move(s, run, _printer_row(s, body.printer_id), user, confirm=body.confirm)
+
+
 # ------------------------------------------------------------------ printers
 
 class PrinterBody(BaseModel):
@@ -960,6 +1056,7 @@ def _printer_json(row: db.Printer, online: bool | None) -> dict[str, Any]:
     return {"id": row.id, "name": row.name, "model": row.model, "dpi": row.dpi,
             "transport": {"kind": row.transport_kind, **row.transport_config},
             "site_id": row.site_id, "grid": [row.grid_x, row.grid_y],
+            "detour_to": row.detour_to,
             "health": {"state": row.health, "problems": row.health_problems or [],
                        "checked_at": row.health_at},
             "online": online}
@@ -1055,6 +1152,77 @@ def put_printer(printer_id: str, body: PrinterBody,
     s.add(row)
     audit(s, "save", "printer", row.id, transport=kind, site_id=row.site_id, actor=user)
     s.commit()
+    return _printer_json(row, None)
+
+
+class DetourBody(BaseModel):
+    to: str | None                 # None clears it
+
+
+@app.post("/printers/{printer_id}/detour")
+def detour_printer(printer_id: str, body: DetourBody, s: Session = Depends(get_session),
+                   user: AppUser = Depends(manager)) -> dict[str, Any]:
+    """Send a printer's work somewhere else until somebody says stop. Its
+    unfinished runs move now, except a hand-fed one, which someone is standing
+    at; new runs follow the detour when they are made."""
+    row = _printer_row(s, printer_id)
+    _may_use(s, user, row)
+    if body.to is None:
+        row.detour_to = None
+        audit(s, "detour", "printer", printer_id, actor=user, to=None)
+        s.commit()
+        events.publish("printer", printer_id=row.id, site_id=row.site_id, detour_to=None)
+        return {"id": row.id, "detour_to": None, "moved": [], "left": []}
+
+    target = _printer_row(s, body.to)
+    _may_use(s, user, target)
+    if target.id == row.id:
+        raise HTTPException(422, "a printer can't be detoured to itself")
+    if target.detour_to:
+        raise HTTPException(409, f"{target.name} is itself detoured to {target.detour_to}; "
+                                 "detour to that one, or clear it first")
+    into = s.scalars(select(db.Printer.name).where(db.Printer.detour_to == row.id)).all()
+    if into:
+        raise HTTPException(409, f"{', '.join(into)} already detour(s) to {row.name}; "
+                                 "point them somewhere else first")
+    if target.dpi != row.dpi:
+        raise HTTPException(422, f"{row.name} prints at {row.dpi} dpi and {target.name} at "
+                                 f"{target.dpi}; its labels would come out the wrong size")
+    row.detour_to = target.id
+    audit(s, "detour", "printer", printer_id, actor=user, to=target.id)
+    s.commit()
+
+    moved, left = [], []
+    unfinished = s.scalars(select(db.PrintRun).where(
+        db.PrintRun.printer_id == row.id, db.PrintRun.status.in_(MOVABLE))).all()
+    for run in unfinished:
+        if run.status == "waiting":
+            left.append({"id": run.id, "why": "waiting on someone feeding stock"})
+            continue
+        try:
+            _move(s, run, target, user)
+            moved.append(run.id)
+        except HTTPException as exc:
+            left.append({"id": run.id, "why": exc.detail})
+    events.publish("printer", printer_id=row.id, site_id=row.site_id, detour_to=target.id)
+    return {"id": row.id, "detour_to": target.id, "moved": moved, "left": left}
+
+
+class PositionBody(BaseModel):
+    x: int | None
+    y: int | None
+
+
+@app.put("/printers/{printer_id}/position")
+def place_printer(printer_id: str, body: PositionBody, s: Session = Depends(get_session),
+                  user: AppUser = Depends(manager)) -> dict[str, Any]:
+    """Where a printer stands on its site's floor plan."""
+    row = _printer_row(s, printer_id)
+    _may_use(s, user, row)
+    row.grid_x, row.grid_y = body.x, body.y
+    audit(s, "place", "printer", printer_id, actor=user, x=body.x, y=body.y)
+    s.commit()
+    events.publish("printer", printer_id=row.id, site_id=row.site_id, grid=[body.x, body.y])
     return _printer_json(row, None)
 
 

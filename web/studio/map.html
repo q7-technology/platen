@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live map — Platen Label Studio</title>
+<link rel="icon" href="/studio/static/q7-logo-128.png">
+<link rel="stylesheet" href="/studio/static/studio/studio.css">
+<script src="/studio/static/studio/studio.js"></script>
+<style>
+  /* The town is the one loud thing on this screen. Everything around it is
+     the same quiet chrome as the other screens. */
+  .stage { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; }
+  @media (max-width: 1100px) { .stage { grid-template-columns: 1fr; } .panel { border-left: 0; border-top: 1px solid var(--line); } }
+
+  .scene { position: relative; min-height: 520px; overflow: hidden; touch-action: none;
+           background: radial-gradient(1100px 600px at 50% 120%, rgba(41,171,226,0.07), transparent 70%); }
+  .scene svg.town { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; user-select: none; }
+  .scene svg.town.panning { cursor: grabbing; }
+
+  .hud { position: absolute; left: 20px; top: 16px; right: 20px; display: flex; flex-wrap: wrap; align-items: baseline;
+         gap: 6px 22px; font-size: 13px; color: var(--mut); pointer-events: none; }
+  .hud b { color: var(--ink); font-weight: 600; font-size: 15px; margin-right: 5px; }
+  .hud .warn-n b { color: var(--signal); }
+  .crumbs { position: absolute; left: 20px; top: 44px; display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .crumbs button { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; }
+  .crumbs button:hover { color: var(--ink); }
+  .crumbs span { color: var(--mut); }
+  .zoom { position: absolute; right: 16px; bottom: 76px; display: flex; flex-direction: column; gap: 6px; }
+
+  .tracker { position: absolute; left: 20px; right: 20px; bottom: 16px; display: flex; align-items: center; gap: 0;
+             background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; font-size: 12.5px; }
+  .tracker .who { color: var(--ink); margin-right: 18px; white-space: nowrap; }
+  .tracker ol { list-style: none; display: flex; flex: 1; margin: 0; padding: 0; gap: 0; }
+  .tracker li { flex: 1; display: flex; align-items: center; gap: 8px; color: var(--mut); white-space: nowrap; }
+  .tracker li::after { content: ''; flex: 1; height: 1px; background: var(--line); margin: 0 10px; }
+  .tracker li:last-child::after { display: none; }
+  .tracker li i { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--line); flex: none; }
+  .tracker li.done i { background: var(--accent); border-color: var(--accent); }
+  .tracker li.now { color: var(--ink); }
+  .tracker li.now i { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 4px rgba(41,171,226,0.18); }
+  .tracker li.stuck { color: var(--signal); }
+  .tracker li.stuck i { background: var(--signal); border-color: var(--signal); }
+  .tracker .hint { color: var(--mut); }
+
+  .panel { border-left: 1px solid var(--line); background: var(--surface); padding: 20px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+  .panel h2 { font-size: 16px; font-weight: 600; }
+  .panel .lede { color: var(--mut); font-size: 13px; }
+  .panel dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 13px; }
+  .panel dt { color: var(--mut); }
+  .panel dd { margin: 0; }
+  .panel .problem { color: var(--signal); }
+  .panel .acts { display: flex; flex-wrap: wrap; gap: 8px; }
+  .panel ul.q { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  .panel ul.q button { width: 100%; display: flex; gap: 10px; align-items: baseline; text-align: left; background: none; border: 1px solid transparent;
+                       border-radius: 7px; padding: 7px 9px; color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
+  .panel ul.q button:hover, .panel ul.q button:focus-visible { border-color: var(--line); }
+  .panel ul.q small { margin-left: auto; color: var(--mut); }
+
+  .toast { position: absolute; left: 50%; bottom: 80px; transform: translateX(-50%); display: flex; gap: 12px; align-items: center;
+           background: var(--ground); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px 9px 15px; font-size: 13px; }
+  .toast.bad { border-color: var(--signal-line); color: var(--signal); }
+
+  /* ---------- the town ---------- */
+  .floor { fill: rgba(41,171,226,0.035); stroke: rgba(41,171,226,0.10); stroke-width: 1; }
+  .plate { fill: rgba(41,171,226,0.05); stroke: rgba(41,171,226,0.30); stroke-width: 1.2; }
+  .top   { fill: #16324a; }
+  .left  { fill: #0a1724; }
+  .right { fill: #0f2234; }
+  .edge  { fill: none; stroke: #29abe2; stroke-width: 1.1; stroke-linejoin: round; }
+  .glow  { filter: url(#glow); }
+  .window { fill: #0f2234; }
+  .window.lit { fill: #29abe2; }
+  .halo.ok { fill: url(#halo-blue); }
+  .halo.bad { fill: url(#halo-gold); }
+  .name { fill: #ccd6f6; font-size: 13px; font-weight: 600; text-anchor: middle; }
+  .meta { fill: #8892b0; font-size: 11.5px; text-anchor: middle; }
+  .meta.bad { fill: #f7941d; }
+  .roll { fill: #e9edf6; stroke: #8892b0; stroke-width: 0.8; }
+  .lamp { fill: #23415c; }
+  .lamp.on { fill: #29abe2; animation: blink 0.9s steps(2, start) infinite; }
+  .lamp.bad { fill: #f7941d; animation: pulse 1.6s ease-in-out infinite; }
+  .belt { fill: none; stroke: rgba(41,171,226,0.25); stroke-width: 10; stroke-linecap: round; }
+  .belt-run { fill: none; stroke: rgba(41,171,226,0.65); stroke-width: 1.4; stroke-dasharray: 4 7; }
+  .belt-run.moving { animation: crawl 0.8s linear infinite; }
+  .parcel .p-top { fill: #ffffff; }
+  .parcel .p-left { fill: #c9d1e3; }
+  .parcel .p-right { fill: #dde3f0; }
+  .parcel .p-edge { fill: none; stroke: #8892b0; stroke-width: 0.6; }
+  .parcel.stuck .p-top { fill: #fde3c3; }
+  .parcel.sel .p-edge, .printer.sel .edge { stroke: #ffffff; stroke-width: 1.8; }
+  .parcel, .printer, .site { cursor: pointer; outline: none; }
+  .parcel:focus-visible .p-edge, .printer:focus-visible .edge, .site:focus-visible .edge { stroke: #ffffff; stroke-width: 2.2; }
+  .pin { fill: #f7941d; }
+  .pin-t { fill: #0d1117; font-size: 11px; font-weight: 800; text-anchor: middle; }
+  .count { fill: #0d1117; font-size: 10px; font-weight: 700; text-anchor: middle; }
+  .count-bg { fill: #ccd6f6; }
+  .detour { fill: none; stroke: #f7941d; stroke-width: 1.5; stroke-dasharray: 5 5; }
+  .target .edge { stroke: #ffffff; stroke-width: 2.2; }
+  .refuse { opacity: 0.35; }
+  .ghost { pointer-events: none; opacity: 0.9; }
+  .slot { fill: rgba(41,171,226,0.12); stroke: #29abe2; stroke-dasharray: 3 4; }
+  .spark { fill: #ccd6f6; animation: spark 1.4s ease-out forwards; }
+
+  @keyframes blink { to { fill: #23415c; } }
+  @keyframes pulse { 50% { opacity: 0.35; } }
+  @keyframes crawl { to { stroke-dashoffset: -11; } }
+  @keyframes spark { from { opacity: 1; transform: scale(0.3); } to { opacity: 0; transform: scale(1.6); } }
+  @media (prefers-reduced-motion: reduce) {
+    .lamp.on, .lamp.bad, .belt-run.moving, .spark { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside id="shell-nav"></aside>
+
+  <main>
+    <header>
+      <h1>Live map</h1>
+      <span class="sub" id="sub">Every site, printer and job, as it happens</span>
+      <span class="spacer"></span>
+      <button class="btn sm" type="button" id="arrange" hidden aria-pressed="false">Arrange printers</button>
+    </header>
+
+    <div class="stage">
+      <div class="scene" id="scene">
+        <svg class="town" id="town" role="application" aria-label="Map of sites and printers"></svg>
+        <div class="hud" id="hud" aria-live="polite"></div>
+        <nav class="crumbs" id="crumbs" aria-label="Where you are"></nav>
+        <div class="zoom">
+          <button class="btn sm icon" type="button" id="zin" aria-label="Zoom in">+</button>
+          <button class="btn sm icon" type="button" id="zout" aria-label="Zoom out">−</button>
+        </div>
+        <div class="tracker" id="tracker"></div>
+        <div id="toast" aria-live="polite"></div>
+      </div>
+      <aside class="panel" id="panel" aria-live="polite"></aside>
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  renderShell('map');
+
+  const NS = 'http://www.w3.org/2000/svg';
+  const TW = 76, TH = 38;                       // one floor tile, in screen units
+  const SITE_COLS = 6, SITE_ROWS = 5;           // a site's floor plate
+  const UNFINISHED = ['queued', 'printing', 'retrying', 'paused', 'waiting'];
+  const MOVABLE = [...UNFINISHED, 'failed'];
+  const WORDS = { queued: 'Queued', printing: 'Printing', retrying: 'Retrying', paused: 'Held',
+                  waiting: 'Waiting on someone', failed: 'Failed', done: 'Done', cancelled: 'Cancelled' };
+  const SHARED = '_shared';
+
+  const state = {
+    me: null, sites: [], printers: [], runs: [], board: null,
+    view: null,             // null = world map, otherwise a site id (or SHARED)
+    sel: null,              // { kind: 'run' | 'printer' | 'site', id }
+    arranging: false, undo: null, busyBefore: 0,
+    cam: { x: 0, y: 0, k: 1 }, fitted: null,
+  };
+  const town = $('town');
+
+  // ------------------------------------------------------------ geometry
+  const iso = (gx, gy) => [(gx - gy) * TW / 2, (gx + gy) * TH / 2];
+  const pts = (list) => list.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+
+  function svg(tag, attrs = {}, ...kids) {
+    const n = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v === null || v === undefined || v === false) continue;
+      if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v === true ? '' : v);
+    }
+    for (const c of kids) if (c) n.append(c);
+    return n;
+  }
+
+  /* A box standing on the floor: footprint w×d tiles from (gx, gy), h tall. */
+  function box(gx, gy, w, d, h, cls = '') {
+    const p0 = iso(gx, gy), p1 = iso(gx + w, gy), p2 = iso(gx + w, gy + d), p3 = iso(gx, gy + d);
+    const up = ([x, y]) => [x, y - h];
+    const g = svg('g', { class: cls });
+    g.append(
+      svg('polygon', { class: 'left', points: pts([p3, p2, up(p2), up(p3)]) }),
+      svg('polygon', { class: 'right', points: pts([p1, p2, up(p2), up(p1)]) }),
+      svg('polygon', { class: 'top', points: pts([up(p0), up(p1), up(p2), up(p3)]) }),
+      svg('polyline', { class: 'edge glow', points: pts([up(p3), up(p0), up(p1), up(p2), up(p3), p3, p2, p1, up(p1)]) }),
+      svg('line', { class: 'edge glow', x1: up(p2)[0], y1: up(p2)[1], x2: p2[0], y2: p2[1] }));
+    return g;
+  }
+
+  function diamond(gx, gy, w, d, cls) {
+    return svg('polygon', { class: cls, points: pts([iso(gx, gy), iso(gx + w, gy), iso(gx + w, gy + d), iso(gx, gy + d)]) });
+  }
+
+  // ------------------------------------------------------------ data
+  const siteOf = (p) => p.site_id || SHARED;
+  const printer = (id) => state.printers.find((p) => p.id === id);
+  const runsAt = (pid) => state.runs.filter((r) => r.printer_id === pid && (UNFINISHED.includes(r.status) || stuck(r)));
+  // a failed run with labels left is still somebody's problem, for a day
+  const stuck = (r) => r.status === 'failed' && r.printed < r.total
+                       && Date.now() - new Date(r.created_at).getTime() < 86400000;
+  const isManager = () => ['admin', 'manager'].includes(state.me?.role);
+
+  function healthOf(p) {
+    const h = p.health || {};
+    if (h.state === 'offline') return { bad: true, text: 'Not answering' };
+    if (h.state === 'error') return { bad: true, text: sentence(h.problems) || "Can't print" };
+    if (h.state === 'warning') return { bad: true, text: sentence(h.problems) || 'Needs a look' };
+    return { bad: false, text: h.state ? 'Ready' : 'Not checked yet' };
+  }
+  const sentence = (list) => {
+    const t = (list || []).join(', ');
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  };
+
+  function places() {
+    const list = state.sites.map((s) => ({ id: s.id, name: s.name, map: s.map }));
+    if (state.printers.some((p) => !p.site_id)) list.push({ id: SHARED, name: 'Shared printers', map: [0, 0] });
+    // a site nobody has placed yet goes in the next free spot of a loose grid
+    const taken = new Set(list.filter((s) => s.map[0] || s.map[1]).map((s) => s.map.join(',')));
+    let n = 0;
+    for (const s of list) {
+      if (s.map[0] || s.map[1]) continue;
+      let spot;
+      do { spot = [(n % 3) * 4, Math.floor(n / 3) * 4]; n++; } while (taken.has(spot.join(',')));
+      taken.add(spot.join(','));
+      s.map = spot;
+    }
+    return list;
+  }
+
+  /* Printers keep the spot a manager gave them; the rest fill in left to right. */
+  function floorSpots(pid) {
+    const here = state.printers.filter((p) => siteOf(p) === pid);
+    const taken = new Set(here.filter((p) => p.grid[0] !== null && p.grid[1] !== null).map((p) => p.grid.join(',')));
+    const spots = new Map();
+    let n = 0;
+    for (const p of here) {
+      if (p.grid[0] !== null && p.grid[1] !== null) { spots.set(p.id, p.grid); continue; }
+      let spot;
+      do { spot = [1 + (n % 3) * 2, 1 + Math.floor(n / 3) * 2]; n++; } while (taken.has(spot.join(',')));
+      taken.add(spot.join(','));
+      spots.set(p.id, spot);
+    }
+    return spots;
+  }
+
+  async function load() {
+    state.me = state.me || await whoami();
+    const [sites, printers, runs, board] = await Promise.all([
+      api('GET', '/sites'), api('GET', '/printers?probe=false'),
+      api('GET', '/runs?limit=150'), api('GET', '/dashboard')]);
+    Object.assign(state, { sites, printers, runs, board });
+    if (state.view === undefined || (state.view === null && !state.fitted)) {
+      // someone who works at one site starts there, not on a map of one
+      const mine = places();
+      if (state.me.role === 'operator' && mine.filter((s) => s.id !== SHARED).length === 1) {
+        state.view = mine.find((s) => s.id !== SHARED).id;
+      }
+      if (state.view === undefined) state.view = null;
+    }
+    $('arrange').hidden = !isManager() || state.view === null;
+    const busyNow = state.runs.filter((r) => UNFINISHED.includes(r.status)).length;
+    draw();
+    if (state.busyBefore > 0 && busyNow === 0) sparkle();
+    state.busyBefore = busyNow;
+  }
+
+  // ------------------------------------------------------------ drawing
+  function defs() {
+    return svg('defs', {},
+      svg('filter', { id: 'glow', x: '-20%', y: '-20%', width: '140%', height: '140%' },
+        svg('feGaussianBlur', { stdDeviation: 1.6, result: 'b' }),
+        svg('feMerge', {}, svg('feMergeNode', { in: 'b' }), svg('feMergeNode', { in: 'SourceGraphic' }))),
+      svg('radialGradient', { id: 'halo-blue' },
+        svg('stop', { offset: '0%', 'stop-color': '#29abe2', 'stop-opacity': 0.28 }),
+        svg('stop', { offset: '100%', 'stop-color': '#29abe2', 'stop-opacity': 0 })),
+      svg('radialGradient', { id: 'halo-gold' },
+        svg('stop', { offset: '0%', 'stop-color': '#f7941d', 'stop-opacity': 0.42 }),
+        svg('stop', { offset: '100%', 'stop-color': '#f7941d', 'stop-opacity': 0 })));
+  }
+
+  function draw() {
+    const world = svg('g', { id: 'world' });
+    if (state.view === null) drawWorld(world); else drawSite(world, state.view);
+    town.replaceChildren(defs(), world);
+    fit(world);
+    hud(); crumbs(); tracker(); panel();
+  }
+
+  function drawWorld(world) {
+    const list = places();
+    // furthest first, so nearer buildings sit in front
+    list.sort((a, b) => (a.map[0] + a.map[1]) - (b.map[0] + b.map[1]));
+    for (const s of list) {
+      const ps = state.printers.filter((p) => siteOf(p) === s.id);
+      const bad = ps.filter((p) => healthOf(p).bad);
+      const busy = ps.flatMap((p) => runsAt(p.id)).filter((r) => UNFINISHED.includes(r.status));
+      const [gx, gy] = s.map;
+      const [cx, cy] = iso(gx + 1, gy + 1);
+      const g = svg('g', { class: `site${state.sel?.kind === 'site' && state.sel.id === s.id ? ' sel' : ''}`,
+                           tabindex: 0, role: 'button',
+                           'aria-label': `${s.name}: ${ps.length} printers, ${busy.length} jobs on, ${bad.length ? bad.length + ' need a look' : 'all well'}. Open it.`,
+                           onclick: () => open(s.id), onkeydown: (e) => { if (e.key === 'Enter') open(s.id); } });
+      g.append(svg('ellipse', { class: `halo ${bad.length ? 'bad' : 'ok'}`, cx, cy: cy + 4, rx: TW * 2.1, ry: TH * 2.1 }));
+      g.append(diamond(gx - 0.3, gy - 0.3, 2.6, 2.6, 'plate'));
+      const h = 46 + Math.min(ps.length, 6) * 4;
+      g.append(box(gx, gy, 2, 2, h));
+      // windows on the front-left wall: one per job on, the rest dark
+      const lit = Math.min(busy.length, 6);
+      for (let i = 0; i < 6; i++) {
+        const col = i % 3, row = Math.floor(i / 3);
+        const x0 = gx + 0.22 + col * 0.6, x1 = x0 + 0.34;
+        const z0 = h - 14 - row * 16, z1 = z0 - 8;
+        const at = (x, z) => { const [px, py] = iso(x, gy + 2); return [px, py - z]; };
+        g.append(svg('polygon', { class: `window${i < lit ? ' lit glow' : ''}`,
+                                  points: pts([at(x0, z0), at(x1, z0), at(x1, z1), at(x0, z1)]) }));
+      }
+      if (bad.length) {
+        const [px, py] = iso(gx + 1, gy + 1);
+        g.append(pin(px, py - h - 18));
+      }
+      g.append(svg('text', { class: 'name', x: cx, y: cy + TH * 1.6 }, document.createTextNode(s.name)));
+      g.append(svg('text', { class: `meta${bad.length ? ' bad' : ''}`, x: cx, y: cy + TH * 1.6 + 16 },
+        document.createTextNode(bad.length
+          ? `${bad.length} printer${bad.length === 1 ? '' : 's'} need${bad.length === 1 ? 's' : ''} a look`
+          : `${ps.length} printer${ps.length === 1 ? '' : 's'} · ${busy.length ? busy.length + ' on' : 'quiet'}`)));
+      world.append(g);
+    }
+  }
+
+  function pin(x, y) {
+    return svg('g', { class: 'glow', 'aria-hidden': 'true' },
+      svg('path', { class: 'pin', d: `M${x} ${y + 14} l-7 -10 a8.5 8.5 0 1 1 14 0 z` }),
+      svg('text', { class: 'pin-t', x, y: y + 4 }, document.createTextNode('!')));
+  }
+
+  function drawSite(world, siteId) {
+    for (let gx = 0; gx < SITE_COLS; gx++) {
+      for (let gy = 0; gy < SITE_ROWS; gy++) world.append(diamond(gx, gy, 1, 1, 'floor'));
+    }
+    world.append(diamond(0, 0, SITE_COLS, SITE_ROWS, 'plate'));
+    if (state.arranging) {
+      for (let gx = 0; gx < SITE_COLS; gx++) {
+        for (let gy = 0; gy < SITE_ROWS; gy++) {
+          world.append(svg('polygon', { class: 'slot', 'data-slot': `${gx},${gy}`,
+            points: pts([iso(gx + 0.1, gy + 0.1), iso(gx + 0.9, gy + 0.1), iso(gx + 0.9, gy + 0.9), iso(gx + 0.1, gy + 0.9)]) }));
+        }
+      }
+    }
+    const spots = floorSpots(siteId);
+    const here = state.printers.filter((p) => siteOf(p) === siteId);
+    here.sort((a, b) => (spots.get(a.id)[0] + spots.get(a.id)[1]) - (spots.get(b.id)[0] + spots.get(b.id)[1]));
+
+    // detour arrows go under everything else
+    for (const p of here) {
+      if (!p.detour_to || !spots.has(p.detour_to)) continue;
+      const [ax, ay] = iso(spots.get(p.id)[0] + 0.5, spots.get(p.id)[1] + 0.5);
+      const [bx, by] = iso(spots.get(p.detour_to)[0] + 0.5, spots.get(p.detour_to)[1] + 0.5);
+      world.append(svg('path', { class: 'detour', d: `M${ax} ${ay - 20} Q${(ax + bx) / 2} ${Math.min(ay, by) - 70} ${bx} ${by - 20}` }));
+    }
+    for (const p of here) world.append(drawPrinter(p, spots.get(p.id)));
+    if (!here.length) {
+      const [cx, cy] = iso(SITE_COLS / 2, SITE_ROWS / 2);
+      world.append(svg('text', { class: 'meta', x: cx, y: cy }, document.createTextNode('No printers here yet.')));
+    }
+  }
+
+  function drawPrinter(p, [gx, gy]) {
+    const h = healthOf(p);
+    const queue = runsAt(p.id);
+    const printing = queue.find((r) => r.status === 'printing');
+    const g = svg('g', { class: `printer${state.sel?.kind === 'printer' && state.sel.id === p.id ? ' sel' : ''}`,
+                         'data-printer': p.id, tabindex: 0, role: 'button',
+                         'aria-label': `${p.name}, ${h.text}, ${queue.length} job${queue.length === 1 ? '' : 's'} waiting`,
+                         onclick: () => select('printer', p.id),
+                         onkeydown: (e) => { if (e.key === 'Enter') select('printer', p.id); } });
+    if (state.arranging) g.addEventListener('pointerdown', (e) => dragPrinter(e, p));
+
+    // the belt runs out of the front of the printer, towards the viewer
+    const [b0x, b0y] = iso(gx + 0.5, gy + 1);
+    const [b1x, b1y] = iso(gx + 0.5, gy + 1.9);
+    g.append(svg('line', { class: 'belt', x1: b0x, y1: b0y, x2: b1x, y2: b1y }));
+    g.append(svg('line', { class: `belt-run${printing ? ' moving' : ''}`, x1: b1x, y1: b1y, x2: b0x, y2: b0y }));
+
+    g.append(diamond(gx + 0.08, gy + 0.08, 0.84, 0.84, `halo ${h.bad ? 'bad' : 'ok'}`));
+    g.append(box(gx + 0.12, gy + 0.18, 0.76, 0.66, 30));
+    // the label roll sits on top, side on
+    const [rx, ry] = iso(gx + 0.5, gy + 0.5);
+    g.append(svg('ellipse', { class: 'roll', cx: rx, cy: ry - 36, rx: 11, ry: 7 }));
+    g.append(svg('ellipse', { class: 'lamp', cx: rx, cy: ry - 37, rx: 3, ry: 2 }));
+    // the lamp on the front wall
+    const [lx, ly] = iso(gx + 0.7, gy + 0.84);
+    g.append(svg('circle', { class: `lamp${h.bad ? ' bad' : printing ? ' on' : ''} glow`, cx: lx, cy: ly - 18, r: 3 }));
+
+    if (h.bad) g.append(pin(rx, ry - 74));
+    if (p.detour_to) {
+      g.append(svg('text', { class: 'meta bad', x: rx, y: ry - 52 },
+        document.createTextNode(`Detoured to ${printer(p.detour_to)?.name || p.detour_to}`)));
+    }
+
+    // parcels wait on the belt, nearest the printer first
+    queue.sort((a, b) => (a.status === 'printing' ? -1 : 0) - (b.status === 'printing' ? -1 : 0));
+    queue.slice(0, 4).forEach((r, i) => g.append(parcel(r, gx + 0.5, gy + 1.15 + i * 0.22, i)));
+    if (queue.length > 4) {
+      const [cx, cy] = iso(gx + 0.5, gy + 2.15);
+      g.append(svg('g', { 'aria-hidden': 'true' },
+        svg('rect', { class: 'count-bg', x: cx - 13, y: cy - 8, width: 26, height: 15, rx: 7 }),
+        svg('text', { class: 'count', x: cx, y: cy + 3 }, document.createTextNode(`+${queue.length - 4}`))));
+    }
+
+    const [nx, ny] = iso(gx + 1.15, gy + 0.6);
+    g.append(svg('text', { class: 'name', x: nx + 30, y: ny - 6, 'text-anchor': 'start', style: 'text-anchor:start' },
+      document.createTextNode(p.name)));
+    g.append(svg('text', { class: `meta${h.bad ? ' bad' : ''}`, x: nx + 30, y: ny + 9, style: 'text-anchor:start' },
+      document.createTextNode(printing ? `Printing ${printing.printed} of ${printing.total}` : h.text)));
+    return g;
+  }
+
+  function parcel(r, gx, gy, i) {
+    const s = 0.16;
+    const p0 = iso(gx - s, gy - s), p1 = iso(gx + s, gy - s), p2 = iso(gx + s, gy + s), p3 = iso(gx - s, gy + s);
+    const hgt = 7;
+    const up = ([x, y]) => [x, y - hgt - 2];
+    const lift = ([x, y]) => [x, y - 2];
+    const g = svg('g', { class: `parcel${stuck(r) || ['failed', 'retrying', 'paused', 'waiting'].includes(r.status) ? ' stuck' : ''}${state.sel?.kind === 'run' && state.sel.id === r.id ? ' sel' : ''}`,
+                         'data-run': r.id, tabindex: 0, role: 'button',
+                         'aria-label': `${r.id}, ${r.template_name || r.template_id}, ${WORDS[r.status] || r.status}, ${r.printed} of ${r.total} labels`,
+                         // the printer underneath has its own click; this one is the parcel's
+                         onclick: (e) => e.stopPropagation(),
+                         onkeydown: (e) => { if (e.key === 'Enter') { e.stopPropagation(); select('run', r.id); } } });
+    g.append(
+      svg('polygon', { class: 'p-left', points: pts([lift(p3), lift(p2), up(p2), up(p3)]) }),
+      svg('polygon', { class: 'p-right', points: pts([lift(p1), lift(p2), up(p2), up(p1)]) }),
+      svg('polygon', { class: 'p-top', points: pts([up(p0), up(p1), up(p2), up(p3)]) }),
+      svg('polygon', { class: 'p-edge', points: pts([up(p0), up(p1), up(p2), up(p3)]) }));
+    g.addEventListener('pointerdown', (e) => dragParcel(e, r));
+    return g;
+  }
+
+  // ------------------------------------------------------------ chrome
+  function hud() {
+    const b = state.board;
+    const here = state.view === null ? state.printers : state.printers.filter((p) => siteOf(p) === state.view);
+    const ready = here.filter((p) => !healthOf(p).bad).length;
+    const runs = state.runs.filter((r) => state.view === null || siteOf(printer(r.printer_id) || {}) === state.view);
+    const on = runs.filter((r) => UNFINISHED.includes(r.status)).length;
+    const failed = runs.filter((r) => r.status === 'failed').length;
+    $('hud').replaceChildren(
+      el('span', {}, el('b', { text: String(b?.printed_today ?? 0) }), 'labels today'),
+      el('span', {}, el('b', { text: String(on) }), on === 1 ? 'job on' : 'jobs on'),
+      el('span', { class: ready < here.length ? 'warn-n' : '' },
+        el('b', { text: `${ready} of ${here.length}` }), 'printers ready'),
+      failed ? el('span', { class: 'warn-n' }, el('b', { text: String(failed) }), 'failed') : null,
+      b?.paused ? el('span', { class: 'warn-n' }, el('b', { text: 'Queue held' })) : null);
+  }
+
+  function crumbs() {
+    const c = $('crumbs');
+    if (state.view === null) { c.replaceChildren(); return; }
+    const s = places().find((x) => x.id === state.view);
+    c.replaceChildren(el('button', { type: 'button', text: 'All sites', onclick: () => open(null) }),
+      el('span', { text: '/' }), el('span', { style: 'color:var(--ink)', text: s?.name || state.view }));
+  }
+
+  const STAGES = ['Received', 'Rendered', 'Queued', 'Printing', 'Done'];
+  function tracker() {
+    const r = state.sel?.kind === 'run' && state.runs.find((x) => x.id === state.sel.id);
+    const t = $('tracker');
+    if (!r) {
+      t.replaceChildren(el('span', { class: 'hint',
+        text: state.view === null ? 'Open a site to see its printers. Click a job to follow it.'
+                                  : 'Click a job to follow it. Drag it onto another printer to move it.' }));
+      return;
+    }
+    // every label is rendered before a run exists, so the first two are a given
+    const at = { queued: 2, retrying: 3, paused: 3, waiting: 3, printing: 3, failed: 3, cancelled: 3, done: 4 }[r.status] ?? 2;
+    const halted = ['failed', 'cancelled', 'retrying', 'paused', 'waiting'].includes(r.status);
+    t.replaceChildren(el('span', { class: 'who mono', text: r.id }),
+      el('ol', {}, ...STAGES.map((name, i) => el('li', {
+        class: i < at || (i === at && r.status === 'done') ? 'done' : i === at ? (halted ? 'stuck' : 'now') : '' },
+        el('i'), el('span', { text: i === at && halted ? WORDS[r.status] : i === 3 && r.status === 'printing' ? `Printing ${r.printed} of ${r.total}` : name })))));
+  }
+
+  function panel() {
+    const box = $('panel');
+    const sel = state.sel;
+    if (sel?.kind === 'run') {
+      const r = state.runs.find((x) => x.id === sel.id);
+      if (r) return box.replaceChildren(...runPanel(r));
+    }
+    if (sel?.kind === 'printer') {
+      const p = printer(sel.id);
+      if (p) return box.replaceChildren(...printerPanel(p));
+    }
+    box.replaceChildren(...overviewPanel());
+  }
+
+  function overviewPanel() {
+    const here = state.view === null ? state.printers : state.printers.filter((p) => siteOf(p) === state.view);
+    const trouble = here.filter((p) => healthOf(p).bad);
+    const out = [el('h2', { text: state.view === null ? 'All sites' : (places().find((s) => s.id === state.view)?.name || '') })];
+    if (!trouble.length) {
+      out.push(el('p', { class: 'lede', text: here.length ? 'Every printer here is ready.' : 'No printers to show yet.' }));
+    } else {
+      out.push(el('p', { class: 'lede', text: `${trouble.length} printer${trouble.length === 1 ? ' needs' : 's need'} a look.` }));
+      out.push(el('ul', { class: 'q' }, ...trouble.map((p) => el('li', {},
+        el('button', { type: 'button', onclick: () => { if (state.view === null) state.view = siteOf(p); state.fitted = null; select('printer', p.id); } },
+          el('span', { text: p.name }), el('small', { class: 'problem', text: healthOf(p).text }))))));
+    }
+    if (state.view !== null && state.arranging) {
+      out.push(el('p', { class: 'lede', text: 'Drag a printer onto a spot on the floor. Everyone at this site sees the same layout.' }));
+    }
+    return out;
+  }
+
+  function runPanel(r) {
+    const p = printer(r.printer_id);
+    const left = r.total - r.printed;
+    const out = [
+      el('h2', { text: r.template_name || r.template_id }),
+      el('dl', {},
+        el('dt', { text: 'Job' }), el('dd', { class: 'mono', text: r.id }),
+        el('dt', { text: 'Printer' }), el('dd', { text: p?.name || r.printer_id }),
+        el('dt', { text: 'Labels' }), el('dd', { text: `${r.printed} of ${r.total} printed` }),
+        el('dt', { text: 'Status' }), el('dd', { class: ['failed', 'retrying', 'paused', 'waiting'].includes(r.status) ? 'problem' : '',
+                                                 text: WORDS[r.status] || r.status }),
+        r.error ? el('dt', { text: 'Last error' }) : null,
+        r.error ? el('dd', { class: 'problem', text: r.error }) : null),
+    ];
+    if (r.moving_to) out.push(el('p', { class: 'lede', text: `Moving to ${printer(r.moving_to)?.name || r.moving_to} after the label under the head.` }));
+    const targets = state.printers.filter((x) => x.id !== r.printer_id && !x.detour_to && (!p || x.dpi === p.dpi));
+    if (MOVABLE.includes(r.status) && left > 0 && targets.length) {
+      const sel = el('select', { id: 'move-to', 'aria-label': 'Move the rest to' },
+        ...targets.map((x) => el('option', { value: x.id, text: `${x.name}${healthOf(x).bad ? ` (${healthOf(x).text})` : ''}` })));
+      out.push(el('div', { class: 'field' }, el('label', { for: 'move-to', text: `Move the ${left} left to` }), sel),
+        el('div', { class: 'acts' }, el('button', { class: 'btn sm pri', type: 'button', text: 'Move',
+          onclick: () => moveRun(r, sel.value) })));
+    }
+    const acts = el('div', { class: 'acts' });
+    if (['failed', 'cancelled', 'retrying'].includes(r.status) && left > 0) {
+      acts.append(el('button', { class: 'btn sm', type: 'button', text: `Retry the ${left} left`, onclick: () => act(r, 'retry') }));
+    }
+    if (r.status === 'waiting') acts.append(el('button', { class: 'btn sm', type: 'button', text: 'Next label', onclick: () => act(r, 'continue') }));
+    if (['queued', 'printing', 'retrying'].includes(r.status)) {
+      acts.append(el('button', { class: 'btn sm gold', type: 'button', text: 'Cancel', onclick: () => act(r, 'cancel') }));
+    }
+    if (acts.childNodes.length) out.push(acts);
+    out.push(el('a', { href: '/studio/jobs', text: 'Open in job history' }));
+    return out;
+  }
+
+  function printerPanel(p) {
+    const h = healthOf(p);
+    const queue = runsAt(p.id);
+    const out = [
+      el('h2', { text: p.name }),
+      el('dl', {},
+        el('dt', { text: 'Status' }), el('dd', { class: h.bad ? 'problem' : '', text: h.text }),
+        el('dt', { text: 'Model' }), el('dd', { text: p.model || '—' }),
+        el('dt', { text: 'Dots per inch' }), el('dd', { text: String(p.dpi) }),
+        el('dt', { text: 'Site' }), el('dd', { text: places().find((s) => s.id === siteOf(p))?.name || 'Shared' }),
+        p.health?.checked_at ? el('dt', { text: 'Checked' }) : null,
+        p.health?.checked_at ? el('dd', { text: new Date(p.health.checked_at).toLocaleTimeString() }) : null),
+    ];
+    out.push(el('h2', { style: 'font-size:13.5px', text: queue.length ? `${queue.length} job${queue.length === 1 ? '' : 's'} here` : 'Nothing waiting' }));
+    if (queue.length) {
+      out.push(el('ul', { class: 'q' }, ...queue.map((r) => el('li', {},
+        el('button', { type: 'button', onclick: () => select('run', r.id) },
+          el('span', { class: 'mono', text: r.id }), el('span', { text: r.template_name || '' }),
+          el('small', { text: `${WORDS[r.status] || r.status} · ${r.printed}/${r.total}` }))))));
+    }
+    if (isManager()) {
+      const others = state.printers.filter((x) => x.id !== p.id && !x.detour_to && x.dpi === p.dpi);
+      const sel = el('select', { id: 'detour-to', 'aria-label': 'Send its work to' },
+        el('option', { value: '', text: 'Nowhere — print here', selected: !p.detour_to }),
+        ...others.map((x) => el('option', { value: x.id, text: x.name, selected: x.id === p.detour_to })));
+      out.push(el('div', { class: 'field' }, el('label', { for: 'detour-to', text: 'Send its work to' }), sel),
+        el('div', { class: 'acts' }, el('button', { class: 'btn sm', type: 'button',
+          text: p.detour_to ? 'Change detour' : 'Set detour', onclick: () => detour(p, sel.value || null) })),
+        el('p', { class: 'lede', style: 'font-size:12px', text: 'Its unfinished jobs move now, except a hand-fed one somebody is standing at.' }));
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------------ actions
+  function select(kind, id) {
+    state.sel = { kind, id };
+    if (kind === 'run') {
+      const r = state.runs.find((x) => x.id === id);
+      const p = r && printer(r.printer_id);
+      if (p && state.view !== siteOf(p)) { state.view = siteOf(p); state.fitted = null; }
+    }
+    draw();
+  }
+
+  function open(siteId) {
+    state.view = siteId;
+    state.sel = null;
+    state.arranging = false;
+    $('arrange').setAttribute('aria-pressed', 'false');
+    $('arrange').hidden = !isManager() || siteId === null;
+    state.fitted = null;
+    draw();
+  }
+
+  function toast(text, opts = {}) {
+    const t = $('toast');
+    clearTimeout(state.toastTimer);
+    t.replaceChildren(el('div', { class: `toast${opts.bad ? ' bad' : ''}` },
+      el('span', { text }), opts.undo ? el('button', { class: 'btn sm', type: 'button', text: 'Undo', onclick: opts.undo }) : null));
+    state.toastTimer = setTimeout(() => t.replaceChildren(), opts.undo ? 9000 : 6000);
+  }
+
+  async function moveRun(r, to, confirmed = false) {
+    try {
+      const done = await api('POST', `/runs/${encodeURIComponent(r.id)}/move`, { printer_id: to, confirm: confirmed });
+      const name = printer(done.to)?.name || done.to;
+      toast(`${done.remaining} label${done.remaining === 1 ? '' : 's'} moving to ${name}.`, {
+        undo: async () => {
+          $('toast').replaceChildren();
+          try { await api('POST', `/runs/${encodeURIComponent(r.id)}/move`, { printer_id: done.from, confirm: true }); await load(); }
+          catch (e) { toast(e.message, { bad: true }); }
+        } });
+      await load();
+    } catch (e) {
+      if (!confirmed && /confirm to move it anyway/.test(e.message) && confirm(e.message)) return moveRun(r, to, true);
+      toast(e.message, { bad: true });
+      draw();
+    }
+  }
+
+  async function act(r, what) {
+    try { await api('POST', `/runs/${encodeURIComponent(r.id)}/${what}`); await load(); }
+    catch (e) { toast(e.message, { bad: true }); }
+  }
+
+  async function detour(p, to) {
+    try {
+      const done = await api('POST', `/printers/${encodeURIComponent(p.id)}/detour`, { to });
+      toast(to ? `${p.name} detoured. ${done.moved.length} job${done.moved.length === 1 ? '' : 's'} moved${done.left.length ? `, ${done.left.length} stayed` : ''}.`
+               : `Detour cleared. ${p.name} prints its own work again.`);
+      await load();
+    } catch (e) { toast(e.message, { bad: true }); }
+  }
+
+  function sparkle() {
+    const world = $('world');
+    if (!world || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const b = world.getBBox();
+    for (let i = 0; i < 9; i++) {
+      const x = b.x + b.width * (0.2 + Math.random() * 0.6), y = b.y + b.height * (0.15 + Math.random() * 0.5);
+      world.append(svg('path', { class: 'spark', style: `transform-origin:${x}px ${y}px`,
+        d: `M${x} ${y - 7} L${x + 1.6} ${y - 1.6} L${x + 7} ${y} L${x + 1.6} ${y + 1.6} L${x} ${y + 7} L${x - 1.6} ${y + 1.6} L${x - 7} ${y} L${x - 1.6} ${y - 1.6} Z` }));
+    }
+    toast('All caught up. Nothing waiting anywhere you look after.');
+  }
+
+  // ------------------------------------------------------------ dragging
+  /* A parcel picked up becomes a ghost that follows the pointer. Printers
+     that would take it light up; the ones that wouldn't fade back. Let go
+     over one and the run moves; let go anywhere else and nothing happens. */
+  function dragParcel(e, r) {
+    e.stopPropagation();
+    const from = e.currentTarget;
+    const start = { x: e.clientX, y: e.clientY };
+    const source = printer(r.printer_id);
+    let ghost = null, over = null;
+    const can = (p) => p && p.id !== r.printer_id && !p.detour_to && (!source || p.dpi === source.dpi)
+                         && MOVABLE.includes(r.status) && r.printed < r.total;
+
+    const move = (ev) => {
+      if (!ghost && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 5) return;
+      if (!ghost) {
+        ghost = from.cloneNode(true);
+        ghost.classList.add('ghost');
+        $('world').append(ghost);
+        for (const n of town.querySelectorAll('[data-printer]')) {
+          n.classList.toggle('refuse', !can(printer(n.dataset.printer)));
+        }
+      }
+      const [wx, wy] = toWorld(ev.clientX, ev.clientY);
+      const [sx, sy] = toWorld(start.x, start.y);
+      ghost.setAttribute('transform', `translate(${wx - sx} ${wy - sy})`);
+      const hit = document.elementsFromPoint(ev.clientX, ev.clientY).map((n) => n.closest?.('[data-printer]')).find(Boolean);
+      if (over && over !== hit) over.classList.remove('target');
+      over = hit && can(printer(hit.dataset.printer)) ? hit : null;
+      if (over) over.classList.add('target');
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (!ghost) { select('run', r.id); return; }
+      ghost.remove();
+      for (const n of town.querySelectorAll('.refuse, .target')) n.classList.remove('refuse', 'target');
+      if (over) moveRun(r, over.dataset.printer);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  function dragPrinter(e, p) {
+    e.stopPropagation();
+    const g = e.currentTarget;
+    const start = toWorld(e.clientX, e.clientY);
+    let spot = null;
+    const move = (ev) => {
+      const [wx, wy] = toWorld(ev.clientX, ev.clientY);
+      g.setAttribute('transform', `translate(${wx - start[0]} ${wy - start[1]})`);
+      const hit = document.elementsFromPoint(ev.clientX, ev.clientY).find((n) => n.dataset?.slot);
+      spot = hit ? hit.dataset.slot.split(',').map(Number) : null;
+    };
+    const up = async () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (!spot) { draw(); return; }
+      const taken = state.printers.find((x) => x.id !== p.id && siteOf(x) === siteOf(p)
+                                          && floorSpots(siteOf(p)).get(x.id).join(',') === spot.join(','));
+      if (taken) { toast(`${taken.name} is already standing there.`, { bad: true }); draw(); return; }
+      try {
+        await api('PUT', `/printers/${encodeURIComponent(p.id)}/position`, { x: spot[0], y: spot[1] });
+        await load();
+      } catch (err) { toast(err.message, { bad: true }); draw(); }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  // ------------------------------------------------------------ camera
+  function fit(world) {
+    if (state.fitted !== state.view) {
+      const b = world.getBBox();
+      const r = town.getBoundingClientRect();
+      const pad = 90;
+      const k = Math.min((r.width - pad * 2) / Math.max(b.width, 1), (r.height - pad * 2 - 80) / Math.max(b.height, 1), 1.6);
+      state.cam = { k, x: r.width / 2 - (b.x + b.width / 2) * k, y: r.height / 2 - (b.y + b.height / 2) * k + 10 };
+      state.fitted = state.view;
+    }
+    world.setAttribute('transform', `translate(${state.cam.x} ${state.cam.y}) scale(${state.cam.k})`);
+  }
+
+  function toWorld(cx, cy) {
+    const r = town.getBoundingClientRect();
+    return [(cx - r.left - state.cam.x) / state.cam.k, (cy - r.top - state.cam.y) / state.cam.k];
+  }
+
+  function zoom(by, cx, cy) {
+    const r = town.getBoundingClientRect();
+    const px = cx ?? r.left + r.width / 2, py = cy ?? r.top + r.height / 2;
+    const [wx, wy] = toWorld(px, py);
+    const k = Math.min(3, Math.max(0.35, state.cam.k * by));
+    state.cam = { k, x: px - r.left - wx * k, y: py - r.top - wy * k };
+    $('world')?.setAttribute('transform', `translate(${state.cam.x} ${state.cam.y}) scale(${k})`);
+  }
+
+  town.addEventListener('wheel', (e) => { e.preventDefault(); zoom(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY); }, { passive: false });
+  town.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.parcel, .printer, .site')) return;
+    const start = { x: e.clientX, y: e.clientY, cx: state.cam.x, cy: state.cam.y };
+    town.classList.add('panning');
+    const move = (ev) => {
+      state.cam.x = start.cx + ev.clientX - start.x;
+      state.cam.y = start.cy + ev.clientY - start.y;
+      $('world')?.setAttribute('transform', `translate(${state.cam.x} ${state.cam.y}) scale(${state.cam.k})`);
+    };
+    const up = (ev) => {
+      town.classList.remove('panning');
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      // a click on empty floor, not a drag, puts the panel back to the overview
+      if (Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 4 && state.sel) { state.sel = null; draw(); }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  });
+  $('zin').addEventListener('click', () => zoom(1.25));
+  $('zout').addEventListener('click', () => zoom(1 / 1.25));
+  $('arrange').addEventListener('click', () => {
+    state.arranging = !state.arranging;
+    $('arrange').setAttribute('aria-pressed', String(state.arranging));
+    $('arrange').textContent = state.arranging ? 'Done arranging' : 'Arrange printers';
+    draw();
+  });
+  window.addEventListener('resize', () => { state.fitted = null; if (state.me) draw(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && state.sel) { state.sel = null; draw(); }
+  });
+
+  state.view = undefined;
+  load().catch((e) => toast(e.message, { bad: true }));
+  onLive(load);
+  // the live feed is the quick path; this catches anything it missed
+  setInterval(() => { if (!document.hidden) load().catch(() => {}); }, 20000);
+})();
+</script>
+</body>
+</html>

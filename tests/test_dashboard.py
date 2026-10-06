@@ -136,3 +136,9 @@ def test_the_dashboard_screen_is_served(client):
     r = client.get("/studio/dashboard")
     assert r.status_code == 200
     assert "Dashboard" in r.text
+
+
+def test_the_live_map_is_served(client):
+    r = client.get("/studio/map")
+    assert r.status_code == 200
+    assert "Live map" in r.text

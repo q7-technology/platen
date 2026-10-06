@@ -159,6 +159,18 @@
             </div>
           </div>
 
+          <div class="row" id="detour-row" hidden>
+            <div class="field">
+              <label for="p-detour">Send its work to another printer</label>
+              <select id="p-detour"></select>
+            </div>
+            <div class="field narrow" style="align-self: flex-end;">
+              <button class="btn" type="button" id="detour-go" style="height: 38px;">Set detour</button>
+            </div>
+          </div>
+          <p class="mut" id="detour-note" style="font-size: 12px;" hidden>Its unfinished runs move now, except a hand-fed one somebody is standing at. New runs follow the detour until you clear it.</p>
+          <div id="detour-msg"></div>
+
           <div class="actions">
             <button class="btn pri" type="button" id="save" style="height: 38px;">Save</button>
             <button class="btn" type="button" id="test">Send test label</button>
@@ -222,7 +234,10 @@
       body.append(el('tr', { class: 'clickable', tabindex: '0', 'data-id': p.id,
                              onclick: () => pick(p.id),
                              onkeydown: (e) => { if (e.key === 'Enter') pick(p.id); } },
-        el('td', {}, el('b', { text: p.name })),
+        el('td', {}, el('b', { text: p.name }), p.detour_to
+          ? el('small', { class: 'mut', style: 'display:block',
+                          text: `detoured to ${state.printers.find((x) => x.id === p.detour_to)?.name || p.detour_to}` })
+          : null),
         el('td', { class: p.site_id ? '' : 'mut', text: siteName(p.site_id) }),
         el('td', { text: p.model || '—' }),
         el('td', { class: 'mono', text: wire(p.transport) }),
@@ -259,8 +274,35 @@
     $('p-id').textContent = state.current.id;
     $('p-probe').replaceChildren(status(state.printers.find((p) => p.id === id) || state.current));
     fill(state.current);
+    fillDetour(state.current);
     clearError($('msg'));
     $('edit').scrollIntoView({ block: 'nearest' });
+  }
+
+  function fillDetour(p) {
+    const others = state.printers.filter((x) => x.id !== p.id && !x.detour_to && x.dpi === p.dpi);
+    $('detour-row').hidden = $('detour-note').hidden = false;
+    $('p-detour').replaceChildren(
+      el('option', { value: '', text: 'Nowhere — print here', selected: !p.detour_to }),
+      ...others.map((x) => el('option', { value: x.id, selected: x.id === p.detour_to,
+                                          text: `${x.name} · ${siteName(x.site_id)}` })));
+    $('detour-go').textContent = p.detour_to ? 'Change detour' : 'Set detour';
+    if (state.noteFor !== p.id) { $('detour-msg').replaceChildren(); state.noteFor = null; }
+  }
+
+  async function detour() {
+    if (!state.current) return;
+    const to = $('p-detour').value || null;
+    try {
+      const r = await api('POST', `/printers/${encodeURIComponent(state.current.id)}/detour`, { to });
+      const lines = [to ? `Detoured. ${r.moved.length} unfinished run${r.moved.length === 1 ? '' : 's'} moved.`
+                        : 'Detour cleared. New runs print here again.'];
+      for (const l of r.left) lines.push(`${l.id} stayed: ${l.why}`);
+      state.noteFor = state.current.id;          // the re-pick below keeps this note
+      await load(false, state.current.id);
+      $('detour-msg').replaceChildren(...lines.map((text) =>
+        el('p', { class: 'mut', style: 'font-size:12.5px;margin:4px 0', text })));
+    } catch (e) { showError($('msg'), e.message); }
   }
 
   function add() {
@@ -268,6 +310,7 @@
     $('edit').hidden = false;
     $('p-id').textContent = 'new';
     $('p-probe').replaceChildren();
+    $('detour-row').hidden = $('detour-note').hidden = true;
     fill({ dpi: 203, transport: { kind: 'tcp', port: 9100 } });
     clearError($('msg'));
     $('p-name').focus();
@@ -496,6 +539,7 @@
   $('save').addEventListener('click', save);
   $('test').addEventListener('click', test);
   $('del').addEventListener('click', remove);
+  $('detour-go').addEventListener('click', detour);
   $('recheck').addEventListener('click', () => load(true, state.current?.id));
 
   // a health change re-reads the list without probing every printer again,
