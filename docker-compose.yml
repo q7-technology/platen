@@ -16,6 +16,14 @@ services:
       api: { condition: service_started }
       redis: { condition: service_healthy }
 
+  # the public landing page; the studio screens are served by the api
+  web:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./web/index.html:/usr/share/nginx/html/index.html:ro
+      - ./web/q7-logo-128.png:/usr/share/nginx/html/q7-logo-128.png:ro
+    ports: ["${PLATEN_WEB_PORT:-8080}:80"]
+
   db:
     image: postgres:16
     env_file: .env
