@@ -251,15 +251,9 @@
     if (select) pick(select);
   }
 
-  /* An office printer has no dot pitch Platen cares about, and a desk agent
-     only carries labels for now. */
+  /* An office printer has no dot pitch Platen cares about. */
   function showType() {
-    const page = $('p-type').value === 'page';
-    $('dpi-field').hidden = page;
-    const agent = [...document.getElementsByName('kind')].find((r) => r.value === 'agent');
-    agent.disabled = page;
-    agent.closest('label').style.opacity = page ? 0.45 : '';
-    if (page && agent.checked) showKind('tcp');
+    $('dpi-field').hidden = $('p-type').value === 'page';
   }
 
   function showKind(kind) {

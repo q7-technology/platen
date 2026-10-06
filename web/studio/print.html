@@ -413,7 +413,7 @@
     const done = ['done', 'failed', 'cancelled'].includes(r.status);
     const words = { queued: 'Queued', printing: 'Printing', done: 'Done', failed: 'Failed',
                     cancelled: 'Cancelled', retrying: 'Retrying', paused: 'Held',
-                    waiting: 'Waiting for you' };
+                    waiting: 'Waiting for you', blocked: 'Waiting for the printer' };
     $('run-status').textContent = words[r.status] || r.status;
     $('run-status').classList.toggle('gold', r.status === 'failed' || r.status === 'cancelled');
     $('run-printed').textContent = `${r.printed} / ${r.total}`;

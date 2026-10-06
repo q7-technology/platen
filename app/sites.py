@@ -5,10 +5,10 @@ manager any number. A printer in no site is shared and everyone sees it, so an
 install that has never made a site works exactly as it did before sites
 existed.
 
-A key isn't a person and has no sites of its own; it sees what an
-administrator would. Keys are made by administrators for scripts and
-integrations, which were written before sites existed and would quietly stop
-finding their printers otherwise.
+A key isn't a person. An operator key made with sites keeps to them, like an
+operator; one made without any sees every site, which is what a key could do
+before keys had sites. Scripts written then would otherwise quietly stop
+finding their printers.
 """
 
 from __future__ import annotations
@@ -25,8 +25,15 @@ class NotYours(Exception):
     """The printer or run is in a site this person doesn't look after."""
 
 
+def key_sites(user: AppUser) -> list[str] | None:
+    """A key's own sites, carried on the stand-in user current_user makes."""
+    return getattr(user, "key_sites", None) if user.username.startswith("key:") else None
+
+
 def sees_everything(user: AppUser) -> bool:
-    return user.role == "admin" or user.username.startswith("key:")
+    if user.role == "admin":
+        return True
+    return user.username.startswith("key:") and not key_sites(user)
 
 
 def assigned(s: Session, username: str) -> list[str]:
@@ -39,6 +46,8 @@ def allowed(s: Session, user: AppUser) -> set[str] | None:
     """The site ids this person looks after, or ALL."""
     if sees_everything(user):
         return ALL
+    if user.username.startswith("key:"):
+        return set(key_sites(user) or [])
     return set(assigned(s, user.username))
 
 

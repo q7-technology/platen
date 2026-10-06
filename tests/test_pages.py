@@ -185,7 +185,19 @@ def test_cups_filters_a_pdf_but_not_zpl(client):
     assert "raw" not in client.get("/printers/q2").json()["transport"]
 
 
-def test_an_agent_takes_labels_only(client):
-    r = client.put("/printers/a1", json={"name": "A", "kind": "page",
-                                         "transport": {"kind": "agent", "agent_id": "x"}})
-    assert r.status_code == 422
+def test_names_from_anywhere_print(monkeypatch):
+    t = pages.PageTemplate(id="m", name="M", body=[pages.TextBlock(value="{{ who }}", bold=True),
+                                                   pages.TextBlock(value="{{ who }}")])
+    pdf, warnings = pages.render_document(t, [{"who": "Zoë Ngô · ООО Ромашка · Ελλάδα"}])
+    if pages._fonts()[2]:
+        assert warnings == []
+        assert b"PlatenSans" in pdf or b"DejaVu" in pdf
+    else:                                     # no Unicode font on this machine: it says so
+        assert any("built-in font" in w for w in warnings)
+
+
+def test_without_a_unicode_font_it_says_what_wont_print(monkeypatch):
+    monkeypatch.setattr(pages, "_FONTS", ("Helvetica", "Helvetica-Bold", False))
+    t = pages.PageTemplate(id="m", name="M", body=[pages.TextBlock(value="ООО Ромашка, Zoë")])
+    _, warnings = pages.render_document(t, [{}])
+    assert len(warnings) == 1 and "Р" in warnings[0] and "ë" not in warnings[0]

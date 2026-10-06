@@ -82,7 +82,7 @@
             <span class="mut" style="font-size: 12px;">For a script or a scheduled job, not a person</span></div>
           <div class="scroll">
             <table>
-              <thead><tr><th>Name</th><th>Role</th><th>Made by</th><th>Last used</th><th></th></tr></thead>
+              <thead><tr><th>Name</th><th>Role</th><th>Sites</th><th>Made by</th><th>Last used</th><th></th></tr></thead>
               <tbody id="key-rows"></tbody>
             </table>
           </div>
@@ -99,6 +99,11 @@
             <div class="field narrow" style="align-self: flex-end;">
               <button class="btn" type="button" id="k-add" style="height: 38px;">Make a key</button>
             </div>
+          </div>
+          <div class="field" id="k-sites-field">
+            <label id="l-k-sites">Sites it may reach</label>
+            <div id="k-sites" role="group" aria-labelledby="l-k-sites" style="display: flex; flex-wrap: wrap; gap: 6px 16px;"></div>
+            <p class="mut" style="font-size: 12px; margin: 6px 0 0;">Leave them all unticked and the key reaches every site, as keys always have.</p>
           </div>
           <div id="k-token"></div>
           <div id="k-msg" hidden></div>
@@ -242,6 +247,8 @@
           k.agent_id ? el('small', { class: 'mut mono', style: 'display:block',
                                      text: `for agent ${k.agent_id}` }) : null),
         el('td', { text: k.role === 'agent' ? 'Agent' : k.role === 'admin' ? 'Administrator' : 'Operator' }),
+        el('td', { class: 'mut', text: k.role === 'agent' ? '—' : k.sites?.length
+          ? k.sites.map((id) => state.sites.find((s) => s.id === id)?.name || id).join(', ') : 'All' }),
         el('td', { class: 'mut mono', text: k.created_by || '—' }),
         el('td', { class: 'mut', text: when(k.last_used_at) }),
         el('td', {}, el('button', { class: 'btn sm gold', type: 'button',
@@ -254,9 +261,12 @@
     const name = $('k-name').value.trim();
     if (!name) { showError($('k-msg'), 'Say what the key is for.'); return; }
     try {
-      const made = await api('POST', '/keys', { name, role: $('k-role').value });
+      const sites = $('k-role').value === 'operator'
+        ? [...$('k-sites').querySelectorAll('input:checked')].map((c) => c.value) : [];
+      const made = await api('POST', '/keys', { name, role: $('k-role').value, sites });
       clearError($('k-msg'));
       $('k-name').value = '';
+      keySites();
       $('k-token').replaceChildren(el('div', { class: 'warn' }, icon('alert', 18),
         el('span', { class: 'txt' },
           el('b', { text: `The key for ${made.name}. Copy it now — Platen keeps only its hash.` }),
@@ -285,9 +295,21 @@
     { method: 'DELETE', url: (u) => `/users/${encodeURIComponent(u)}`, close: true },
     'Delete this person? They lose access immediately.'));
   $('k-add').addEventListener('click', addKey);
+  /* An administrator key reaches everything, so only an operator key is
+     offered sites to keep to. */
+  function keySites() {
+    const live = state.sites.filter((s) => !s.archived_at);
+    $('k-sites-field').hidden = $('k-role').value !== 'operator' || !live.length;
+    $('k-sites').replaceChildren(...live.map((s) => el('label', {
+        style: 'display: flex; gap: 6px; align-items: center; font-size: 13px;' },
+      el('input', { type: 'checkbox', value: s.id, style: 'width: auto; height: auto; accent-color: var(--accent);' }),
+      el('span', { text: s.name }))));
+  }
+  $('k-role').addEventListener('change', keySites);
 
-  load().catch((e) => showError($('msg'), e.message));
-  loadKeys().catch((e) => showError($('k-msg'), e.message));
+  // keys after people: a key's sites are shown by name, and load() reads the sites
+  load().then(keySites).catch((e) => showError($('msg'), e.message))
+    .finally(() => loadKeys().catch((e) => showError($('k-msg'), e.message)));
 })();
 </script>
 </body>

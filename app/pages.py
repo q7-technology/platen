@@ -21,6 +21,7 @@ data, ``<img src>`` included.
 from __future__ import annotations
 
 import io
+import os
 from collections.abc import Mapping
 from typing import Annotated, Any, Literal
 from xml.sax.saxutils import escape
@@ -51,6 +52,47 @@ from reportlab.platypus import (
 from . import binding, images
 
 MAX_DOCUMENTS = 2000          # one run; a bigger one is two runs
+
+# ReportLab's own Helvetica only knows Western European letters: a customer
+# called Zoë Ngô or ООО Ромашка comes out as black boxes. DejaVu Sans covers
+# Latin, Greek and Cyrillic, and the Docker image installs it; PLATEN_PAGE_FONT
+# points at another family's regular .ttf (its bold beside it, "-Bold" before
+# the extension) for anything DejaVu doesn't draw, Chinese or Thai say.
+FONT_PLACES = [
+    os.environ.get("PLATEN_PAGE_FONT", ""),
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans.ttf",
+    "/Library/Fonts/DejaVuSans.ttf",
+    os.path.expanduser("~/Library/Fonts/DejaVuSans.ttf"),
+]
+
+
+def _fonts() -> tuple[str, str, bool]:
+    """Regular and bold font names to draw with, and whether they reach past
+    Latin-1. Registered once; Helvetica when nothing better is installed."""
+    global _FONTS
+    if _FONTS is None:
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+
+        _FONTS = ("Helvetica", "Helvetica-Bold", False)
+        for path in FONT_PLACES:
+            if not path or not os.path.exists(path):
+                continue
+            stem, ext = os.path.splitext(path)
+            bold = next((b for b in (f"{stem}-Bold{ext}", f"{stem}Bold{ext}") if os.path.exists(b)),
+                        path)
+            try:
+                pdfmetrics.registerFont(TTFont("PlatenSans", path))
+                pdfmetrics.registerFont(TTFont("PlatenSans-Bold", bold))
+            except Exception:
+                continue
+            _FONTS = ("PlatenSans", "PlatenSans-Bold", True)
+            break
+    return _FONTS
+
+
+_FONTS: tuple[str, str, bool] | None = None
 
 
 class RenderError(Exception):
@@ -175,9 +217,17 @@ def _text(expr: str, row: Mapping[str, Any], where: str) -> str:
         raise RenderError(f"{where}: {exc}") from None
 
 
+# letters the fallback font couldn't draw in the document being built, so the
+# run can say so rather than print boxes without a word
+_UNDRAWN: set[str] = set()
+
+
 def _para(text: str, size: float, bold: bool, align: Align) -> Paragraph:
+    regular, heavy, wide = _fonts()
+    if not wide:
+        _UNDRAWN.update(c for c in text if ord(c) > 255)
     style = ParagraphStyle(
-        "p", fontName="Helvetica-Bold" if bold else "Helvetica", fontSize=size,
+        "p", fontName=heavy if bold else regular, fontSize=size,
         leading=size * 1.25, alignment=_ALIGN[align], textColor=INK)
     # escaped, so data can never become markup; line breaks survive
     return Paragraph(escape(text).replace("\n", "<br/>"), style)
@@ -356,10 +406,15 @@ def render_document(t: PageTemplate, rows: list[Mapping[str, Any]]) -> tuple[byt
     """One document as PDF bytes. Built twice when the furniture says "of N":
     the first pass is how N is known."""
     warnings: list[str] = []
+    _UNDRAWN.clear()
     pdf, pages = _build(t, rows, None, warnings)
     if _counts_pages(t):
         warnings.clear()
         pdf, _ = _build(t, rows, pages, warnings)
+    if _UNDRAWN:
+        warnings.append(
+            f"{''.join(sorted(_UNDRAWN))[:20]} can't be drawn with the built-in font and will "
+            "print as boxes; install fonts-dejavu-core, or set PLATEN_PAGE_FONT")
     return pdf, warnings
 
 

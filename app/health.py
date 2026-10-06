@@ -18,12 +18,13 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from db.models import Printer as PrinterRow
+from db.models import PrintRun
 
-from . import events, printers
+from . import events, jobs, printers
 from .logs import where
 
 log = logging.getLogger("platen.health")
@@ -130,4 +131,28 @@ def check_all(s: Session) -> list[str]:
                 where(printer=row.id, problems="; ".join(row.health_problems) or "none"))
         events.publish("printer", printer_id=row.id, site_id=row.site_id,
                        health=row.health, problems=row.health_problems, checked_at=now)
+        if row.health in ("ready", "warning"):
+            resume_blocked(s, row.id)
     return [r.id for r in changed]
+
+
+def resume_blocked(s: Session, printer_id: str) -> list[str]:
+    """A printer that can print again takes back the runs that were waiting
+    for it. They resume where they stopped, like any retry."""
+    waiting = s.scalars(select(PrintRun.id).where(
+        PrintRun.printer_id == printer_id, PrintRun.status == "blocked")).all()
+    resumed = []
+    for run_id in waiting:
+        # only if it is still waiting: someone may have moved or cancelled it
+        done = s.execute(update(PrintRun)
+                         .where(PrintRun.id == run_id, PrintRun.status == "blocked")
+                         .values(status="queued", error=None)).rowcount
+        s.commit()
+        if not done:
+            continue
+        jobs.enqueue(run_id)
+        events.run_changed(s.get(PrintRun, run_id))
+        resumed.append(run_id)
+        log.info("run back on the queue, its printer recovered: %s",
+                 where(run=run_id, printer=printer_id))
+    return resumed

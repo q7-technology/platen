@@ -17,7 +17,7 @@
   .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--mut); }
   .dot.printing { background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
   .dot.done { background: var(--mint); }
-  .dot.failed, .dot.retrying, .dot.cancelled { background: var(--signal); }
+  .dot.failed, .dot.retrying, .dot.cancelled, .dot.blocked { background: var(--signal); }
   @keyframes pulse { 50% { opacity: .35; } }
   @media (prefers-reduced-motion: reduce) { .dot.printing { animation: none; } }
   .bar { height: 5px; border-radius: 999px; background: rgba(41,171,226,0.14); overflow: hidden; width: 90px; }
@@ -109,10 +109,11 @@
   renderShell('jobs');
 
   const state = { runs: [], sel: null, timer: null, printers: [], undo: null };
-  const MOVABLE = ['queued', 'printing', 'retrying', 'paused', 'waiting', 'failed'];
+  const MOVABLE = ['queued', 'printing', 'retrying', 'paused', 'waiting', 'failed', 'blocked'];
   const ACTIVE = ['queued', 'printing', 'retrying'];
   const WORDS = { queued: 'Queued', printing: 'Printing', done: 'Done',
-                  failed: 'Failed', cancelled: 'Cancelled', retrying: 'Retrying' };
+                  failed: 'Failed', cancelled: 'Cancelled', retrying: 'Retrying', paused: 'Held',
+                  waiting: 'Waiting on someone', blocked: 'Waiting for its printer' };
 
   const ago = (iso) => {
     if (!iso) return '—';
@@ -147,7 +148,7 @@
     const sum = (f) => all.filter(f).length;
     const labels = all.filter((r) => r.status === 'done')
       .reduce((n, r) => n + r.printed, 0);
-    const trouble = sum((r) => ['failed', 'retrying'].includes(r.status));
+    const trouble = sum((r) => ['failed', 'retrying', 'blocked'].includes(r.status));
     $('tiles').replaceChildren(
       el('div', { class: 'tile' }, el('b', { text: String(labels) }),
         el('span', { text: 'labels printed, in these runs' })),
@@ -213,7 +214,7 @@
     const stopped = ['failed', 'cancelled', 'retrying'].includes(r.status);
     $('d-retry').hidden = !(stopped && left > 0);
     if (!$('d-retry').hidden) $('d-retry').textContent = `Retry the remaining ${left}`;
-    $('d-cancel').hidden = !ACTIVE.includes(r.status);
+    $('d-cancel').hidden = !ACTIVE.includes(r.status) && r.status !== 'blocked';
 
     // only printers at the same dot pitch take these labels; the server says
     // so too, but there is no point offering the ones it would refuse

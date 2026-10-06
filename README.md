@@ -172,8 +172,9 @@ A **manager** does what an operator does, across more than one site.
 under **People**. An operator works at one site, a manager at any number, and
 an administrator sees them all. People only see the printers and runs at
 their own sites. A printer in no site is shared with everyone, which is how
-an install that has never made a site carries on exactly as it did. A key
-sees every site, as an administrator would.
+an install that has never made a site carries on exactly as it did. An
+operator key can be made with sites ticked and keeps to them, as an operator
+does; a key made without any sees every site, as keys always have.
 
 The first administrator is made once at startup from `PLATEN_ADMIN_USERNAME`
 and `PLATEN_ADMIN_PASSWORD`. After that, **People** is where you add someone,
@@ -221,8 +222,10 @@ first one prints, and a broken binding names the block and the column.
 
 Add the office printer under **Printers** with **Prints: Pages (PDF)**. Most
 office printers take a PDF straight down port 9100; for one that doesn't, use
-its CUPS queue and CUPS converts it. A desk agent carries labels only for
-now. An office printer is only ever asked whether it answers: `~HQES`, the
+its CUPS queue and CUPS converts it. A printer on somebody's desk works
+through the agent as a label printer does; an agent from before page printing
+is never handed a page, and a page sent its way fails at once and says to
+update `platen_agent.py`. An office printer is only ever asked whether it answers: `~HQES`, the
 Zebra health question, would come out as a printed page. The network scan
 asks `~HI` of everything on 9100, so an office printer in the range may print
 one short page when you scan.
@@ -249,6 +252,14 @@ the printer within a second. Every parcel and printer can be reached with the
 keyboard and moved from the side panel, without dragging.
 
 ## When a printer stops
+
+**It waits for a printer that can't print.** When a label printer says it is
+out of labels, out of ribbon or has its head open, the run printing on it
+stops between labels and waits, saying what for, rather than filling the
+printer's buffer with labels that have nowhere to go. When the next health
+check finds the printer ready, the run goes back on the queue and carries on
+from the label it stopped at. A warning, like labels nearly out, doesn't stop
+anything. A waiting run can be moved or cancelled like any other.
 
 **Move a run.** Open it under **Job history** and pick another printer. What
 has already come out stays out: only labels with nothing recorded against

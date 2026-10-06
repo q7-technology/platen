@@ -211,3 +211,81 @@ def test_the_agent_screen_lists_them(client, agent):
     assert [a["id"] for a in rows] == ["wks-office-02"]
     assert rows[0]["name"] == "Office workstation"
     assert "token" not in rows[0]
+
+
+# ------------------------------------------------------------------ pages
+
+def _agent_poll(token: str, accepts: list[str] | None):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    c = TestClient(app)
+    c.headers["authorization"] = f"Bearer {token}"
+    body = {"devices": ["HP LaserJet"]}
+    if accepts is not None:
+        body["accepts"] = accepts
+    return c, c.post("/agents/wks-office-02/poll", json=body)
+
+
+def test_a_page_goes_through_an_agent_that_can_take_it(client, agent):
+    import base64
+
+    assert client.put("/printers/desk-laser", json={
+        "name": "Desk laser", "kind": "page",
+        "transport": {"kind": "agent", "agent_id": "wks-office-02"}}).status_code == 200
+    _agent_poll(agent["token"], ["zpl", "pdf"])        # it says what it can do
+    got = []
+
+    def the_agent() -> None:
+        for _ in range(100):
+            c, r = _agent_poll(agent["token"], ["zpl", "pdf"])
+            if r.json()["jobs"]:
+                job = r.json()["jobs"][0]
+                got.append(job)
+                c.post(f"/agents/wks-office-02/jobs/{job['id']}/done", json={})
+                return
+            time.sleep(0.05)
+
+    thread = threading.Thread(target=the_agent, daemon=True)
+    thread.start()
+    with dbsession.SessionLocal() as s:
+        printers.load(s, "desk-laser").transport.send(b"%PDF-1.4 a page")
+    thread.join(timeout=10)
+    assert got and base64.b64decode(got[0]["pdf"]) == b"%PDF-1.4 a page"
+    assert got[0]["zpl"] == ""
+
+
+def test_an_old_agent_is_never_handed_a_page(client, agent):
+    with dbsession.SessionLocal() as s:
+        s.add(AgentJob(id="p1", agent_id="wks-office-02", device="d", zpl="", body=b"%PDF-1.4"))
+        s.add(AgentJob(id="l1", agent_id="wks-office-02", device="d", zpl="^XA^XZ"))
+        s.commit()
+    _, r = _agent_poll(agent["token"], None)              # an agent from before pages
+    assert [j["id"] for j in r.json()["jobs"]] == ["l1"]
+
+
+def test_a_page_for_an_old_agent_fails_at_once_and_says_why(client, agent):
+    client.put("/printers/desk-laser", json={
+        "name": "Desk laser", "kind": "page",
+        "transport": {"kind": "agent", "agent_id": "wks-office-02"}})
+    _agent_poll(agent["token"], None)
+    with dbsession.SessionLocal() as s, pytest.raises(RuntimeError, match=r"platen_agent\.py"):
+        printers.load(s, "desk-laser").transport.send(b"%PDF-1.4 a page")
+
+
+def test_the_agent_script_writes_a_page_byte_for_byte(tmp_path):
+    import base64
+    import importlib.util
+    import pathlib
+
+    path = pathlib.Path(__file__).resolve().parent.parent / "agent" / "platen_agent.py"
+    spec = importlib.util.spec_from_file_location("platen_agent", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    data, page = mod.payload({"id": "x", "zpl": "", "pdf": base64.b64encode(b"%PDF-1.4\x00\xff").decode()})
+    assert page and data == b"%PDF-1.4\x00\xff"
+    out = tmp_path / "lp0"
+    mod.write_to_device(str(out), data)
+    assert out.read_bytes() == b"%PDF-1.4\x00\xff"
+    assert mod.payload({"id": "y", "zpl": "^XA^XZ"}) == (b"^XA^XZ\n", False)

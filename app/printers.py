@@ -115,8 +115,17 @@ class Agent:
                 f"{self.agent_id}: an agent printer can only be used where Platen "
                 "has its database to hand"
             )
+        pdf = data[:5] == b"%PDF-"
+        if pdf:
+            row = self.session.get(PrintAgent, self.agent_id)
+            if row is None or "pdf" not in (row.accepts or []):
+                # an older agent would print nothing and say it was done
+                raise RuntimeError(
+                    f"{self.agent_id} runs a platen_agent.py from before page printing; "
+                    "copy the new one onto that machine and restart it")
         job = AgentJob(id=uuid.uuid4().hex, agent_id=self.agent_id, device=self.device,
-                       zpl=data.decode("ascii", "replace"))
+                       zpl="" if pdf else data.decode("ascii", "replace"),
+                       body=data if pdf else None)
         self.session.add(job)
         self.session.commit()
 
@@ -134,7 +143,7 @@ class Agent:
                 return
             time.sleep(0.05)
         raise TimeoutError(
-            f"{self.agent_id} didn't collect that label within "
+            f"{self.agent_id} didn't collect that {'page' if pdf else 'label'} within "
             f"{AGENT_TIMEOUT:.0f} seconds; is the agent running?"
         )
 

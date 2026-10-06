@@ -5,7 +5,7 @@ interesting reason. Redis carries only the job id; the run itself is a row."""
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import redis
 from rq import Queue, Retry
@@ -14,6 +14,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from db import session as dbsession
+from db.models import Printer as PrinterRow
 from db.models import PrintRun, RunLabel, Setting
 
 from . import events, printers
@@ -96,6 +97,28 @@ def _cancelled(session: Session, run_id: str) -> bool:
 
 
 STARTABLE = ("queued", "retrying")
+
+# A health answer older than this is no longer evidence of anything: the
+# checker may have stopped, and an old "out of labels" mustn't hold a run.
+HEALTH_FRESH = timedelta(minutes=2)
+
+
+def _cant_print(session: Session, printer_id: str) -> str | None:
+    """What the printer last said is stopping it, if it said so recently.
+
+    Only an error stops a run. A warning still prints, and a printer that
+    doesn't answer at all fails the send, which is what retries are for.
+    """
+    state, problems, at = session.execute(
+        select(PrinterRow.health, PrinterRow.health_problems, PrinterRow.health_at)
+        .where(PrinterRow.id == printer_id)).one_or_none() or (None, None, None)
+    if state != "error" or at is None:
+        return None
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=UTC)
+    if datetime.now(UTC) - at > HEALTH_FRESH:
+        return None
+    return "; ".join(problems or []) or "it says it can't print"
 
 
 def _move_requested(session: Session, run_id: str) -> str | None:
@@ -188,6 +211,19 @@ def print_run(run_id: str) -> None:
                     log.info("run moved: %s", where(run=run_id, to=target, printed=printed,
                                                    total=run.total))
                     enqueue(run_id)
+                    return
+                reason = _cant_print(s, run.printer_id)
+                if reason:
+                    # between labels, like cancel: sending more to a printer
+                    # with no labels in it only fills its buffer. The health
+                    # check puts the run back on the queue when it recovers.
+                    run.status, run.printed = "blocked", printed
+                    run.error = f"waiting for {printer.name}: {reason}"
+                    s.commit()
+                    events.run_changed(run)
+                    log.info("run waiting for its printer: %s",
+                             where(run=run_id, printer=run.printer_id, reason=reason,
+                                   printed=printed, total=run.total))
                     return
                 if paused(s):
                     # between labels, like cancel: holding halfway through one

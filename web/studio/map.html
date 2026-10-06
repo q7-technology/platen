@@ -154,10 +154,10 @@
   const TW = 76, TH = 38;                       // one floor tile, in screen units
   const SITE_COLS = 9, SITE_ROWS = 7;           // a site's floor plate
   const SHOWN = 3;                              // parcels drawn on a belt; the rest are a count
-  const UNFINISHED = ['queued', 'printing', 'retrying', 'paused', 'waiting'];
+  const UNFINISHED = ['queued', 'printing', 'retrying', 'paused', 'waiting', 'blocked'];
   const MOVABLE = [...UNFINISHED, 'failed'];
   const WORDS = { queued: 'Queued', printing: 'Printing', retrying: 'Retrying', paused: 'Held',
-                  waiting: 'Waiting on someone', failed: 'Failed', done: 'Done', cancelled: 'Cancelled' };
+                  waiting: 'Waiting on someone', blocked: 'Waiting for its printer', failed: 'Failed', done: 'Done', cancelled: 'Cancelled' };
   const SHARED = '_shared';
 
   const state = {
@@ -487,7 +487,7 @@
     const hgt = paper ? 4 : 9;
     const up = ([x, y]) => [x, y - hgt - 2];
     const lift = ([x, y]) => [x, y - 2];
-    const g = svg('g', { class: `parcel${stuck(r) || ['failed', 'retrying', 'paused', 'waiting'].includes(r.status) ? ' stuck' : ''}${state.sel?.kind === 'run' && state.sel.id === r.id ? ' sel' : ''}${state.picked.has(r.id) ? ' picked' : ''}`,
+    const g = svg('g', { class: `parcel${stuck(r) || ['failed', 'retrying', 'paused', 'waiting', 'blocked'].includes(r.status) ? ' stuck' : ''}${state.sel?.kind === 'run' && state.sel.id === r.id ? ' sel' : ''}${state.picked.has(r.id) ? ' picked' : ''}`,
                          'data-run': r.id, 'data-key': `run:${r.id}`, tabindex: 0, role: 'button',
                          'aria-label': `${r.id}, ${r.template_name || r.template_id}, ${WORDS[r.status] || r.status}, ${r.printed} of ${r.total} ${paper ? 'documents' : 'labels'}`,
                          // the printer underneath has its own click; this one is the parcel's
@@ -542,8 +542,8 @@
       return;
     }
     // every label is rendered before a run exists, so the first two are a given
-    const at = { queued: 2, retrying: 3, paused: 3, waiting: 3, printing: 3, failed: 3, cancelled: 3, done: 4 }[r.status] ?? 2;
-    const halted = ['failed', 'cancelled', 'retrying', 'paused', 'waiting'].includes(r.status);
+    const at = { queued: 2, retrying: 3, paused: 3, waiting: 3, blocked: 3, printing: 3, failed: 3, cancelled: 3, done: 4 }[r.status] ?? 2;
+    const halted = ['failed', 'cancelled', 'retrying', 'paused', 'waiting', 'blocked'].includes(r.status);
     t.replaceChildren(el('span', { class: 'who mono', text: r.id }),
       el('ol', {}, ...STAGES.map((name, i) => el('li', {
         class: i < at || (i === at && r.status === 'done') ? 'done' : i === at ? (halted ? 'stuck' : 'now') : '' },
@@ -592,9 +592,9 @@
         el('dt', { text: 'Job' }), el('dd', { class: 'mono', text: r.id }),
         el('dt', { text: 'Printer' }), el('dd', { text: p?.name || r.printer_id }),
         el('dt', { text: 'Labels' }), el('dd', { text: `${r.printed} of ${r.total} printed` }),
-        el('dt', { text: 'Status' }), el('dd', { class: ['failed', 'retrying', 'paused', 'waiting'].includes(r.status) ? 'problem' : '',
+        el('dt', { text: 'Status' }), el('dd', { class: ['failed', 'retrying', 'paused', 'waiting', 'blocked'].includes(r.status) ? 'problem' : '',
                                                  text: WORDS[r.status] || r.status }),
-        r.error ? el('dt', { text: 'Last error' }) : null,
+        r.error ? el('dt', { text: r.status === 'blocked' ? 'Why' : 'Last error' }) : null,
         r.error ? el('dd', { class: 'problem', text: r.error }) : null),
     ];
     if (r.moving_to) out.push(el('p', { class: 'lede', text: `Moving to ${printer(r.moving_to)?.name || r.moving_to} after the label under the head.` }));
@@ -612,7 +612,7 @@
       acts.append(el('button', { class: 'btn sm', type: 'button', text: `Retry the ${left} left`, onclick: () => act(r, 'retry') }));
     }
     if (r.status === 'waiting') acts.append(el('button', { class: 'btn sm', type: 'button', text: 'Next label', onclick: () => act(r, 'continue') }));
-    if (['queued', 'printing', 'retrying'].includes(r.status)) {
+    if (['queued', 'printing', 'retrying', 'blocked'].includes(r.status)) {
       acts.append(el('button', { class: 'btn sm gold', type: 'button', text: 'Cancel', onclick: () => act(r, 'cancel') }));
     }
     if (acts.childNodes.length) out.push(acts);

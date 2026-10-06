@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import io
 import json
 import logging
@@ -117,8 +118,10 @@ def current_user(request: Request, s: Session = Depends(get_session)) -> AppUser
             raise HTTPException(401, "that key isn't one of ours")
         if token.role == "agent":
             raise HTTPException(403, "an agent key may only talk to its own agent")
-        return AppUser(username=f"key:{token.name}", display_name=token.name,
-                       role=token.role)
+        stand_in = AppUser(username=f"key:{token.name}", display_name=token.name,
+                           role=token.role)
+        stand_in.key_sites = list(token.sites or [])     # read by sites.allowed
+        return stand_in
 
     cookie = request.cookies.get(auth.COOKIE)
     user = auth.user_for_token(s, cookie) if cookie else None
@@ -1158,6 +1161,13 @@ def cancel_run(run_id: str, s: Session = Depends(get_session),
     run = _run_row(s, run_id, user)
     if run.status in ("done", "failed", "cancelled"):
         return {"id": run_id, "status": run.status}
+    if run.status == "blocked":
+        # nothing is running it to notice a flag, so it stops here
+        run.status, run.finished_at = "cancelled", auth.now()
+        audit(s, "cancel", "run", run_id, actor=user)
+        s.commit()
+        events.run_changed(run)
+        return {"id": run_id, "status": "cancelled"}
     audit(s, "cancel", "run", run_id, actor=user)
     jobs.cancel(s, run_id)
     return {"id": run_id, "status": "cancelling"}
@@ -1168,7 +1178,7 @@ class MoveBody(BaseModel):
     confirm: bool = False          # a hand-fed run only moves when someone says so
 
 
-MOVABLE = ("queued", "printing", "retrying", "paused", "waiting", "failed")
+MOVABLE = ("queued", "printing", "retrying", "paused", "waiting", "failed", "blocked")
 
 
 def _move(s: Session, run: db.PrintRun, target: db.Printer, user: AppUser, *,
@@ -1224,7 +1234,7 @@ def _move(s: Session, run: db.PrintRun, target: db.Printer, user: AppUser, *,
         changes: dict[str, Any] = {"printer_id": target.id}
         # a failed run, or one sitting out a retry on a printer that isn't
         # answering, goes now; the worker's claim makes a late retry harmless
-        if seen in ("failed", "retrying"):
+        if seen in ("failed", "retrying", "blocked"):
             changes.update(status="queued", error=None, finished_at=None,
                            cancel_requested=False)
         done = s.execute(update(db.PrintRun)
@@ -1240,7 +1250,7 @@ def _move(s: Session, run: db.PrintRun, target: db.Printer, user: AppUser, *,
           remaining=left)
     s.commit()
     s.refresh(run)
-    if seen in ("failed", "retrying") and run.status == "queued":
+    if seen in ("failed", "retrying", "blocked") and run.status == "queued":
         jobs.enqueue(run.id)
     events.run_changed(run)
     return {"id": run.id, "from": from_id, "to": target.id, "status": run.status,
@@ -1352,9 +1362,6 @@ def put_printer(printer_id: str, body: PrinterBody,
     kind = config.pop("kind", None)
     if kind is None:
         raise HTTPException(422, "transport.kind is required: tcp, cups or agent")
-    if body.kind == "page" and kind == "agent":
-        raise HTTPException(422, "a desk agent passes labels only for now; reach an office "
-                                 "printer over the network or through CUPS")
     if kind == "cups":
         # CUPS turns a PDF into what an office printer speaks; ZPL goes through
         # untouched, which is the default and so isn't written down
@@ -1726,6 +1733,7 @@ class PasswordBody(BaseModel):
 class KeyBody(BaseModel):
     name: str
     role: Literal["admin", "operator"] = "operator"
+    sites: list[str] = []          # an operator key's sites; none means every site
 
 
 def _user_json(s: Session, row: AppUser) -> dict[str, Any]:
@@ -1857,6 +1865,7 @@ def delete_user(username: str, s: Session = Depends(get_session),
 @app.get("/keys", dependencies=[Depends(admin)])
 def list_keys(s: Session = Depends(get_session)) -> list[dict[str, Any]]:
     return [{"id": k.id[:12], "name": k.name, "role": k.role, "agent_id": k.agent_id,
+             "sites": k.sites or [],
              "created_by": k.created_by, "created_at": k.created_at,
              "last_used_at": k.last_used_at}
             for k in s.scalars(select(db.ApiToken).order_by(db.ApiToken.created_at.desc()))]
@@ -1868,11 +1877,22 @@ def make_key(body: KeyBody, s: Session = Depends(get_session),
     """A key for something that isn't a person. Shown once, here."""
     if body.role not in ("admin", "operator"):
         raise HTTPException(422, "an agent key is made with the agent, not here")
+    chosen = sorted(set(body.sites))
+    if chosen and body.role == "admin":
+        raise HTTPException(422, "an administrator key reaches every site; make an "
+                                 "operator key to keep a script to some of them")
+    for site_id in chosen:
+        site = s.get(db.Site, site_id)
+        if site is None:
+            raise HTTPException(422, f"no site {site_id!r}")
+        if site.archived_at is not None:
+            raise HTTPException(422, f"{site.name} is archived; restore it first")
     token = auth.create_token(s, name=body.name, role=body.role, created_by=user.username)
-    audit(s, "create", "key", body.name, actor=user, role=body.role)
+    s.get(db.ApiToken, auth.token_id(token)).sites = chosen
+    audit(s, "create", "key", body.name, actor=user, role=body.role, sites=chosen)
     s.commit()
     return {"id": auth.token_id(token)[:12], "name": body.name, "role": body.role,
-            "token": token}
+            "sites": chosen, "token": token}
 
 
 @app.delete("/keys/{key_id}", status_code=204)
@@ -1896,6 +1916,7 @@ class AgentBody(BaseModel):
 
 class PollBody(BaseModel):
     devices: list[str] = []
+    accepts: list[Literal["zpl", "pdf"]] = ["zpl"]   # an agent from before pages says nothing
 
 
 class DoneBody(BaseModel):
@@ -1990,17 +2011,23 @@ def agent_poll(agent_id: str, body: PollBody, s: Session = Depends(get_session),
     row.last_seen_at = auth.now()
     if body.devices:
         row.devices = body.devices
+    row.accepts = list(body.accepts)
 
-    waiting = s.scalars(
-        select(db.AgentJob)
-        .where(db.AgentJob.agent_id == agent_id, db.AgentJob.taken_at.is_(None))
-        .order_by(db.AgentJob.created_at).limit(20)
-    ).all()
+    stmt = (select(db.AgentJob)
+            .where(db.AgentJob.agent_id == agent_id, db.AgentJob.taken_at.is_(None))
+            .order_by(db.AgentJob.created_at).limit(20))
+    if "pdf" not in body.accepts:
+        stmt = stmt.where(db.AgentJob.body.is_(None))
+    waiting = s.scalars(stmt).all()
     for job in waiting:
         job.taken_at = auth.now()
     s.commit()
+    # a page travels as base64 in the same JSON a label does; the agent is
+    # standard library only, and json + base64 are both in it
     return {"agent": agent_id,
-            "jobs": [{"id": j.id, "device": j.device, "zpl": j.zpl} for j in waiting]}
+            "jobs": [{"id": j.id, "device": j.device, "zpl": j.zpl,
+                      **({"pdf": base64.b64encode(j.body).decode()} if j.body else {})}
+                     for j in waiting]}
 
 
 @app.post("/agents/{agent_id}/jobs/{job_id}/done")

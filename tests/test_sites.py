@@ -206,3 +206,21 @@ def test_a_key_sees_every_site(two_sites):
 
 def test_the_command_line_knows_about_managers():
     assert "manager" in auth.ROLES
+
+
+def test_a_key_made_for_one_site_keeps_to_it(two_sites):
+    made = two_sites.post("/keys", json={"name": "bal-wms", "role": "operator", "sites": ["bal"]})
+    assert made.status_code == 201 and made.json()["sites"] == ["bal"]
+    c = TestClient(app, headers={"authorization": f"Bearer {made.json()['token']}"})
+    assert _printer_ids(c) == {"dock", "bal-despatch"}
+    assert _print(c, "gee-despatch").status_code == 403
+    assert _print(c, "bal-despatch").status_code == 202
+    listed = {k["name"]: k for k in two_sites.get("/keys").json()}
+    assert listed["bal-wms"]["sites"] == ["bal"]
+
+
+def test_an_administrator_key_has_no_sites_to_keep_to(two_sites):
+    r = two_sites.post("/keys", json={"name": "x", "role": "admin", "sites": ["bal"]})
+    assert r.status_code == 422
+    assert two_sites.post("/keys", json={"name": "y", "role": "operator",
+                                         "sites": ["nowhere"]}).status_code == 422

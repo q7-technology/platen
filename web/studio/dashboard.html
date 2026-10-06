@@ -19,7 +19,7 @@
   .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--mut); display: inline-block; }
   .dot.printing { background: var(--accent); }
   .dot.done { background: var(--mint); }
-  .dot.failed, .dot.paused, .dot.cancelled, .dot.retrying { background: var(--signal); }
+  .dot.failed, .dot.paused, .dot.cancelled, .dot.retrying, .dot.blocked { background: var(--signal); }
   .mini { display: flex; flex-direction: column; gap: 2px; }
   .mini a { display: flex; align-items: baseline; gap: 10px; padding: 7px 9px; border-radius: 7px; text-decoration: none; color: var(--ink); font-size: 13px; }
   .mini a:hover { background: var(--sunk); }
@@ -94,7 +94,8 @@
   const state = { me: null, timer: null };
   const ACTIVE = ['queued', 'printing', 'retrying'];
   const WORDS = { queued: 'Queued', printing: 'Printing', done: 'Done', failed: 'Failed',
-                  cancelled: 'Cancelled', retrying: 'Retrying', paused: 'Held' };
+                  cancelled: 'Cancelled', retrying: 'Retrying', paused: 'Held',
+                  waiting: 'Waiting on someone', blocked: 'Waiting for its printer' };
 
   $('today').textContent = new Date().toLocaleDateString(undefined,
     { weekday: 'long', day: 'numeric', month: 'long' });

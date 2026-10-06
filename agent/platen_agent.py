@@ -2,7 +2,7 @@
 """The Platen print agent.
 
 Runs on the workstation the printer is plugged into. It asks Platen for
-labels and writes them to the printer, so nothing has to be open inbound to
+labels and pages and writes them to the printer, so nothing has to be open inbound to
 this machine — which is the whole reason it exists rather than Platen simply
 opening a socket.
 
@@ -18,6 +18,7 @@ somebody who would rather not set up a Python environment.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import logging
 import subprocess
@@ -46,21 +47,32 @@ class Server:
             return json.loads(response.read() or b"{}")
 
     def poll(self, devices: list[str]) -> list[dict]:
-        return self.post(f"/agents/{self.agent}/poll", {"devices": devices})["jobs"]
+        # "pdf" tells Platen this agent can be handed pages as well as labels
+        return self.post(f"/agents/{self.agent}/poll",
+                         {"devices": devices, "accepts": ["zpl", "pdf"]})["jobs"]
 
     def done(self, job_id: str, error: str | None = None) -> None:
         self.post(f"/agents/{self.agent}/jobs/{job_id}/done", {"error": error})
 
 
-def write_to_device(path: str, zpl: str) -> None:
+def payload(job: dict) -> tuple[bytes, bool]:
+    """The bytes to print, and whether they are a page (PDF) or a label (ZPL)."""
+    if job.get("pdf"):
+        return base64.b64decode(job["pdf"]), True
+    return job["zpl"].encode("ascii", "replace") + b"\n", False
+
+
+def write_to_device(path: str, data: bytes) -> None:
     with open(path, "wb") as device:
-        device.write(zpl.encode("ascii", "replace") + b"\n")
+        device.write(data)
 
 
-def write_to_cups(queue: str, zpl: str) -> None:
+def write_to_cups(queue: str, data: bytes, page: bool = False) -> None:
+    # ZPL goes through untouched; a PDF goes through CUPS's own filters,
+    # which turn it into whatever the office printer speaks
     result = subprocess.run(
-        ["lp", "-d", queue, "-o", "raw", "-"],
-        input=zpl.encode("ascii", "replace") + b"\n", capture_output=True,
+        ["lp", "-d", queue, *([] if page else ["-o", "raw"]), "-"],
+        input=data, capture_output=True,
     )
     if result.returncode != 0:
         detail = result.stderr.decode("utf-8", "replace").strip() or f"exit {result.returncode}"
@@ -94,15 +106,16 @@ def run(server: Server, printer: str, use_cups: bool, interval: float) -> None:
 
         for job in jobs:
             try:
+                data, page = payload(job)
                 if use_cups:
-                    write_to_cups(printer, job["zpl"])
+                    write_to_cups(printer, data, page)
                 else:
-                    write_to_device(printer, job["zpl"])
+                    write_to_device(printer, data)
             except Exception as exc:
-                log.error("label %s did not print: %s", job["id"], exc)
+                log.error("job %s did not print: %s", job["id"], exc)
                 _tell(server, job["id"], f"{type(exc).__name__}: {exc}")
             else:
-                log.info("printed label %s", job["id"])
+                log.info("printed %s %s", "page" if page else "label", job["id"])
                 _tell(server, job["id"], None)
 
 

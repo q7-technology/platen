@@ -103,6 +103,9 @@ class ApiToken(Base):
     name: Mapped[str] = mapped_column(String(200))
     role: Mapped[str] = mapped_column(String(16))          # admin | operator | agent
     agent_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    # the sites an operator key may reach; empty is every site, which is what
+    # every key could do before keys had sites
+    sites: Mapped[list[Any]] = mapped_column(JSON, default=list)
     created_by: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
     last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
@@ -117,6 +120,9 @@ class PrintAgent(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
     devices: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    # what it said it can print when it last asked for work; an agent older
+    # than page printing says nothing, which means labels only
+    accepts: Mapped[list[Any]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
     last_seen_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
@@ -130,6 +136,7 @@ class AgentJob(Base):
     agent_id: Mapped[str] = mapped_column(ForeignKey("print_agent.id"), index=True)
     device: Mapped[str] = mapped_column(String(200), default="")
     zpl: Mapped[str] = mapped_column(Text)
+    body: Mapped[bytes | None] = mapped_column(LargeBinary)   # a page, as PDF
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
     taken_at: Mapped[datetime | None] = mapped_column(UtcDateTime)

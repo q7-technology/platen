@@ -158,6 +158,12 @@ test suite runs the same models on SQLite, so keep column types portable.
     picture of the PDF that prints. An office printer is probed, never asked
     `~HQES` or sent a test label: on port 9100 either comes out as a page.
 
+23. **A run waits for a printer that says it can't print.** The worker checks
+    the printer's last health answer between labels, like cancel, and stops
+    as `blocked` on a fresh error. Only `health.resume_blocked` puts it back,
+    and only once the printer answers ready or warning. An answer older than
+    `HEALTH_FRESH` holds nothing: a stopped checker mustn't stop printing.
+
 ## Code
 
 Python 3.11+. `from __future__ import annotations` at the top of every module.
