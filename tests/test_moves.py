@@ -196,3 +196,18 @@ def test_a_run_waiting_out_a_retry_moves_now(seeded, floor, queue):
     jobs.print_run(run_id)                            # the move's own job
     jobs.print_run(run_id)                            # the old retry, firing late
     assert len(floor["spare"].sent) == 12 and floor["dock"].sent == []
+
+
+def test_moving_a_printing_run_back_calls_the_move_off(seeded, floor):
+    run_id = _run(seeded)
+
+    def change_of_mind(n: int) -> None:
+        if n == 2:
+            assert seeded.post(f"/runs/{run_id}/move", json={"printer_id": "spare"}).json()["moving"]
+            back = seeded.post(f"/runs/{run_id}/move", json={"printer_id": "dock"})
+            assert back.status_code == 200 and back.json()["moving"] is False
+
+    floor["dock"].after_send = change_of_mind
+    jobs.print_run(run_id)
+    assert len(floor["dock"].sent) == 12 and floor["spare"].sent == []
+    assert _status(seeded, run_id)["status"] == "done"

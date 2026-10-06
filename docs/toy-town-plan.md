@@ -56,8 +56,8 @@ each one is useful on its own.
 
 ## Step 2 — the toy town
 
-*First version done:* `/studio/map`. Flying parcels between sites and
-box-select are still to come.
+*Done:* `/studio/map`, with box-select (shift-drag) and parcels that fly
+between sites when a job moves.
 
 - World map: sites glowing on the star field, jobs flying between them.
   A manager's own sites are bright, the rest dimmed.

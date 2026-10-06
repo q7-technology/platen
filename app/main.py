@@ -977,6 +977,17 @@ def _move(s: Session, run: db.PrintRun, target: db.Printer, user: AppUser, *,
     out: the worker only ever sends labels with no printed_at."""
     if run.status not in MOVABLE:
         raise HTTPException(409, f"{run.id} is {run.status}; there is nothing left to move")
+    if target.id == run.printer_id and run.move_to:
+        # still printing here, on its way somewhere else: moving it "back" is
+        # taking the move back, which is what an undo of it means
+        left = jobs.remaining(s, run.id)
+        gone_to, run.move_to = run.move_to, None
+        audit(s, "move", "run", run.id, actor=user, **{"from": gone_to, "to": target.id},
+              remaining=left, called_off=True)
+        s.commit()
+        events.run_changed(run)
+        return {"id": run.id, "from": gone_to, "to": target.id, "status": run.status,
+                "remaining": left, "moving": False}
     if target.id == run.printer_id:
         raise HTTPException(409, f"{run.id} is already on {target.name}")
     _may_use(s, user, target)

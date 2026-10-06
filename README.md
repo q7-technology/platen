@@ -210,7 +210,9 @@ town at night. Sites are buildings on a map, with a lit window for each job
 on and a gold glow when a printer there needs a look. Open one to see its
 printers on a floor plan, with their jobs waiting on a belt in front of them
 as white parcels. Drag a parcel onto another printer to move what's left of
-it; the printers that would take it light up, and Undo takes it back. Click
+it; the printers that would take it light up, and Undo takes it back.
+Shift-drag across the floor, or shift-click, to pick up several jobs and move
+them together. A job that moves to another site flies across the map. Click
 a printer for its health and its queue, and, for a manager, a detour. Managers
 can also drag printers into place under **Arrange printers**, and everyone at
 the site sees the same layout. An operator starts inside their own site.

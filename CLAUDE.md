@@ -148,6 +148,8 @@ test suite runs the same models on SQLite, so keep column types portable.
     because its labels are already rendered. The worker claims a run
     (`queued` or `retrying` → `printing`) before it sends anything, so a late
     retry of a run that has moved on, or is printing elsewhere, does nothing.
+    Moving a printing run back to the printer it is still on calls off the
+    move it was waiting to make; that is what undo means there.
 
 ## Code
 
