@@ -178,31 +178,40 @@ returned no column 'consignment_no'"`, not `"render failed"`.
 
 ## Design system
 
-The UI and the public pages follow the **Q7 Technology** design system. Its
-tokens live in the design-system artifact; the short version:
+The studio screens have Platen's own look, **plum and lime**: a bright toy
+town in daylight. The tokens live at the top of `web/studio/studio.css`; use
+them rather than writing a colour into a page. The short version:
 
-- **One theme, dark.** Ground is `#0d1117`. There is no light palette — never
-  write `dark:` variants or a `prefers-color-scheme` block.
-- **Surfaces are the ground again at 60% alpha** over the star field, with a
-  blue hairline. Do not introduce lighter grey surfaces; depth comes from alpha
-  and borders.
-- **Two text values only**: `#ccd6f6` for headings and values, `#8892b0` for
-  prose, meta and captions.
-- **Two hues per screen, maximum.** `#29abe2` is the brand blue (accent word in
-  a heading, icons, primary CTA, and borders at 10–30% alpha). `#f7941d` is the
-  second voice — taglines, outline CTAs, and every "this is simulated" marker.
-- **Light fills take dark text.** Blue, gold and mint fills get `#0d1117` on
-  them, never white.
+- **One theme, light.** Ground is warm paper `#fbf3ec`, cards are white with a
+  `#eadccf` hairline and a soft shadow. There is no dark palette yet — don't
+  add a `prefers-color-scheme` block piecemeal; a night mode is a whole set of
+  tokens or nothing.
+- **Two text values**: `--ink` `#2a2035` for headings and values, `--mut`
+  `#6e6178` for prose, meta and captions.
+- **Plum is the brand** (`--accent` `#7a4aa8`, `--accent-deep` `#5b3384` on
+  hover): primary buttons, the current nav item, links, buildings on the map.
+  White text on plum.
+- **Lime means going well** (`--lime` `#9ccf3b`): progress bars, lit windows,
+  a printer's lamp while it prints, the drop target. Lime is a fill, never
+  text on white — use `--lime-text` `#4f7a12` for words.
+- **Red is kept for one job: a person needs to look** (`--signal` `#c9343d`
+  for text, `--signal-bright` `#e5484d` for pins, lamps and bars). Nothing
+  decorative is red, so a red thing on the map is always a reason to walk
+  over. The CSS still calls these classes `gold`; the name is historical.
+- Parcels are cardboard brown, label stock is white with dark ink — a label is
+  paper.
 - **System font stack**, sans and mono. Don't add a webfont.
 - **Icons**: lucide at 1.5px stroke, nothing else. Decorative ones get
   `aria-hidden="true"`; icon-only controls get an `aria-label`.
-- **The logo is `q7-logo-128.png`.** Never redraw it, recolour it, or place it
-  on a light background. Alt text is `Q7Technology Logo`.
-- Label stock stays white with dark ink, in every theme — a label is paper.
+- **The mark is `web/platen-mark.svg`**, a plum box with a lime label. It sits
+  next to the PLATEN wordmark, so its alt text is empty. The studio and the
+  landing page (`web/index.html`) share the same tokens. Q7 Technology is
+  credited in words; its logo isn't used, since it never goes on a light
+  background.
 
 Voice: plain Australian English. `I.T.`, never `Information Technology`. Claims
 carry a number or a mechanism or they get cut. Sentence case everywhere except
-uppercase eyebrows. Anything mocked or simulated says so, in gold, before
+uppercase eyebrows. Anything mocked or simulated says so, plainly, before
 someone touches it.
 
 ## Licence

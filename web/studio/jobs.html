@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Job history — Platen Label Studio</title>
-<link rel="icon" href="/studio/static/q7-logo-128.png">
+<link rel="icon" href="/studio/static/platen-mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/studio/static/studio/studio.css">
 <script src="/studio/static/studio/studio.js"></script>
 <style>
@@ -20,9 +20,9 @@
   .dot.failed, .dot.retrying, .dot.cancelled, .dot.blocked { background: var(--signal); }
   @keyframes pulse { 50% { opacity: .35; } }
   @media (prefers-reduced-motion: reduce) { .dot.printing { animation: none; } }
-  .bar { height: 5px; border-radius: 999px; background: rgba(41,171,226,0.14); overflow: hidden; width: 90px; }
-  .bar i { display: block; height: 100%; background: var(--accent); }
-  .bar.gold i { background: var(--signal); }
+  .bar { height: 5px; border-radius: 999px; background: var(--well); overflow: hidden; width: 90px; }
+  .bar i { display: block; height: 100%; background: var(--lime); }
+  .bar.gold i { background: var(--signal-bright); }
   .kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; font-size: 13px; }
   .kv dt { color: var(--mut); }
   .kv dd { margin: 0; font-family: var(--mono); font-size: 12.5px; }

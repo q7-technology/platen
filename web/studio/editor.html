@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Template editor — Platen Label Studio</title>
-<link rel="icon" href="/studio/static/q7-logo-128.png">
+<link rel="icon" href="/studio/static/platen-mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/studio/static/studio/studio.css">
 <script src="/studio/static/studio/studio.js"></script>
 <style>
@@ -26,10 +26,10 @@
 
   .stage { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
   .canvas-wrap { flex: 1; min-height: 260px; overflow: auto; background: var(--well); border: 1px solid var(--line); border-radius: 10px; display: flex; align-items: flex-start; justify-content: center; padding: 22px; }
-  .canvas { position: relative; background: #fff no-repeat center / 100% 100%; box-shadow: 0 2px 3px rgba(0,0,0,.4), 0 24px 44px -28px rgba(0,0,0,.8); flex: none; }
+  .canvas { position: relative; background: #fff no-repeat center / 100% 100%; box-shadow: 0 1px 2px rgba(42,32,53,.15), 0 18px 36px -22px rgba(42,32,53,.35); flex: none; }
   .el { position: absolute; border: 1px solid transparent; cursor: move; touch-action: none; }
-  .el:hover { border-color: rgba(41,171,226,0.55); }
-  .el[aria-selected="true"] { border-color: var(--accent); background: rgba(41,171,226,0.07); }
+  .el:hover { border-color: rgba(122,74,168,0.55); }
+  .el[aria-selected="true"] { border-color: var(--accent); background: rgba(122,74,168,0.07); }
   .el.off { opacity: .35; }
   .ink { position: absolute; inset: -1px; background-repeat: no-repeat; mix-blend-mode: multiply; pointer-events: none; }
   .lift { position: absolute; background: #fff; pointer-events: none; }

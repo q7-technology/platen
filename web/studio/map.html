@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Live map — Platen Label Studio</title>
-<link rel="icon" href="/studio/static/q7-logo-128.png">
+<link rel="icon" href="/studio/static/platen-mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/studio/static/studio/studio.css">
 <script src="/studio/static/studio/studio.js"></script>
 <style>
@@ -14,7 +14,7 @@
   @media (max-width: 1100px) { .stage { grid-template-columns: 1fr; } .panel { border-left: 0; border-top: 1px solid var(--line); } }
 
   .scene { position: relative; min-height: 520px; overflow: hidden; touch-action: none;
-           background: radial-gradient(1100px 600px at 50% 120%, rgba(41,171,226,0.07), transparent 70%); }
+           background: radial-gradient(1100px 600px at 50% 120%, rgba(156,207,59,0.10), transparent 70%); }
   .scene svg.town { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; user-select: none; }
   .scene svg.town.panning { cursor: grabbing; }
 
@@ -38,7 +38,7 @@
   .tracker li i { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--line); flex: none; }
   .tracker li.done i { background: var(--accent); border-color: var(--accent); }
   .tracker li.now { color: var(--ink); }
-  .tracker li.now i { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 4px rgba(41,171,226,0.18); }
+  .tracker li.now i { background: var(--lime); border-color: var(--lime-text); box-shadow: 0 0 0 4px rgba(156,207,59,0.25); }
   .tracker li.stuck { color: var(--signal); }
   .tracker li.stuck i { background: var(--signal); border-color: var(--signal); }
   .tracker .hint { color: var(--mut); }
@@ -63,51 +63,51 @@
   .toast.bad { border-color: var(--signal-line); color: var(--signal); }
 
   /* ---------- the town ---------- */
-  .floor { fill: rgba(41,171,226,0.035); stroke: rgba(41,171,226,0.10); stroke-width: 1; }
-  .plate { fill: rgba(41,171,226,0.05); stroke: rgba(41,171,226,0.30); stroke-width: 1.2; }
-  .top   { fill: #16324a; }
-  .left  { fill: #0a1724; }
-  .right { fill: #0f2234; }
-  .edge  { fill: none; stroke: #29abe2; stroke-width: 1.1; stroke-linejoin: round; }
+  .floor { fill: #f4e6d9; stroke: #e7d4c2; stroke-width: 1; }
+  .plate { fill: #efe3f7; stroke: rgba(122,74,168,0.35); stroke-width: 1.2; }
+  .top   { fill: #a07acc; }
+  .left  { fill: #7a4aa8; }
+  .right { fill: #5b3384; }
+  .edge  { fill: none; stroke: #4a2a6e; stroke-width: 1; stroke-linejoin: round; }
   .glow  { filter: url(#glow); }
-  .window { fill: #0f2234; }
-  .window.lit { fill: #29abe2; }
+  .window { fill: #4a2a6e; }
+  .window.lit { fill: #9ccf3b; }
   .halo.ok { fill: url(#halo-blue); }
   .halo.bad { fill: url(#halo-gold); }
-  .name { fill: #ccd6f6; font-size: 13px; font-weight: 600; text-anchor: middle; }
-  .meta { fill: #8892b0; font-size: 11.5px; text-anchor: middle; }
-  .meta.bad { fill: #f7941d; }
-  .roll { fill: #e9edf6; stroke: #8892b0; stroke-width: 0.8; }
-  .paper { fill: #ffffff; stroke: #8892b0; stroke-width: 0.6; }
-  .lamp { fill: #23415c; }
-  .lamp.on { fill: #29abe2; animation: blink 0.9s steps(2, start) infinite; }
-  .lamp.bad { fill: #f7941d; animation: pulse 1.6s ease-in-out infinite; }
-  .belt { fill: none; stroke: rgba(41,171,226,0.25); stroke-width: 10; stroke-linecap: round; }
-  .belt-run { fill: none; stroke: rgba(41,171,226,0.65); stroke-width: 1.4; stroke-dasharray: 4 7; }
+  .name { fill: #2a2035; font-size: 13px; font-weight: 600; text-anchor: middle; }
+  .meta { fill: #6e6178; font-size: 11.5px; text-anchor: middle; }
+  .meta.bad { fill: #c9343d; }
+  .roll { fill: #ffffff; stroke: #6e6178; stroke-width: 0.8; }
+  .paper { fill: #ffffff; stroke: #6e6178; stroke-width: 0.6; }
+  .lamp { fill: #d9cde3; }
+  .lamp.on { fill: #9ccf3b; animation: blink 0.9s steps(2, start) infinite; }
+  .lamp.bad { fill: #e5484d; animation: pulse 1.6s ease-in-out infinite; }
+  .belt { fill: none; stroke: #e2d2c4; stroke-width: 10; stroke-linecap: round; }
+  .belt-run { fill: none; stroke: #b8a1cf; stroke-width: 1.4; stroke-dasharray: 4 7; }
   .belt-run.moving { animation: crawl 0.8s linear infinite; }
-  .parcel .p-top { fill: #ffffff; }
-  .parcel .p-left { fill: #c9d1e3; }
-  .parcel .p-right { fill: #dde3f0; }
-  .parcel .p-edge { fill: none; stroke: #8892b0; stroke-width: 0.6; }
-  .parcel.stuck .p-top { fill: #fde3c3; }
-  .parcel.sel .p-edge, .printer.sel .edge { stroke: #ffffff; stroke-width: 1.8; }
-  .parcel.picked .p-edge { stroke: #29abe2; stroke-width: 2; }
-  .lasso { fill: rgba(41,171,226,0.08); stroke: #29abe2; stroke-width: 1; stroke-dasharray: 4 4; pointer-events: none; }
+  .parcel .p-top { fill: #ecc591; }
+  .parcel .p-left { fill: #c99556; }
+  .parcel .p-right { fill: #dcaa6c; }
+  .parcel .p-edge { fill: none; stroke: #9a6d38; stroke-width: 0.6; }
+  .parcel.stuck .p-top { fill: #f7b9bb; }
+  .parcel.sel .p-edge, .printer.sel .edge { stroke: #2a2035; stroke-width: 2; }
+  .parcel.picked .p-edge { stroke: #7a4aa8; stroke-width: 2.4; }
+  .lasso { fill: rgba(122,74,168,0.08); stroke: #7a4aa8; stroke-width: 1; stroke-dasharray: 4 4; pointer-events: none; }
   .flight { pointer-events: none; }
   .parcel, .printer, .site { cursor: pointer; outline: none; }
-  .parcel:focus-visible .p-edge, .printer:focus-visible .edge, .site:focus-visible .edge { stroke: #ffffff; stroke-width: 2.2; }
-  .pin { fill: #f7941d; }
-  .pin-t { fill: #0d1117; font-size: 11px; font-weight: 800; text-anchor: middle; }
-  .count { fill: #0d1117; font-size: 10px; font-weight: 700; text-anchor: middle; }
-  .count-bg { fill: #ccd6f6; }
-  .detour { fill: none; stroke: #f7941d; stroke-width: 1.5; stroke-dasharray: 5 5; }
-  .target .edge { stroke: #ffffff; stroke-width: 2.2; }
+  .parcel:focus-visible .p-edge, .printer:focus-visible .edge, .site:focus-visible .edge { stroke: #2a2035; stroke-width: 2.4; }
+  .pin { fill: #e5484d; }
+  .pin-t { fill: #ffffff; font-size: 11px; font-weight: 800; text-anchor: middle; }
+  .count { fill: #ffffff; font-size: 10px; font-weight: 700; text-anchor: middle; }
+  .count-bg { fill: #2a2035; }
+  .detour { fill: none; stroke: #e5484d; stroke-width: 1.5; stroke-dasharray: 5 5; }
+  .target .edge { stroke: #9ccf3b; stroke-width: 3.2; }
   .refuse { opacity: 0.35; }
   .ghost { pointer-events: none; opacity: 0.9; }
-  .slot { fill: rgba(41,171,226,0.12); stroke: #29abe2; stroke-dasharray: 3 4; }
-  .spark { fill: #ccd6f6; animation: spark 1.4s ease-out forwards; }
+  .slot { fill: rgba(122,74,168,0.10); stroke: #7a4aa8; stroke-dasharray: 3 4; }
+  .spark { fill: #9ccf3b; animation: spark 1.4s ease-out forwards; }
 
-  @keyframes blink { to { fill: #23415c; } }
+  @keyframes blink { to { fill: #d9cde3; } }
   @keyframes pulse { 50% { opacity: 0.35; } }
   @keyframes crawl { to { stroke-dashoffset: -11; } }
   @keyframes spark { from { opacity: 1; transform: scale(0.3); } to { opacity: 0; transform: scale(1.6); } }
@@ -305,11 +305,11 @@
         svg('feGaussianBlur', { stdDeviation: 1.6, result: 'b' }),
         svg('feMerge', {}, svg('feMergeNode', { in: 'b' }), svg('feMergeNode', { in: 'SourceGraphic' }))),
       svg('radialGradient', { id: 'halo-blue' },
-        svg('stop', { offset: '0%', 'stop-color': '#29abe2', 'stop-opacity': 0.28 }),
-        svg('stop', { offset: '100%', 'stop-color': '#29abe2', 'stop-opacity': 0 })),
+        svg('stop', { offset: '0%', 'stop-color': '#7a4aa8', 'stop-opacity': 0.18 }),
+        svg('stop', { offset: '100%', 'stop-color': '#7a4aa8', 'stop-opacity': 0 })),
       svg('radialGradient', { id: 'halo-gold' },
-        svg('stop', { offset: '0%', 'stop-color': '#f7941d', 'stop-opacity': 0.42 }),
-        svg('stop', { offset: '100%', 'stop-color': '#f7941d', 'stop-opacity': 0 })));
+        svg('stop', { offset: '0%', 'stop-color': '#e5484d', 'stop-opacity': 0.30 }),
+        svg('stop', { offset: '100%', 'stop-color': '#e5484d', 'stop-opacity': 0 })));
   }
 
   function draw() {
@@ -816,7 +816,7 @@
       const d = `M${a[0]} ${a[1]} Q${(a[0] + b[0]) / 2} ${Math.min(a[1], b[1]) - lift} ${b[0]} ${b[1]}`;
       const trail = svg('path', { class: 'detour', d, opacity: 0.5 });
       const box = svg('g', { class: 'flight' },
-        svg('rect', { x: -7, y: -5, width: 14, height: 10, rx: 1.5, fill: '#ffffff', stroke: '#8892b0', 'stroke-width': 0.6 }),
+        svg('rect', { x: -7, y: -5, width: 14, height: 10, rx: 1.5, fill: '#ffffff', stroke: '#6e6178', 'stroke-width': 0.6 }),
         svg('animateMotion', { dur: '1.6s', begin: `${i * 0.25}s`, fill: 'freeze', path: d, rotate: 0 }));
       sky.append(trail, box);
       setTimeout(() => { trail.remove(); box.remove(); }, 1900 + i * 250);

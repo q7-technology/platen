@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in — Platen Label Studio</title>
-<link rel="icon" href="/studio/static/q7-logo-128.png">
+<link rel="icon" href="/studio/static/platen-mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/studio/static/studio/studio.css">
 <script src="/studio/static/studio/studio.js"></script>
 <style>
   .gate { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
   .gate form { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 18px; }
   .gate .mark { display: flex; align-items: center; gap: 13px; }
-  .gate .mark img { width: 40px; height: auto; }
+  .gate .mark img { width: 40px; height: 40px; }
   .gate .mark b { display: block; font-weight: 700; font-size: 21px; letter-spacing: 0.18em; }
   .gate .mark small { display: block; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mut); }
   .gate .card { gap: 16px; }
@@ -24,7 +24,7 @@
 <div class="gate">
   <form id="form" autocomplete="on">
     <div class="mark">
-      <img src="/studio/static/q7-logo-128.png" alt="Q7Technology Logo" width="40" height="35">
+      <img src="/studio/static/platen-mark.svg" alt="" width="40" height="40">
       <span><b>PLATEN</b><small>Label Studio</small></span>
     </div>
 
@@ -42,7 +42,7 @@
       <div id="msg" hidden></div>
     </section>
 
-    <p class="fine">No account yet? Whoever set Platen up makes one with
+    <p class="fine">Platen is open source, made by Q7 Technology in Ballarat.<br>No account yet? Whoever set Platen up makes one with
       <span class="mono">python -m app.adduser</span>.</p>
   </form>
 </div>

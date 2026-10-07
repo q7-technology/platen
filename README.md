@@ -236,10 +236,10 @@ detour keeps to its own kind.
 ## The live map
 
 `/studio/map` is every site, printer and job at once, drawn as a small model
-town at night. Sites are buildings on a map, with a lit window for each job
-on and a gold glow when a printer there needs a look. Open one to see its
-printers on a floor plan, with their jobs waiting on a belt in front of them
-as white parcels. Drag a parcel onto another printer to move what's left of
+town in daylight. Sites are plum buildings, with a lime window lit for each
+job on and a red glow and a pin when a printer there needs a look. Open one to
+see its printers on a floor plan, with their jobs waiting on a belt in front of
+them as cardboard parcels. Drag a parcel onto another printer to move what's left of
 it; the printers that would take it light up, and Undo takes it back.
 Shift-drag across the floor, or shift-click, to pick up several jobs and move
 them together. A job that moves to another site flies across the map. Click

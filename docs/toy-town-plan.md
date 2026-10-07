@@ -21,8 +21,9 @@ each one is useful on its own.
 - **Labels and pages.** Zebra label printers and ordinary office printers.
 - **Pages get their own editor:** header, footer, and tables bound to a query
   that grow and spill onto the next page with their headings repeated.
-- **Dark toy town.** Follows the Q7 Technology design system: night-sky
-  ground, glowing blue outlines, gold for "look here", labels stay white.
+- **Toy town in daylight, plum and lime.** Started as a dark town in the Q7
+  colours; Platen now has its own: plum buildings, lime for going well, red
+  only for "look here", labels stay white.
 - **Drawn flat at a fixed angle,** not real 3D. Zoom and pan, no spinning.
   Light enough for an old warehouse PC or a tablet.
 - **Foundations first.**

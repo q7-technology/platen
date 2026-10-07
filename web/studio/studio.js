@@ -127,8 +127,7 @@ async function renderShell(current, footNote) {
   // out rather than passed through as one
   aside.replaceChildren(...[
     el('div', { class: 'wordmark' },
-      el('img', { src: '/studio/static/q7-logo-128.png', alt: 'Q7Technology Logo',
-                  width: 32, height: 28 }),
+      el('img', { src: '/studio/static/platen-mark.svg', alt: '', width: 34, height: 34 }),
       el('span', {}, el('b', { text: 'PLATEN' }), el('small', { text: 'Label Studio' }))),
     el('nav', { 'aria-label': 'Studio' },
       ...NAV.filter((n) => !n.admin || me.role === 'admin').map((n) =>
@@ -163,7 +162,7 @@ function onLive(reread, kinds = ['run', 'printer', 'queue']) {
 
 const ROLE_NAMES = { admin: 'Administrator', manager: 'Manager', operator: 'Operator' };
 
-/* A failure the operator needs to read, in the gold that means "look here". */
+/* A failure the operator needs to read, in the red that means "look here". */
 function showError(box, message) {
   box.replaceChildren(el('div', { class: 'err' }, icon('alert', 18),
     el('span', { class: 'txt' }, el('code', { text: message }))));
