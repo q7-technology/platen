@@ -21,8 +21,9 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.responses import Response as RawResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from db import models as db
@@ -841,11 +842,13 @@ class Prepared(BaseModel):
     documents: list[bytes] = []     # a page run's PDFs, one per document and copy
 
 
-def _prepare_pages(s: Session, body: RunSpec, version: db.TemplateVersion) -> Prepared:
+def _prepare_pages(s: Session, body: RunSpec, version: db.TemplateVersion,
+                   records: list[dict[str, Any]] | None = None) -> Prepared:
     """A page run: one document per group, each a PDF, all made before any
     of it is queued. Record numbers count documents, not rows."""
     t = pages.PageTemplate.model_validate(version.definition)
-    rows = datasources.run(s, _query(s, t.query), body.params) if t.query else [{}]
+    rows = records if records is not None else (
+        datasources.run(s, _query(s, t.query), body.params) if t.query else [{}])
     try:
         groups = pages.group(t, rows)
     except pages.RenderError as exc:
@@ -873,7 +876,8 @@ def _prepare_pages(s: Session, body: RunSpec, version: db.TemplateVersion) -> Pr
     )
 
 
-def _prepare(s: Session, body: RunSpec) -> Prepared:
+def _prepare(s: Session, body: RunSpec,
+             records: list[dict[str, Any]] | None = None) -> Prepared:
     """Pull the rows and render every label. Shared by the dry run and the
     real one so the operator's check and the print never disagree."""
     version = _latest_version(_template_row(s, body.template_id))
@@ -881,10 +885,11 @@ def _prepare(s: Session, body: RunSpec) -> Prepared:
         raise HTTPException(
             422, f"template {body.template_id!r} has no published version; publish it first")
     if version.definition.get("kind") == "page":
-        return _prepare_pages(s, body, version)
+        return _prepare_pages(s, body, version, records)
     t = Template.model_validate(version.definition)
 
-    rows = datasources.run(s, _query(s, t.query), body.params) if t.query else [{}]
+    rows = records if records is not None else (
+        datasources.run(s, _query(s, t.query), body.params) if t.query else [{}])
     skip = set(body.skip_rows)
     in_range = [(i, r) for i, r in enumerate(rows, start=1) if i >= body.start_at]
     printing = [(i, r) for i, r in in_range if i not in skip]
@@ -1015,12 +1020,11 @@ def _run_json(run: db.PrintRun) -> dict[str, Any]:
     }
 
 
-@app.post("/runs", status_code=202)
-def create_run(body: NewRun, s: Session = Depends(get_session),
-                 user: AppUser = Depends(current_user)) -> dict[str, Any]:
-    printer = s.get(db.Printer, body.printer_id)
-    if printer is None:
-        raise HTTPException(404, f"no printer {body.printer_id!r}")
+def _queue_run(s: Session, user: AppUser, printer: db.Printer, spec: RunSpec, *,
+               records: list[dict[str, Any]] | None = None,
+               wms_job_id: str | None = None, **detail: Any) -> dict[str, Any]:
+    """Check the site, follow a detour, render every label and queue the run.
+    Shared by /runs and the WMS intake so the two can't drift apart."""
     _may_use(s, user, printer)
     asked_for = printer
     if printer.detour_to:
@@ -1031,7 +1035,7 @@ def create_run(body: NewRun, s: Session = Depends(get_session),
                      "of your sites; ask a manager to clear the detour")
 
     # every label renders here, before a run row exists, let alone a job
-    p = _prepare(s, body)
+    p = _prepare(s, spec, records)
     if printer.kind != p.kind:
         raise HTTPException(
             422, f"{printer.name} is a {printer.kind} printer and this template prints "
@@ -1039,23 +1043,23 @@ def create_run(body: NewRun, s: Session = Depends(get_session),
 
     run_id = f"JOB-{uuid.uuid4().hex[:6].upper()}"
     if p.kind == "page":
-        if body.separator:
+        if spec.separator:
             p.warnings.append("a separator is a label; a page run leaves it out")
-        rows = [db.RunLabel(seq=i, zpl="", body=d) for i, d in enumerate(p.documents, start=1)]
+        queued = [db.RunLabel(seq=i, zpl="", body=d) for i, d in enumerate(p.documents, start=1)]
     else:
-        labels = _with_separator(p, run_id) if body.separator else p.labels
-        rows = [db.RunLabel(seq=i, zpl=z) for i, z in enumerate(labels, start=1)]
+        labels = _with_separator(p, run_id) if spec.separator else p.labels
+        queued = [db.RunLabel(seq=i, zpl=z) for i, z in enumerate(labels, start=1)]
     run = db.PrintRun(
         id=run_id, template_version_id=p.version_id,
-        printer_id=printer.id, params=body.params, copies=body.copies,
-        pause_between=body.pause_between, total=len(rows),
-        labels=rows,
+        printer_id=printer.id, params=spec.params, copies=spec.copies,
+        pause_between=spec.pause_between, total=len(queued), wms_job_id=wms_job_id,
+        labels=queued,
         warnings=[_warning(w) for w in p.warnings],
     )
     s.add(run)
-    audit(s, "create", "run", run.id, template_id=body.template_id, template_version=p.version,
-          printer_id=printer.id, asked_for=asked_for.id, labels=len(rows), kind=p.kind,
-          skip_rows=body.skip_rows, actor=user)
+    audit(s, "create", "run", run.id, template_id=spec.template_id, template_version=p.version,
+          printer_id=printer.id, asked_for=asked_for.id, labels=len(queued), kind=p.kind,
+          skip_rows=spec.skip_rows, actor=user, **detail)
     s.commit()
 
     try:
@@ -1069,6 +1073,15 @@ def create_run(body: NewRun, s: Session = Depends(get_session),
     return {"id": run.id, "labels": run.total, "warnings": p.warnings,
             "template_version": p.version, "printer_id": printer.id,
             "detoured_from": asked_for.id if asked_for is not printer else None}
+
+
+@app.post("/runs", status_code=202)
+def create_run(body: NewRun, s: Session = Depends(get_session),
+               user: AppUser = Depends(current_user)) -> dict[str, Any]:
+    printer = s.get(db.Printer, body.printer_id)
+    if printer is None:
+        raise HTTPException(404, f"no printer {body.printer_id!r}")
+    return _queue_run(s, user, printer, body)
 
 
 def _warning(text: str) -> db.RunWarning:
@@ -1167,10 +1180,119 @@ def cancel_run(run_id: str, s: Session = Depends(get_session),
         audit(s, "cancel", "run", run_id, actor=user)
         s.commit()
         events.run_changed(run)
+        jobs.settled(run)
         return {"id": run_id, "status": "cancelled"}
     audit(s, "cancel", "run", run_id, actor=user)
     jobs.cancel(s, run_id)
     return {"id": run_id, "status": "cancelling"}
+
+
+# ------------------------------------------------------------------ simple wms
+
+class WmsJob(BaseModel):
+    """What Simple WMS sends: its template name, a printer, and the data."""
+    job_id: uuid.UUID
+    template: str
+    version: str = ""
+    printer: str
+    copies: int = Field(default=1, ge=1, le=99)
+    reference: dict[str, Any] = {}
+    data: dict[str, Any] = {}
+
+
+def _wms_printer(s: Session, user: AppUser, asked: str) -> db.Printer:
+    """By id, then by name among the printers this caller may see. A name
+    that is only at another site still comes back, for _may_use to say where."""
+    asked = asked.strip()
+    printer = s.get(db.Printer, asked)
+    if printer is not None:
+        return printer
+    named = select(db.Printer).where(func.lower(db.Printer.name) == asked.lower()) \
+        .order_by(db.Printer.id)
+    where_ = sites.printer_filter(s, user)
+    visible = list(s.scalars(named if where_ is None else named.where(where_)))
+    if len(visible) > 1:
+        raise HTTPException(422, f"printer: more than one printer is called {asked!r}; "
+                                 "use its id in the WMS print point")
+    printer = visible[0] if visible else s.scalars(named).first()
+    if printer is None:
+        raise HTTPException(422, f"printer: Platen has no printer with the id or name {asked!r}; "
+                                 "add it on the printers screen or fix the WMS print point")
+    return printer
+
+
+def _wms_records(kind: str, data: dict[str, Any]) -> list[dict[str, Any]]:
+    """A label is one record. A page lists the lines, each carrying the
+    header beside it, so a table lists them and the heading still binds."""
+    lines = data.get("lines")
+    if kind != "page" or not isinstance(lines, list) or not lines:
+        return [data]
+    header = {k: v for k, v in data.items() if k != "lines"}
+    return [{**header, **line} if isinstance(line, dict) else dict(header) for line in lines]
+
+
+def _wms_seen(s: Session, user: AppUser, run: db.PrintRun) -> dict[str, Any]:
+    """A resent job prints nothing new. One that never reached the queue
+    (Redis was down, the WMS got a 503) is put on it now."""
+    printer = s.get(db.Printer, run.printer_id)
+    if printer is not None:
+        _may_use(s, user, printer)
+    # only the request that flips it queues it, so two resends at once can't
+    # both put it on the queue
+    claimed = s.execute(
+        update(db.PrintRun)
+        .where(db.PrintRun.id == run.id, db.PrintRun.status == "failed",
+               db.PrintRun.attempts == 0, db.PrintRun.printed == 0,
+               db.PrintRun.finished_at.is_(None))
+        .values(status="queued", error=None, finished_at=None)
+    ).rowcount
+    s.commit()
+    if claimed:
+        s.refresh(run)
+        audit(s, "requeue", "run", run.id, actor=user, wms_job_id=run.wms_job_id)
+        s.commit()
+        try:
+            jobs.enqueue(run.id)
+        except Exception as exc:
+            run.status, run.error = "failed", f"could not queue: {type(exc).__name__}: {exc}"
+            s.commit()
+            events.run_changed(run)
+            raise HTTPException(503, run.error) from None
+        events.run_changed(run)
+    return {"id": run.id, "labels": run.total, "warnings": [], "printer_id": run.printer_id,
+            "duplicate": True}
+
+
+@app.post("/intake/wms", status_code=202)
+def wms_intake(body: WmsJob, s: Session = Depends(get_session),
+               user: AppUser = Depends(current_user)) -> dict[str, Any]:
+    """A print job from Simple WMS. The template is the one whose id is the
+    WMS template name; its saved query isn't run, the data comes with the job."""
+    job_id = str(body.job_id)
+    seen = s.scalar(select(db.PrintRun).where(db.PrintRun.wms_job_id == job_id))
+    if seen is not None:
+        return _wms_seen(s, user, seen)
+    template = s.get(db.Template, body.template)
+    if template is None:
+        raise HTTPException(422, f"template: Platen has no template {body.template!r}; "
+                                 "make one with that id and publish it")
+    printer = _wms_printer(s, user, body.printer)
+    spec = RunSpec(template_id=template.id, copies=body.copies)
+    # the version that prints decides, not the draft; none at all and
+    # _prepare says to publish it
+    latest = _latest_version(template)
+    kind = (latest.definition.get("kind") if latest else None) or "label"
+    try:
+        out = _queue_run(s, user, printer, spec, records=_wms_records(kind, body.data),
+                         wms_job_id=job_id, wms_version=body.version,
+                         wms_reference=body.reference)
+    except IntegrityError:                  # the same job, sent twice at once
+        s.rollback()
+        seen = s.scalar(select(db.PrintRun).where(db.PrintRun.wms_job_id == job_id))
+        if seen is None:
+            raise
+        return _wms_seen(s, user, seen)
+    return {**out, "duplicate": False}
 
 
 class MoveBody(BaseModel):

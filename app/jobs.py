@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 
+import httpx
 import redis
 from rq import Queue, Retry
 from rq.job import get_current_job
@@ -41,6 +42,12 @@ def connection() -> redis.Redis:
 
 def queue() -> Queue:
     return Queue("platen", connection=connection())
+
+
+def reports_queue() -> Queue:
+    """Reports to the WMS. A worker drains its queues in the order it was
+    given them, so naming this one second keeps a slow WMS off the labels."""
+    return Queue("platen-reports", connection=connection())
 
 
 # A printer that stopped answering usually starts again: someone closes the
@@ -149,6 +156,7 @@ def print_run(run_id: str) -> None:
             run.finished_at = datetime.now(UTC)
             s.commit()
             events.run_changed(run)
+            settled(run)
             log.error("run failed: %s", where(run=run_id, printer=run.printer_id,
                                               reason="printer no longer exists"))
             return
@@ -197,6 +205,7 @@ def print_run(run_id: str) -> None:
                     run.finished_at = datetime.now(UTC)
                     s.commit()
                     events.run_changed(run)
+                    settled(run)
                     log.info("run cancelled: %s", where(run=run_id, printed=printed,
                                                         total=run.total))
                     return
@@ -269,7 +278,80 @@ def print_run(run_id: str) -> None:
             log.error("run %s: %s", run.status,
                       where(run=run_id, printer=run.printer_id, printed=printed,
                             total=run.total, tries_left=left, error=run.error))
+            if not left:
+                settled(run)
             raise                                     # rq schedules the next attempt
         run.finished_at = datetime.now(UTC)
         s.commit()
         events.run_changed(run)
+        settled(run)
+
+
+SETTLED = ("done", "failed", "cancelled")
+
+# A WMS that is down for a minute, or for the afternoon, still hears how the
+# run went: the last try is about an hour and a half after the first.
+REPORT_RETRY = Retry(max=5, interval=[30, 120, 600, 1800, 3600])
+REPORT_TIMEOUT = httpx.Timeout(10.0, connect=3.0)
+
+
+def _worth_another_go(status: int) -> bool:
+    """A key being swapped, a WMS too busy or down: these can change. A 404 or
+    a 422 is the same answer however often it is asked."""
+    return status in (401, 408, 429) or status >= 500
+
+
+def settled(run: PrintRun) -> None:
+    """Queue the report to the WMS for a run it asked for. Queued rather
+    than sent, and never raises, so a WMS that is down holds up no label."""
+    if not run.wms_job_id or run.status not in SETTLED:
+        return
+    try:
+        reports_queue().enqueue(report_to_wms, run.id, retry=REPORT_RETRY)
+    except Exception as exc:
+        log.error("could not queue the report to the WMS: %s",
+                  where(run=run.id, wms_job=run.wms_job_id, error=type(exc).__name__))
+
+
+def report_to_wms(run_id: str) -> None:
+    """Runs in the worker. Raises on an answer that may change, or no answer
+    at all, so rq tries again; any other refusal is logged and left.
+
+    Reads the run as it is now, not as it was when the report was queued: a
+    run put back on the queue since says nothing until it settles again, and
+    that settle queues a report of its own."""
+    from .settings import settings
+
+    dbsession.engine()
+    with dbsession.SessionLocal() as s:
+        run = s.get(PrintRun, run_id)
+        if run is None or not run.wms_job_id or run.status not in SETTLED:
+            return
+        if not settings.wms_url:
+            log.warning("no WMS_URL, so the WMS was not told: %s",
+                        where(run=run_id, wms_job=run.wms_job_id, status=run.status))
+            return
+        if run.status == "done":
+            body: dict[str, str] = {"status": "printed"}
+        elif run.status == "cancelled":
+            body = {"status": "failed", "message": "cancelled in Platen"}
+        else:
+            body = {"status": "failed",
+                    "message": (run.error or "the run failed in Platen")[:500]}
+        url = f"{settings.wms_url.rstrip('/')}/v1/print-jobs/{run.wms_job_id}/status"
+        headers = {"Authorization": f"Bearer {settings.wms_key}"} if settings.wms_key else {}
+        if not settings.wms_key:
+            log.warning("no WMS_KEY, so the WMS will likely refuse the report: %s",
+                        where(run=run_id, wms_job=run.wms_job_id))
+        # a transport error goes up as it is: httpx doesn't put headers in its
+        # message, so the key stays out of rq's log
+        r = httpx.post(url, json=body, headers=headers, timeout=REPORT_TIMEOUT)
+        if not 200 <= r.status_code < 300:
+            again = _worth_another_go(r.status_code)
+            log.warning("the WMS refused the report%s: %s",
+                        "" if again else ", and won't be asked again",
+                        where(run=run_id, wms_job=run.wms_job_id, http=r.status_code))
+            if again:
+                raise RuntimeError(f"the WMS answered {r.status_code} to the report on {run_id}")
+            return
+        log.info("WMS told: %s", where(run=run_id, wms_job=run.wms_job_id, status=body["status"]))

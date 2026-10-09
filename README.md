@@ -64,7 +64,7 @@ export DATABASE_URL=postgresql+psycopg://platen:platen@localhost:5432/platen
 export REDIS_URL=redis://localhost:6379/0
 alembic upgrade head              # once, and after pulling a new migration
 uvicorn app.main:app --reload     # API
-rq worker platen                  # worker, in a second terminal
+rq worker --with-scheduler platen platen-reports # worker, in a second terminal
 ```
 
 Needs Python 3.11+, a Postgres for its own storage and a Redis for the queue.
@@ -89,6 +89,30 @@ Tests need neither Docker nor a database:
 pip install -r requirements-dev.txt
 pytest
 ```
+
+## From Simple WMS
+
+Simple WMS never draws a label of its own: it sends a template name and a row of data, and Platen prints it.
+
+1. Make an operator key under **People → Keys**. Tick the site if there is
+   one, and the key keeps to it.
+2. In the WMS, set the warehouse's `platen_url` setting to
+   `https://<platen>/intake/wms`, and `WMS_PLATEN_KEY` in the WMS `.env` to
+   that key.
+3. Give each Platen template the id of the WMS template it stands for
+   (`carton-label`, `pick-list`, …) and publish it. Bind its fields to the
+   shapes `GET /v1/print-templates` lists on the WMS; a nested field binds as
+   `{{ ship_to.name }}`. The template's saved query isn't run: the job's data
+   is the row.
+4. The WMS print point's printer must match a Platen printer's id or its name
+   (case doesn't matter).
+5. In Platen, set `WMS_URL` to the WMS address and `WMS_KEY` to a WMS API key
+   with the `printing:write` scope, and the WMS hears `printed` or `failed`
+   once the run settles.
+
+A page template gets one row per entry in `lines`, with the job's header
+fields beside each. A job the WMS sends twice prints once. An unknown template
+or printer is a 422 naming it, and a printer at another site a 403.
 
 ## How it fits together
 

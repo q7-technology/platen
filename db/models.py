@@ -297,6 +297,8 @@ class PrintRun(Base):
     cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
     # set while printing, like cancel: the worker moves the run between labels
     move_to: Mapped[str | None] = mapped_column(String(64))
+    # the Simple WMS job this run prints, so a resend finds it and the WMS is told
+    wms_job_id: Mapped[str | None] = mapped_column(String(36), unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now, index=True)
     started_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
     finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime)

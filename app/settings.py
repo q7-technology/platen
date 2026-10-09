@@ -26,6 +26,10 @@ class Settings:
     # alone it follows the scheme of the request. Set it when a proxy
     # terminates TLS and doesn't pass the scheme through.
     secure_cookies: bool | None
+    # Where the Simple WMS is, and the key Platen calls it back with. No URL,
+    # no callback: a run the WMS asked for still prints.
+    wms_url: str
+    wms_key: str
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -36,6 +40,8 @@ class Settings:
             redis_url=os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
             debug=os.environ.get("PLATEN_DEBUG", "").lower() in ("1", "true", "yes"),
             secure_cookies=_flag("PLATEN_SECURE_COOKIES"),
+            wms_url=os.environ.get("WMS_URL", "").strip(),
+            wms_key=os.environ.get("WMS_KEY", "").strip(),
         )
 
 

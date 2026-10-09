@@ -54,7 +54,7 @@ docs/           the design canvas artboards and the walkthrough reel
 python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload     # API
-rq worker platen                  # worker, second terminal
+rq worker --with-scheduler platen platen-reports # worker, second terminal
 ```
 
 Storage is Postgres through SQLAlchemy 2 (`db/models.py`) with Alembic

@@ -11,7 +11,7 @@ services:
   worker:
     build: .
     env_file: .env
-    command: sh -c "rq worker --url \"$$REDIS_URL\" platen"
+    command: sh -c "rq worker --with-scheduler --url \"$$REDIS_URL\" platen platen-reports"
     depends_on:
       api: { condition: service_started }
       redis: { condition: service_healthy }
