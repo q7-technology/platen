@@ -70,6 +70,19 @@ rq worker platen                  # worker, in a second terminal
 Needs Python 3.11+, a Postgres for its own storage and a Redis for the queue.
 Every setting comes from the environment; `.env.example` lists them.
 
+Something to try it on, before you point it at your own database:
+
+```bash
+python -m app.demo                                    # on your own machine
+docker compose exec api python -m app.demo --warehouse /tmp/demo.sqlite
+```
+
+That writes a small made-up warehouse (customers, products, orders, cartons,
+pallets, bins, assets) to a SQLite file, connects to it read-only, and adds
+nine saved queries over it, six label templates and two page templates, all
+published, in the **Demo** folder. Every id starts with `demo-`. Run it again
+to rebuild the data; a template only gets a new version if its draft changed.
+
 Tests need neither Docker nor a database:
 
 ```bash
