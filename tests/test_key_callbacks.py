@@ -153,3 +153,8 @@ def test_a_job_from_a_revoked_key_is_reported_to_nobody(seeded, wms, caplog):  #
         jobs.report_to_wms(run_id)
     assert wms.calls == []
     assert "revoked" in caplog.text and run_id in caplog.text
+
+
+def test_the_keys_screen_asks_for_a_callback(client):
+    r = client.get("/studio/people")
+    assert 'id="k-callback-url"' in r.text and 'id="k-callback-key"' in r.text

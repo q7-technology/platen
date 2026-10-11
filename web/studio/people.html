@@ -82,7 +82,7 @@
             <span class="mut" style="font-size: 12px;">For a script or a scheduled job, not a person</span></div>
           <div class="scroll">
             <table>
-              <thead><tr><th>Name</th><th>Role</th><th>Sites</th><th>Made by</th><th>Last used</th><th></th></tr></thead>
+              <thead><tr><th>Name</th><th>Role</th><th>Sites</th><th>Reports to</th><th>Made by</th><th>Last used</th><th></th></tr></thead>
               <tbody id="key-rows"></tbody>
             </table>
           </div>
@@ -105,6 +105,11 @@
             <div id="k-sites" role="group" aria-labelledby="l-k-sites" style="display: flex; flex-wrap: wrap; gap: 6px 16px;"></div>
             <p class="mut" style="font-size: 12px; margin: 6px 0 0;">Leave them all unticked and the key reaches every site, as keys always have.</p>
           </div>
+          <div class="row">
+            <div class="field"><label for="k-callback-url">Report printed jobs to</label><input id="k-callback-url" class="mono" type="url" placeholder="https://tms.example.com" autocapitalize="none" spellcheck="false"></div>
+            <div class="field"><label for="k-callback-key">With this key of theirs</label><input id="k-callback-key" class="mono" type="password" autocomplete="off"></div>
+          </div>
+          <p class="mut" style="font-size: 12px; margin: 0;">For a system that sends print jobs, such as Simple TMS: Platen tells it each job printed or failed. Leave it empty and jobs are reported to WMS_URL, as before. Their key is never shown again.</p>
           <div id="k-token"></div>
           <div id="k-msg" hidden></div>
         </section>
@@ -249,6 +254,7 @@
         el('td', { text: k.role === 'agent' ? 'Agent' : k.role === 'admin' ? 'Administrator' : 'Operator' }),
         el('td', { class: 'mut', text: k.role === 'agent' ? '—' : k.sites?.length
           ? k.sites.map((id) => state.sites.find((s) => s.id === id)?.name || id).join(', ') : 'All' }),
+        el('td', { class: 'mut mono', text: k.role === 'agent' ? '—' : k.callback_url || 'WMS_URL' }),
         el('td', { class: 'mut mono', text: k.created_by || '—' }),
         el('td', { class: 'mut', text: when(k.last_used_at) }),
         el('td', {}, el('button', { class: 'btn sm gold', type: 'button',
@@ -263,9 +269,14 @@
     try {
       const sites = $('k-role').value === 'operator'
         ? [...$('k-sites').querySelectorAll('input:checked')].map((c) => c.value) : [];
-      const made = await api('POST', '/keys', { name, role: $('k-role').value, sites });
+      const made = await api('POST', '/keys', {
+        name, role: $('k-role').value, sites,
+        callback_url: $('k-callback-url').value.trim() || null,
+        callback_key: $('k-callback-key').value.trim() || null });
       clearError($('k-msg'));
       $('k-name').value = '';
+      $('k-callback-url').value = '';
+      $('k-callback-key').value = '';
       keySites();
       $('k-token').replaceChildren(el('div', { class: 'warn' }, icon('alert', 18),
         el('span', { class: 'txt' },
