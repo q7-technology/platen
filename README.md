@@ -90,29 +90,44 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-## From Simple WMS
+## From Simple WMS and Simple TMS
 
-Simple WMS never draws a label of its own: it sends a template name and a row of data, and Platen prints it.
+Simple WMS and Simple TMS never draw a label or a page of their own: they
+send a template name and a row of data, and Platen prints it.
 
-1. Make an operator key under **People → Keys**. Tick the site if there is
-   one, and the key keeps to it.
-2. In the WMS, set the warehouse's `platen_url` setting to
-   `https://<platen>/intake/wms`, and `WMS_PLATEN_KEY` in the WMS `.env` to
-   that key.
-3. Give each Platen template the id of the WMS template it stands for
-   (`carton-label`, `pick-list`, …) and publish it. Bind its fields to the
-   shapes `GET /v1/print-templates` lists on the WMS; a nested field binds as
+1. Make an operator key under **People → Keys**, one per system. Tick the
+   site if there is one, and the key keeps to it.
+2. Point the system at Platen's job intake with that key:
+   - Simple WMS: set the warehouse's `platen_url` setting to
+     `https://<platen>/intake/wms` (or `/intake/jobs`: the same door), and
+     `WMS_PLATEN_KEY` in the WMS `.env` to the key.
+   - Simple TMS: set `TMS_PLATEN_URL=https://<platen>/intake/jobs` and
+     `TMS_PLATEN_KEY` to the key, and `TMS_RUN_SHEET_PRINTER` to the printer.
+3. Give each Platen template the id of the template the system names
+   (`carton-label`, `pick-list`, `run-sheet`, …) and publish it. Bind its
+   fields to the data the system sends; a nested field binds as
    `{{ ship_to.name }}`. The template's saved query isn't run: the job's data
    is the row.
-4. The WMS print point's printer must match a Platen printer's id or its name
+4. The printer the system names must match a Platen printer's id or its name
    (case doesn't matter).
-5. In Platen, set `WMS_URL` to the WMS address and `WMS_KEY` to a WMS API key
-   with the `printing:write` scope, and the WMS hears `printed` or `failed`
-   once the run settles.
+5. Tell Platen where to report how each job went. Each key can carry its own
+   **callback**: the system's address and a key of the system's own, which
+   Platen sends as `Authorization: Bearer <key>` to
+   `POST <address>/v1/print-jobs/{job_id}/status` with
+   `{"status": "printed"}` or `{"status": "failed", "message": "…"}`. Set it
+   when making the key (the two fields under the sites) or later with
+   `PATCH /keys/{id}` `{"callback_url": "https://tms.example.com",
+   "callback_key": "tms_k.…"}`. The address is shown on the keys screen; the
+   key is never shown again, nor logged (sending `***` back keeps it; no
+   address clears both). For Simple TMS, the callback key is one made with
+   `tms create-api-key --name platen --scopes printing:write`.
+   A key with no callback reports to `WMS_URL` with `WMS_KEY` (a WMS API key
+   with the `printing:write` scope), as before: an existing Simple WMS setup
+   needs no change. A job from a key revoked since is reported to nobody.
 
 A page template gets one row per entry in `lines`, with the job's header
-fields beside each. A job the WMS sends twice prints once. An unknown template
-or printer is a 422 naming it, and a printer at another site a 403.
+fields beside each. A job sent twice prints once. An unknown template or
+printer is a 422 naming it, and a printer at another site a 403.
 
 ## How it fits together
 
