@@ -75,11 +75,11 @@ def test_an_existing_key_is_given_a_callback(client):
 
 def test_a_credential_saved_back_masked_keeps_the_stored_one(client):
     made = _make(client, **TMS)
-    r = client.patch(f"/keys/{made['id']}", json={"callback_url": "https://tms.example.com",
+    r = client.patch(f"/keys/{made['id']}", json={"callback_url": "http://tms.test:8022/",
                                                   "callback_key": "***"})
     assert r.status_code == 200
     row = _stored("simple-tms")
-    assert row.callback_url == "https://tms.example.com"
+    assert row.callback_url == "http://tms.test:8022"
     assert row.callback_key == "tms_k.callback-secret"
 
 
@@ -158,3 +158,56 @@ def test_a_job_from_a_revoked_key_is_reported_to_nobody(seeded, wms, caplog):  #
 def test_the_keys_screen_asks_for_a_callback(client):
     r = client.get("/studio/people")
     assert 'id="k-callback-url"' in r.text and 'id="k-callback-key"' in r.text
+
+
+def test_a_credential_left_out_keeps_the_stored_one(client):
+    made = _make(client, **TMS)
+    r = client.patch(f"/keys/{made['id']}", json={"callback_url": "http://tms.test:8022"})
+    assert r.status_code == 200, r.text
+    assert _stored("simple-tms").callback_key == "tms_k.callback-secret"
+
+
+def test_a_credential_sent_empty_or_null_is_cleared(client):
+    made = _make(client, **TMS)
+    for empty in ("", None):
+        client.patch(f"/keys/{made['id']}", json=TMS)
+        r = client.patch(f"/keys/{made['id']}", json={"callback_url": "http://tms.test:8022",
+                                                      "callback_key": empty})
+        assert r.status_code == 200, r.text
+        assert _stored("simple-tms").callback_key is None
+
+
+def test_a_new_address_needs_the_credential_typed_again(client):
+    made = _make(client, **TMS)
+    for kept in ({}, {"callback_key": "***"}):
+        r = client.patch(f"/keys/{made['id']}",
+                         json={"callback_url": "https://elsewhere.example.com", **kept})
+        assert r.status_code == 422
+        assert "callback_key" in r.json()["detail"]
+        assert "again" in r.json()["detail"]
+    row = _stored("simple-tms")
+    assert row.callback_url == "http://tms.test:8022"
+    assert row.callback_key == "tms_k.callback-secret"
+    r = client.patch(f"/keys/{made['id']}", json={"callback_url": "https://elsewhere.example.com",
+                                                  "callback_key": "tms_k.new"})
+    assert r.status_code == 200
+    assert _stored("simple-tms").callback_key == "tms_k.new"
+
+
+def test_a_new_address_for_a_key_without_a_credential_is_fine(client):
+    made = _make(client, callback_url="http://tms.test:8022")
+    r = client.patch(f"/keys/{made['id']}", json={"callback_url": "https://elsewhere.example.com"})
+    assert r.status_code == 200
+    assert _stored("simple-tms").callback_url == "https://elsewhere.example.com"
+
+
+def test_a_callback_address_carries_no_query_or_fragment(client):
+    for bad in ("http://tms.test/?token=secret", "http://tms.test/#secret", "http://tms.test?"):
+        r = client.post("/keys", json={"name": "x", "callback_url": bad})
+        assert r.status_code == 422, bad
+        assert "callback_url" in r.json()["detail"] and "secret" not in r.json()["detail"]
+    made = _make(client, **TMS)
+    r = client.patch(f"/keys/{made['id']}", json={"callback_url": "http://tms.test:8022?t=1",
+                                                  "callback_key": "x"})
+    assert r.status_code == 422 and "callback_url" in r.json()["detail"]
+    assert client.get("/keys").json()[0]["callback_url"] == "http://tms.test:8022"

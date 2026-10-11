@@ -1874,12 +1874,14 @@ class KeyBody(BaseModel):
 
 class CallbackBody(BaseModel):
     callback_url: str | None = None
-    callback_key: str | None = None     # "***" keeps the one stored
+    # left out or "***" keeps the one stored; null or "" clears it
+    callback_key: str | None = None
 
 
 def _callback_url(value: str | None) -> str | None:
-    """http or https with a host, and no credential in it: the address is
-    shown on the keys screen, the credential never is."""
+    """http or https with a host, and no credential, query or fragment in
+    it: the address is shown on the keys screen and kept in the audit log,
+    the credential never is."""
     value = (value or "").strip()
     if not value:
         return None
@@ -1887,9 +1889,10 @@ def _callback_url(value: str | None) -> str | None:
     if parts.scheme not in ("http", "https") or not parts.hostname or len(value) > 500:
         raise HTTPException(422, "callback_url: give the address of the system that sends "
                                  "the jobs, starting http:// or https://")
-    if parts.username or parts.password:
+    if parts.username or parts.password or "?" in value or "#" in value:
         raise HTTPException(422, "callback_url: put the credential in callback_key, not in "
-                                 "the address; the address is shown on the keys screen")
+                                 "the address, and leave off any ?query or #fragment; the "
+                                 "address is shown on the keys screen")
     return value.rstrip("/")
 
 
@@ -2064,8 +2067,10 @@ def make_key(body: KeyBody, s: Session = Depends(get_session),
 @app.patch("/keys/{key_id}")
 def set_key_callback(key_id: str, body: CallbackBody, s: Session = Depends(get_session),
                      user: AppUser = Depends(admin)) -> dict[str, Any]:
-    """Where jobs sent with this key are reported back to. A credential sent
-    back as *** keeps the one stored; no address clears both."""
+    """Where jobs sent with this key are reported back to. A credential left
+    out or sent back as *** keeps the one stored, but only at the same
+    address: a stored secret never goes somewhere new unless an administrator
+    types it again. No address clears both."""
     rows = [k for k in s.scalars(select(db.ApiToken))
             if key_id and k.id.startswith(key_id) and k.role != "agent"]
     if len(rows) != 1:
@@ -2073,11 +2078,15 @@ def set_key_callback(key_id: str, body: CallbackBody, s: Session = Depends(get_s
     row = rows[0]
     url = _callback_url(body.callback_url)
     submitted = (body.callback_key or "").strip()
+    keep = "callback_key" not in body.model_fields_set or submitted == datasources.MASK
     if url is None:
         row.callback_url = row.callback_key = None
     else:
+        if keep and row.callback_key and url != row.callback_url:
+            raise HTTPException(422, "callback_key: enter the credential again when the "
+                                     "address changes")
         row.callback_url = url
-        if submitted != datasources.MASK:
+        if not keep:
             row.callback_key = submitted or None
     audit(s, "callback", "key", row.name, actor=user, callback_url=row.callback_url)
     s.commit()

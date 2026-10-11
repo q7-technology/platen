@@ -117,9 +117,13 @@ send a template name and a row of data, and Platen prints it.
    `{"status": "printed"}` or `{"status": "failed", "message": "…"}`. Set it
    when making the key (the two fields under the sites) or later with
    `PATCH /keys/{id}` `{"callback_url": "https://tms.example.com",
-   "callback_key": "tms_k.…"}`. The address is shown on the keys screen; the
-   key is never shown again, nor logged (sending `***` back keeps it; no
-   address clears both). For Simple TMS, the callback key is one made with
+   "callback_key": "tms_k.…"}`. The address is shown on the keys screen and
+   kept in the audit log, so it takes no `user:password@`, `?query` or
+   `#fragment`; the key is never shown again, nor logged. Leaving
+   `callback_key` out, or sending `***`, keeps the stored one, but only at the
+   same address: a new address needs the key typed again, so a stored key is
+   never sent somewhere new. `null` or `""` clears the key; no address clears
+   both. For Simple TMS, the callback key is one made with
    `tms create-api-key --name platen --scopes printing:write`.
    A key with no callback reports to `WMS_URL` with `WMS_KEY` (a WMS API key
    with the `printing:write` scope), as before: an existing Simple WMS setup
