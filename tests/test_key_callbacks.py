@@ -247,3 +247,23 @@ def test_an_address_sent_null_clears_both(client):
     assert r.status_code == 200, r.text
     row = _stored("simple-tms")
     assert row.callback_url is None and row.callback_key is None
+
+
+def test_a_resend_from_another_key_does_not_requeue_the_run(seeded, queue, monkeypatch):
+    sender, other = _as(_make(seeded, **TMS)), _as(_make(seeded))
+    job = _job()
+
+    def down(run_id):
+        raise ConnectionError("redis")
+    real = jobs.enqueue
+    monkeypatch.setattr(jobs, "enqueue", down)
+    assert sender.post("/intake/jobs", json=job).status_code == 503
+    monkeypatch.setattr(jobs, "enqueue", real)
+    r = other.post("/intake/jobs", json=job)
+    assert r.status_code == 404
+    assert queue.count == 0
+    with dbsession.SessionLocal() as s:
+        assert s.scalars(select(PrintRun)).one().status == "failed"
+    again = sender.post("/intake/jobs", json=job)
+    assert again.status_code == 202 and again.json()["duplicate"] is True
+    assert queue.count == 1

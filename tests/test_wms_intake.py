@@ -93,7 +93,7 @@ def test_a_resent_job_at_another_site_says_nothing_about_it(two_sites):  # noqa:
     job = _job(printer="gee-despatch")
     assert _key(two_sites).post("/intake/wms", json=job).status_code == 202
     assert _key(two_sites, name="wms-bal", sites=["bal"]).post(
-        "/intake/wms", json=job).status_code == 403
+        "/intake/wms", json=job).status_code == 404
 
 
 def test_nobody_signed_in_is_refused(anon):

@@ -1237,7 +1237,11 @@ def _wms_records(kind: str, data: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _wms_seen(s: Session, user: AppUser, run: db.PrintRun) -> dict[str, Any]:
     """A resent job prints nothing new. One that never reached the queue
-    (Redis was down, the WMS got a 503) is put on it now."""
+    (Redis was down, the WMS got a 503) is put on it now. A job id another
+    key sent is unknown to this one: guessing an id mustn't requeue somebody
+    else's run, or say that it exists."""
+    if run.sent_by_key and run.sent_by_key != getattr(user, "key_id", None):
+        raise HTTPException(404, "no job with that job_id from this key")
     printer = s.get(db.Printer, run.printer_id)
     if printer is not None:
         _may_use(s, user, printer)

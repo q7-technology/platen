@@ -133,7 +133,8 @@ send a template name and a row of data, and Platen prints it.
    needs no change. A job from a key revoked since is reported to nobody.
 
 A page template gets one row per entry in `lines`, with the job's header
-fields beside each. A job sent twice prints once. An unknown template or
+fields beside each. A job sent twice prints once; a job id that another
+key sent is a 404, as if Platen had never seen it. An unknown template or
 printer is a 422 naming it, and a printer at another site a 403.
 
 ## How it fits together
