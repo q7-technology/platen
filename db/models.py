@@ -109,6 +109,11 @@ class ApiToken(Base):
     created_by: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now)
     last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    # where a job sent with this key is reported back to, and the credential
+    # to send there; none, and the report goes to WMS_URL as it always has.
+    # The credential is a secret: never logged, never returned by a read.
+    callback_url: Mapped[str | None] = mapped_column(Text)
+    callback_key: Mapped[str | None] = mapped_column(Text)
 
 
 class PrintAgent(Base):
@@ -299,6 +304,9 @@ class PrintRun(Base):
     move_to: Mapped[str | None] = mapped_column(String(64))
     # the Simple WMS job this run prints, so a resend finds it and the WMS is told
     wms_job_id: Mapped[str | None] = mapped_column(String(36), unique=True, index=True)
+    # the key that sent that job (its hash, as api_token.id), so the report
+    # goes back to whoever sent it
+    sent_by_key: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=now, index=True)
     started_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
     finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime)

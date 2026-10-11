@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
@@ -1856,6 +1857,38 @@ class KeyBody(BaseModel):
     name: str
     role: Literal["admin", "operator"] = "operator"
     sites: list[str] = []          # an operator key's sites; none means every site
+    # where a print job sent with this key is reported back to, and the
+    # credential to send there; none, and it goes to WMS_URL
+    callback_url: str | None = None
+    callback_key: str | None = None
+
+
+class CallbackBody(BaseModel):
+    callback_url: str | None = None
+    callback_key: str | None = None     # "***" keeps the one stored
+
+
+def _callback_url(value: str | None) -> str | None:
+    """http or https with a host, and no credential in it: the address is
+    shown on the keys screen, the credential never is."""
+    value = (value or "").strip()
+    if not value:
+        return None
+    parts = urlsplit(value)
+    if parts.scheme not in ("http", "https") or not parts.hostname or len(value) > 500:
+        raise HTTPException(422, "callback_url: give the address of the system that sends "
+                                 "the jobs, starting http:// or https://")
+    if parts.username or parts.password:
+        raise HTTPException(422, "callback_url: put the credential in callback_key, not in "
+                                 "the address; the address is shown on the keys screen")
+    return value.rstrip("/")
+
+
+def _key_json(k: db.ApiToken) -> dict[str, Any]:
+    return {"id": k.id[:12], "name": k.name, "role": k.role, "agent_id": k.agent_id,
+            "sites": k.sites or [], "created_by": k.created_by, "created_at": k.created_at,
+            "last_used_at": k.last_used_at, "callback_url": k.callback_url,
+            "callback_key": datasources.MASK if k.callback_key else None}
 
 
 def _user_json(s: Session, row: AppUser) -> dict[str, Any]:
@@ -1986,10 +2019,7 @@ def delete_user(username: str, s: Session = Depends(get_session),
 
 @app.get("/keys", dependencies=[Depends(admin)])
 def list_keys(s: Session = Depends(get_session)) -> list[dict[str, Any]]:
-    return [{"id": k.id[:12], "name": k.name, "role": k.role, "agent_id": k.agent_id,
-             "sites": k.sites or [],
-             "created_by": k.created_by, "created_at": k.created_at,
-             "last_used_at": k.last_used_at}
+    return [_key_json(k)
             for k in s.scalars(select(db.ApiToken).order_by(db.ApiToken.created_at.desc()))]
 
 
@@ -2009,12 +2039,40 @@ def make_key(body: KeyBody, s: Session = Depends(get_session),
             raise HTTPException(422, f"no site {site_id!r}")
         if site.archived_at is not None:
             raise HTTPException(422, f"{site.name} is archived; restore it first")
+    callback_url = _callback_url(body.callback_url)
+    callback_key = (body.callback_key or "").strip() or None
+    if callback_key and not callback_url:
+        raise HTTPException(422, "callback_url: a callback key needs the address to send it to")
     token = auth.create_token(s, name=body.name, role=body.role, created_by=user.username)
-    s.get(db.ApiToken, auth.token_id(token)).sites = chosen
-    audit(s, "create", "key", body.name, actor=user, role=body.role, sites=chosen)
+    row = s.get(db.ApiToken, auth.token_id(token))
+    row.sites, row.callback_url, row.callback_key = chosen, callback_url, callback_key
+    audit(s, "create", "key", body.name, actor=user, role=body.role, sites=chosen,
+          callback_url=callback_url)
     s.commit()
-    return {"id": auth.token_id(token)[:12], "name": body.name, "role": body.role,
-            "sites": chosen, "token": token}
+    return {**_key_json(row), "token": token}
+
+
+@app.patch("/keys/{key_id}")
+def set_key_callback(key_id: str, body: CallbackBody, s: Session = Depends(get_session),
+                     user: AppUser = Depends(admin)) -> dict[str, Any]:
+    """Where jobs sent with this key are reported back to. A credential sent
+    back as *** keeps the one stored; no address clears both."""
+    rows = [k for k in s.scalars(select(db.ApiToken))
+            if key_id and k.id.startswith(key_id) and k.role != "agent"]
+    if len(rows) != 1:
+        raise HTTPException(404, f"no key {key_id!r}")
+    row = rows[0]
+    url = _callback_url(body.callback_url)
+    submitted = (body.callback_key or "").strip()
+    if url is None:
+        row.callback_url = row.callback_key = None
+    else:
+        row.callback_url = url
+        if submitted != datasources.MASK:
+            row.callback_key = submitted or None
+    audit(s, "callback", "key", row.name, actor=user, callback_url=row.callback_url)
+    s.commit()
+    return _key_json(row)
 
 
 @app.delete("/keys/{key_id}", status_code=204)
