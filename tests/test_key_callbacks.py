@@ -3,13 +3,16 @@ key that sent the job, or WMS_URL for a key without one."""
 
 from __future__ import annotations
 
+import logging
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app import jobs
 from app.main import app
 from db import session as dbsession
 from db.models import ApiToken, PrintRun
-from tests.test_wms_intake import _job
+from tests.test_wms_intake import _job, _settle, wms  # noqa: F401  (fixture)
 
 TMS = {"callback_url": "http://tms.test:8022/", "callback_key": "tms_k.callback-secret"}
 
@@ -107,3 +110,46 @@ def test_the_neutral_intake_and_the_wms_one_are_the_same_door(seeded, queue):
     again = c.post("/intake/wms", json=job)
     assert again.json()["id"] == first.json()["id"] and again.json()["duplicate"] is True
     assert queue.count == 1
+
+
+def test_a_job_is_reported_to_the_key_that_sent_it(seeded, wms, caplog):  # noqa: F811
+    job = _job()
+    run_id = _as(_make(seeded, **TMS)).post("/intake/jobs", json=job).json()["id"]
+    _settle(run_id, "done")
+    with caplog.at_level(logging.DEBUG):
+        jobs.report_to_wms(run_id)
+    call = wms.calls[-1]
+    assert call["url"] == f"http://tms.test:8022/v1/print-jobs/{job['job_id']}/status"
+    assert call["json"] == {"status": "printed"}
+    assert call["headers"]["Authorization"] == "Bearer tms_k.callback-secret"
+    assert "callback-secret" not in caplog.text
+
+
+def test_a_key_without_a_callback_still_reports_to_wms_url(seeded, wms):  # noqa: F811
+    job = _job()
+    run_id = _as(_make(seeded)).post("/intake/wms", json=job).json()["id"]
+    _settle(run_id, "done")
+    jobs.report_to_wms(run_id)
+    assert wms.calls[-1]["url"] == f"http://wms.test/v1/print-jobs/{job['job_id']}/status"
+    assert wms.calls[-1]["headers"]["Authorization"] == "Bearer wms_live_secret"
+
+
+def test_a_callback_without_a_credential_is_sent_bare_and_says_so(seeded, wms, caplog):  # noqa: F811
+    made = _make(seeded, callback_url="http://tms.test:8022")
+    run_id = _as(made).post("/intake/jobs", json=_job()).json()["id"]
+    _settle(run_id, "done")
+    with caplog.at_level(logging.WARNING):
+        jobs.report_to_wms(run_id)
+    assert "Authorization" not in wms.calls[-1]["headers"]
+    assert "simple-tms" in caplog.text and "callback key" in caplog.text
+
+
+def test_a_job_from_a_revoked_key_is_reported_to_nobody(seeded, wms, caplog):  # noqa: F811
+    made = _make(seeded, **TMS)
+    run_id = _as(made).post("/intake/jobs", json=_job()).json()["id"]
+    assert seeded.delete(f"/keys/{made['id']}").status_code == 204
+    _settle(run_id, "done")
+    with caplog.at_level(logging.WARNING):
+        jobs.report_to_wms(run_id)
+    assert wms.calls == []
+    assert "revoked" in caplog.text and run_id in caplog.text

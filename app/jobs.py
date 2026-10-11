@@ -15,8 +15,8 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from db import session as dbsession
+from db.models import ApiToken, PrintRun, RunLabel, Setting
 from db.models import Printer as PrinterRow
-from db.models import PrintRun, RunLabel, Setting
 
 from . import events, printers
 from .logs import where
@@ -313,24 +313,55 @@ def settled(run: PrintRun) -> None:
                   where(run=run.id, wms_job=run.wms_job_id, error=type(exc).__name__))
 
 
+def _report_target(s: Session, run: PrintRun) -> tuple[str, str, str] | None:
+    """Where the report on this run goes: the address, the credential, and
+    who that is, for the log. The callback on the key that sent the job
+    decides; a key without one, or a run no key sent, goes to WMS_URL as
+    every report did before keys had callbacks. Never the credential in a
+    log line, never the address either: naming the key is enough."""
+    from .settings import settings
+
+    if run.sent_by_key:
+        key = s.get(ApiToken, run.sent_by_key)
+        if key is None:
+            log.warning("the key that sent this job has been revoked, so nobody is told: %s",
+                        where(run=run.id, job=run.wms_job_id, status=run.status))
+            return None
+        if key.callback_url:
+            if not key.callback_key:
+                log.warning("key %s has a callback address but no callback key, so the "
+                            "sender will likely refuse the report: %s",
+                            key.name, where(run=run.id, job=run.wms_job_id))
+            return key.callback_url, key.callback_key or "", f"key {key.name}"
+    if not settings.wms_url:
+        log.warning("no WMS_URL, so the WMS was not told: %s",
+                    where(run=run.id, wms_job=run.wms_job_id, status=run.status))
+        return None
+    if not settings.wms_key:
+        log.warning("no WMS_KEY, so the WMS will likely refuse the report: %s",
+                    where(run=run.id, wms_job=run.wms_job_id))
+    return settings.wms_url, settings.wms_key, "the WMS"
+
+
 def report_to_wms(run_id: str) -> None:
-    """Runs in the worker. Raises on an answer that may change, or no answer
-    at all, so rq tries again; any other refusal is logged and left.
+    """Runs in the worker. Tells whoever sent the job how it went: Simple
+    WMS, Simple TMS, anything that sent it with a key. Raises on an answer
+    that may change, or no answer at all, so rq tries again; any other
+    refusal is logged and left. (The name is older than the other senders;
+    queued reports still call it by it.)
 
     Reads the run as it is now, not as it was when the report was queued: a
     run put back on the queue since says nothing until it settles again, and
     that settle queues a report of its own."""
-    from .settings import settings
-
     dbsession.engine()
     with dbsession.SessionLocal() as s:
         run = s.get(PrintRun, run_id)
         if run is None or not run.wms_job_id or run.status not in SETTLED:
             return
-        if not settings.wms_url:
-            log.warning("no WMS_URL, so the WMS was not told: %s",
-                        where(run=run_id, wms_job=run.wms_job_id, status=run.status))
+        target = _report_target(s, run)
+        if target is None:
             return
+        base, key, who = target
         if run.status == "done":
             body: dict[str, str] = {"status": "printed"}
         elif run.status == "cancelled":
@@ -338,20 +369,18 @@ def report_to_wms(run_id: str) -> None:
         else:
             body = {"status": "failed",
                     "message": (run.error or "the run failed in Platen")[:500]}
-        url = f"{settings.wms_url.rstrip('/')}/v1/print-jobs/{run.wms_job_id}/status"
-        headers = {"Authorization": f"Bearer {settings.wms_key}"} if settings.wms_key else {}
-        if not settings.wms_key:
-            log.warning("no WMS_KEY, so the WMS will likely refuse the report: %s",
-                        where(run=run_id, wms_job=run.wms_job_id))
+        url = f"{base.rstrip('/')}/v1/print-jobs/{run.wms_job_id}/status"
+        headers = {"Authorization": f"Bearer {key}"} if key else {}
         # a transport error goes up as it is: httpx doesn't put headers in its
         # message, so the key stays out of rq's log
         r = httpx.post(url, json=body, headers=headers, timeout=REPORT_TIMEOUT)
         if not 200 <= r.status_code < 300:
             again = _worth_another_go(r.status_code)
-            log.warning("the WMS refused the report%s: %s",
+            log.warning("%s refused the report%s: %s", who,
                         "" if again else ", and won't be asked again",
                         where(run=run_id, wms_job=run.wms_job_id, http=r.status_code))
             if again:
-                raise RuntimeError(f"the WMS answered {r.status_code} to the report on {run_id}")
+                raise RuntimeError(f"{who} answered {r.status_code} to the report on {run_id}")
             return
-        log.info("WMS told: %s", where(run=run_id, wms_job=run.wms_job_id, status=body["status"]))
+        log.info("%s told: %s", who,
+                 where(run=run_id, wms_job=run.wms_job_id, status=body["status"]))
