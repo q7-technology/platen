@@ -6,8 +6,10 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.main import app
 from db import session as dbsession
-from db.models import ApiToken
+from db.models import ApiToken, PrintRun
+from tests.test_wms_intake import _job
 
 TMS = {"callback_url": "http://tms.test:8022/", "callback_key": "tms_k.callback-secret"}
 
@@ -16,6 +18,10 @@ def _make(admin: TestClient, **body) -> dict:
     r = admin.post("/keys", json={"name": "simple-tms", "role": "operator", **body})
     assert r.status_code == 201, r.text
     return r.json()
+
+
+def _as(made: dict) -> TestClient:
+    return TestClient(app, headers={"authorization": f"Bearer {made['token']}"})
 
 
 def _stored(name: str) -> ApiToken:
@@ -85,3 +91,19 @@ def test_only_an_administrator_sets_a_callback(client, operator):
     made = _make(client)
     assert operator.patch(f"/keys/{made['id']}", json=TMS).status_code == 403
     assert client.patch("/keys/nosuchkey", json=TMS).status_code == 404
+
+
+def test_the_run_remembers_which_key_sent_it(seeded):
+    made = _make(seeded, **TMS)
+    run_id = _as(made).post("/intake/jobs", json=_job()).json()["id"]
+    with dbsession.SessionLocal() as s:
+        assert s.get(PrintRun, run_id).sent_by_key == _stored("simple-tms").id
+
+
+def test_the_neutral_intake_and_the_wms_one_are_the_same_door(seeded, queue):
+    c, job = _as(_make(seeded)), _job()
+    first = c.post("/intake/jobs", json=job)
+    assert first.status_code == 202 and first.json()["duplicate"] is False
+    again = c.post("/intake/wms", json=job)
+    assert again.json()["id"] == first.json()["id"] and again.json()["duplicate"] is True
+    assert queue.count == 1

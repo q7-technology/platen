@@ -123,6 +123,7 @@ def current_user(request: Request, s: Session = Depends(get_session)) -> AppUser
         stand_in = AppUser(username=f"key:{token.name}", display_name=token.name,
                            role=token.role)
         stand_in.key_sites = list(token.sites or [])     # read by sites.allowed
+        stand_in.key_id = token.id                       # read by the intake
         return stand_in
 
     cookie = request.cookies.get(auth.COOKIE)
@@ -1023,7 +1024,8 @@ def _run_json(run: db.PrintRun) -> dict[str, Any]:
 
 def _queue_run(s: Session, user: AppUser, printer: db.Printer, spec: RunSpec, *,
                records: list[dict[str, Any]] | None = None,
-               wms_job_id: str | None = None, **detail: Any) -> dict[str, Any]:
+               wms_job_id: str | None = None, sent_by_key: str | None = None,
+               **detail: Any) -> dict[str, Any]:
     """Check the site, follow a detour, render every label and queue the run.
     Shared by /runs and the WMS intake so the two can't drift apart."""
     _may_use(s, user, printer)
@@ -1054,6 +1056,7 @@ def _queue_run(s: Session, user: AppUser, printer: db.Printer, spec: RunSpec, *,
         id=run_id, template_version_id=p.version_id,
         printer_id=printer.id, params=spec.params, copies=spec.copies,
         pause_between=spec.pause_between, total=len(queued), wms_job_id=wms_job_id,
+        sent_by_key=sent_by_key,
         labels=queued,
         warnings=[_warning(w) for w in p.warnings],
     )
@@ -1264,11 +1267,16 @@ def _wms_seen(s: Session, user: AppUser, run: db.PrintRun) -> dict[str, Any]:
             "duplicate": True}
 
 
+@app.post("/intake/jobs", status_code=202)
 @app.post("/intake/wms", status_code=202)
 def wms_intake(body: WmsJob, s: Session = Depends(get_session),
                user: AppUser = Depends(current_user)) -> dict[str, Any]:
-    """A print job from Simple WMS. The template is the one whose id is the
-    WMS template name; its saved query isn't run, the data comes with the job."""
+    """A print job from Simple WMS, Simple TMS or anything else that sends the
+    same shape. /intake/wms is the address Simple WMS installs already use;
+    /intake/jobs is the same door under a name that fits every sender. The
+    template is the one whose id is the job's template name; its saved query
+    isn't run, the data comes with the job. How it went is reported to the
+    callback of the key that sent it (see jobs.report_to_wms)."""
     job_id = str(body.job_id)
     seen = s.scalar(select(db.PrintRun).where(db.PrintRun.wms_job_id == job_id))
     if seen is not None:
@@ -1285,7 +1293,8 @@ def wms_intake(body: WmsJob, s: Session = Depends(get_session),
     kind = (latest.definition.get("kind") if latest else None) or "label"
     try:
         out = _queue_run(s, user, printer, spec, records=_wms_records(kind, body.data),
-                         wms_job_id=job_id, wms_version=body.version,
+                         wms_job_id=job_id, sent_by_key=getattr(user, "key_id", None),
+                         wms_version=body.version,
                          wms_reference=body.reference)
     except IntegrityError:                  # the same job, sent twice at once
         s.rollback()
