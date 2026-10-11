@@ -211,3 +211,39 @@ def test_a_callback_address_carries_no_query_or_fragment(client):
                                                   "callback_key": "x"})
     assert r.status_code == 422 and "callback_url" in r.json()["detail"]
     assert client.get("/keys").json()[0]["callback_url"] == "http://tms.test:8022"
+
+
+def test_a_credential_alone_is_rotated_at_the_stored_address(client):
+    made = _make(client, **TMS)
+    r = client.patch(f"/keys/{made['id']}", json={"callback_key": "tms_k.rotated"})
+    assert r.status_code == 200, r.text
+    assert r.json()["callback_url"] == "http://tms.test:8022"
+    row = _stored("simple-tms")
+    assert row.callback_url == "http://tms.test:8022"
+    assert row.callback_key == "tms_k.rotated"
+
+
+def test_a_credential_alone_needs_an_address_to_go_to(client):
+    made = _make(client)
+    r = client.patch(f"/keys/{made['id']}", json={"callback_key": "tms_k.orphan"})
+    assert r.status_code == 422 and "callback_url" in r.json()["detail"]
+    row = _stored("simple-tms")
+    assert row.callback_url is None and row.callback_key is None
+
+
+def test_a_misspelt_field_is_refused_and_changes_nothing(client):
+    made = _make(client, **TMS)
+    r = client.patch(f"/keys/{made['id']}", json={"callbackUrl": "https://elsewhere.example.com"})
+    assert r.status_code == 422
+    row = _stored("simple-tms")
+    assert row.callback_url == "http://tms.test:8022"
+    assert row.callback_key == "tms_k.callback-secret"
+
+
+def test_an_address_sent_null_clears_both(client):
+    made = _make(client, **TMS)
+    r = client.patch(f"/keys/{made['id']}", json={"callback_url": None,
+                                                  "callback_key": "***"})
+    assert r.status_code == 200, r.text
+    row = _stored("simple-tms")
+    assert row.callback_url is None and row.callback_key is None

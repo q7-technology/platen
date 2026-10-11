@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.responses import Response as RawResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
@@ -1873,6 +1873,10 @@ class KeyBody(BaseModel):
 
 
 class CallbackBody(BaseModel):
+    # a misspelt field would otherwise read as "left out" and change nothing
+    # the caller meant to change
+    model_config = ConfigDict(extra="forbid")
+    # left out keeps the stored address; null or "" clears it, and the key too
     callback_url: str | None = None
     # left out or "***" keeps the one stored; null or "" clears it
     callback_key: str | None = None
@@ -2070,16 +2074,21 @@ def set_key_callback(key_id: str, body: CallbackBody, s: Session = Depends(get_s
     """Where jobs sent with this key are reported back to. A credential left
     out or sent back as *** keeps the one stored, but only at the same
     address: a stored secret never goes somewhere new unless an administrator
-    types it again. No address clears both."""
+    types it again. An address left out keeps the stored one, so a
+    credential can be rotated on its own; null or "" clears both."""
     rows = [k for k in s.scalars(select(db.ApiToken))
             if key_id and k.id.startswith(key_id) and k.role != "agent"]
     if len(rows) != 1:
         raise HTTPException(404, f"no key {key_id!r}")
     row = rows[0]
-    url = _callback_url(body.callback_url)
+    sent = body.model_fields_set
+    url = _callback_url(body.callback_url) if "callback_url" in sent else row.callback_url
     submitted = (body.callback_key or "").strip()
-    keep = "callback_key" not in body.model_fields_set or submitted == datasources.MASK
+    keep = "callback_key" not in sent or submitted == datasources.MASK
     if url is None:
+        if not keep and submitted:
+            raise HTTPException(422, "callback_url: give the address to send the callback "
+                                     "key to; this key has none")
         row.callback_url = row.callback_key = None
     else:
         if keep and row.callback_key and url != row.callback_url:

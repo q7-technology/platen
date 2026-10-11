@@ -122,8 +122,11 @@ send a template name and a row of data, and Platen prints it.
    `#fragment`; the key is never shown again, nor logged. Leaving
    `callback_key` out, or sending `***`, keeps the stored one, but only at the
    same address: a new address needs the key typed again, so a stored key is
-   never sent somewhere new. `null` or `""` clears the key; no address clears
-   both. For Simple TMS, the callback key is one made with
+   never sent somewhere new. Leaving `callback_url` out keeps the stored
+   address, so `{"callback_key": "tms_k.…"}` alone rotates the key in place.
+   `null` or `""` for the key clears it; for the address, clears both. A field
+   Platen doesn't know (`callbackUrl`, say) is a 422 and changes nothing. For
+   Simple TMS, the callback key is one made with
    `tms create-api-key --name platen --scopes printing:write`.
    A key with no callback reports to `WMS_URL` with `WMS_KEY` (a WMS API key
    with the `printing:write` scope), as before: an existing Simple WMS setup
