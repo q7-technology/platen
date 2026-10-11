@@ -125,8 +125,11 @@ send a template name and a row of data, and Platen prints it.
    never sent somewhere new. Leaving `callback_url` out keeps the stored
    address, so `{"callback_key": "tms_k.…"}` alone rotates the key in place.
    `null` or `""` for the key clears it; for the address, clears both. A field
-   Platen doesn't know (`callbackUrl`, say) is a 422 and changes nothing. For
-   Simple TMS, the callback key is one made with
+   Platen doesn't know (`callbackUrl`, say) is a 422 and changes nothing.
+   Only an administrator sets a callback, and the address is trusted admin
+   configuration: like a REST data source, it can point at an internal
+   address, so only give admin rights to people who should decide where
+   Platen posts. For Simple TMS, the callback key is one made with
    `tms create-api-key --name platen --scopes printing:write`.
    A key with no callback reports to `WMS_URL` with `WMS_KEY` (a WMS API key
    with the `printing:write` scope), as before: an existing Simple WMS setup
